@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import com.hazelcast.query.Predicate;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import nl.jqno.equalsverifier.EqualsVerifier;
+import nl.jqno.equalsverifier.Warning;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -68,4 +70,13 @@ public class OrPredicateTest {
         NotPredicate notPredicate = (NotPredicate) inners[0];
         assertThat(nonNegatable, sameInstance(notPredicate.predicate));
     }
+
+    @Test
+    public void testEqualsAndHashCode() {
+        EqualsVerifier.forClass(OrPredicate.class)
+            .suppress(Warning.NONFINAL_FIELDS, Warning.STRICT_INHERITANCE)
+            .allFieldsShouldBeUsed()
+            .verify();
+    }
+
 }

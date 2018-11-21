@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,8 +31,10 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 
 import static org.junit.Assert.assertEquals;
@@ -48,6 +50,10 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
     private SerializationService serializationService;
     private Ringbuffer<Object> ringbuffer;
     private RingbufferContainer ringbufferContainer;
+    private RingbufferService ringbufferService;
+
+    @Rule
+    public ExpectedException expectedException = ExpectedException.none();
 
     @Before
     public void setup() {
@@ -58,10 +64,14 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
         hz = createHazelcastInstance(config);
         nodeEngine = getNodeEngineImpl(hz);
         serializationService = getSerializationService(hz);
-        ringbuffer = hz.getRingbuffer(rbConfig.getName());
+        final String name = rbConfig.getName();
+        ringbuffer = hz.getRingbuffer(name);
 
-        RingbufferService ringbufferService = getNodeEngineImpl(hz).getService(RingbufferService.SERVICE_NAME);
-        ringbufferContainer = ringbufferService.getContainer(rbConfig.getName());
+        ringbufferService = getNodeEngineImpl(hz).getService(RingbufferService.SERVICE_NAME);
+        ringbufferContainer = ringbufferService.getOrCreateContainer(
+                ringbufferService.getRingbufferPartitionId(name),
+                RingbufferService.getRingbufferNamespace(name),
+                rbConfig);
     }
 
     private Data toData(Object item) {
@@ -72,8 +82,7 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
     public void whenAtTail() throws Exception {
         ringbuffer.add("tail");
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence());
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence());
 
         // since there is an item, we don't need to wait
         boolean shouldWait = op.shouldWait();
@@ -88,42 +97,42 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
     public void whenOneAfterTail() throws Exception {
         ringbuffer.add("tail");
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence() + 1);
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence() + 1);
 
         // since there is an item, we don't need to wait
         boolean shouldWait = op.shouldWait();
         assertTrue(shouldWait);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void whenTooFarAfterTail() throws Exception {
         ringbuffer.add("tail");
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence() + 2);
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence() + 2);
 
         // since there is an item, we don't need to wait
         op.shouldWait();
+        expectedException.expect(IllegalArgumentException.class);
+        op.beforeRun();
     }
 
     @Test
     public void whenOneAfterTailAndBufferEmpty() throws Exception {
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence() + 1);
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence() + 1);
 
         // since there is an item, we don't need to wait
         boolean shouldWait = op.shouldWait();
         assertTrue(shouldWait);
     }
 
-    @Test(expected = StaleSequenceException.class)
+    @Test
     public void whenOnTailAndBufferEmpty() throws Exception {
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence());
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence());
 
         // since there is an item, we don't need to wait
         op.shouldWait();
+        expectedException.expect(StaleSequenceException.class);
+        op.beforeRun();
     }
 
     @Test
@@ -132,8 +141,7 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
         ringbuffer.add("item2");
         ringbuffer.add("item3");
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.tailSequence() - 1);
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.tailSequence() - 1);
 
         // since there is an item, we don't need to wait
         boolean shouldWait = op.shouldWait();
@@ -150,8 +158,7 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
         ringbuffer.add("item2");
         ringbuffer.add("item3");
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), ringbuffer.headSequence());
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(ringbuffer.headSequence());
 
         // since there is an item, we don't need to wait
         boolean shouldWait = op.shouldWait();
@@ -162,7 +169,7 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
         assertEquals(toData("item1"), op.getResponse());
     }
 
-    @Test(expected = StaleSequenceException.class)
+    @Test
     public void whenBeforeHead() throws Exception {
         ringbuffer.add("item1");
         ringbuffer.add("item2");
@@ -171,9 +178,17 @@ public class ReadOneOperationTest extends HazelcastTestSupport {
         long oldhead = ringbuffer.headSequence();
         ringbufferContainer.setHeadSequence(ringbufferContainer.tailSequence());
 
-        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), oldhead);
-        op.setNodeEngine(nodeEngine);
+        ReadOneOperation op = getReadOneOperation(oldhead);
 
         op.shouldWait();
+        expectedException.expect(StaleSequenceException.class);
+        op.beforeRun();
+    }
+
+    private ReadOneOperation getReadOneOperation(long seq) {
+        ReadOneOperation op = new ReadOneOperation(ringbuffer.getName(), seq);
+        op.setPartitionId(ringbufferService.getRingbufferPartitionId(ringbuffer.getName()));
+        op.setNodeEngine(nodeEngine);
+        return op;
     }
 }

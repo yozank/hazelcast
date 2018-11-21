@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package com.hazelcast.config;
 
 import com.hazelcast.cache.impl.event.CachePartitionLostListener;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.BinaryInterface;
 
 import java.io.Serializable;
 
@@ -50,8 +50,8 @@ public class CachePartitionLostListenerConfig extends ListenerConfig implements 
     /**
      * Gets immutable version of this configuration.
      *
-     * @return Immutable version of this configuration.
-     * @deprecated this method will be removed in 4.0; it is meant for internal usage only.
+     * @return immutable version of this configuration
+     * @deprecated this method will be removed in 4.0; it is meant for internal usage only
      */
     @Override
     public CachePartitionLostListenerConfigReadOnly getAsReadOnly() {
@@ -93,5 +93,10 @@ public class CachePartitionLostListenerConfig extends ListenerConfig implements 
         result = 31 * result + (className != null ? className.hashCode() : 0);
         result = 31 * result + (implementation != null ? implementation.hashCode() : 0);
         return result;
+    }
+
+    @Override
+    public int getId() {
+        return ConfigDataSerializerHook.CACHE_PARTITION_LOST_LISTENER_CONFIG;
     }
 }

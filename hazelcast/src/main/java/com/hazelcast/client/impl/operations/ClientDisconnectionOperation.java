@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package com.hazelcast.client.impl.operations;
 
-import com.hazelcast.client.ClientEndpoint;
 import com.hazelcast.client.impl.ClientDataSerializerHook;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.client.impl.ClientEndpointManagerImpl;
 import com.hazelcast.client.impl.ClientEngineImpl;
 import com.hazelcast.nio.ObjectDataInput;
@@ -46,9 +46,16 @@ public class ClientDisconnectionOperation extends AbstractClientOperation implem
     @Override
     public void run() throws Exception {
         ClientEngineImpl engine = getService();
+        //Runs on {@link com.hazelcast.spi.ExecutionService.CLIENT_MANAGEMENT_EXECUTOR}
+        // to work in sync with ClientReAuthOperation
+        engine.getClientManagementExecutor().execute(new ClientDisconnectedTask());
+    }
+
+    private boolean doRun() {
+        ClientEngineImpl engine = getService();
         final ClientEndpointManagerImpl endpointManager = (ClientEndpointManagerImpl) engine.getEndpointManager();
         if (!engine.removeOwnershipMapping(clientUuid, memberUuid)) {
-            return;
+            return false;
         }
 
         Set<ClientEndpoint> endpoints = endpointManager.getEndpoints(clientUuid);
@@ -57,17 +64,21 @@ public class ClientDisconnectionOperation extends AbstractClientOperation implem
             endpoint.getConnection().close("ClientDisconnectionOperation: Client disconnected from cluster", null);
         }
 
-        // This part cleans up locks conditions semaphore etc..
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
-        nodeEngine.onClientDisconnected(clientUuid);
+        // This part cleans up locks conditions semaphore etc..
         Collection<ClientAwareService> services = nodeEngine.getServices(ClientAwareService.class);
         for (ClientAwareService service : services) {
             service.clientDisconnected(clientUuid);
         }
+        return true;
     }
 
     @Override
     public boolean returnsResponse() {
+        // This method actually returns a response.
+        // Since operation needs to work on a different executor,
+        // (see {@link com.hazelcast.spi.ExecutionService.CLIENT_MANAGEMENT_EXECUTOR})
+        // the response is returned via ClientDisconnectionOperation.ClientDisconnectedTask
         return false;
     }
 
@@ -89,4 +100,24 @@ public class ClientDisconnectionOperation extends AbstractClientOperation implem
     public int getId() {
         return ClientDataSerializerHook.CLIENT_DISCONNECT;
     }
+
+    @Override
+    public String toString() {
+        return "ClientDisconnectionOperation{"
+                + "clientUuid='" + clientUuid + '\''
+                + ", memberUuid='" + memberUuid + '\''
+                + "} " + super.toString();
+    }
+
+    public class ClientDisconnectedTask implements Runnable {
+        @Override
+        public void run() {
+            try {
+                sendResponse(doRun());
+            } catch (Exception e) {
+                sendResponse(e);
+            }
+        }
+    }
+
 }

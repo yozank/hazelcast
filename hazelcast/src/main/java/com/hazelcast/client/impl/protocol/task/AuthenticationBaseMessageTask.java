@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@
 
 package com.hazelcast.client.impl.protocol.task;
 
-import com.hazelcast.client.ClientTypes;
-import com.hazelcast.client.impl.ClientEndpointImpl;
+import com.hazelcast.client.impl.ClientTypes;
 import com.hazelcast.client.impl.ReAuthenticationOperationSupplier;
 import com.hazelcast.client.impl.client.ClientPrincipal;
 import com.hazelcast.client.impl.protocol.AuthenticationStatus;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.config.GroupConfig;
 import com.hazelcast.core.Member;
-import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.instance.Node;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
@@ -40,27 +38,20 @@ import com.hazelcast.util.function.Supplier;
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 import java.security.Permission;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-
-import static java.util.Collections.synchronizedList;
 
 /**
  * Base authentication task
  */
-public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTargetMessageTask<P> {
-
+public abstract class AuthenticationBaseMessageTask<P> extends AbstractStableClusterMessageTask<P> {
 
     protected transient ClientPrincipal principal;
     protected transient Credentials credentials;
-    protected transient byte clientSerializationVersion;
-    protected transient String clientVersion;
-    private final List<Member> cleanedUpMembers = synchronizedList(new ArrayList<Member>());
+    transient byte clientSerializationVersion;
+    transient String clientVersion;
 
-    public AuthenticationBaseMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
+    AuthenticationBaseMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
     }
 
@@ -70,38 +61,16 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
     }
 
     @Override
-    protected Object reduce(Map<Member, Object> map) throws Throwable {
-        for (Map.Entry<Member, Object> entry : map.entrySet()) {
-            Member member = entry.getKey();
-            Object response = entry.getValue();
-            if (response instanceof Throwable) {
-                if (response instanceof MemberLeftException) {
-                    cleanedUpMembers.add(member);
-                    continue;
-                }
-                throw (Throwable) response;
-            }
-            boolean isClientDisconnectOperationRun = (Boolean) response;
-            if (isClientDisconnectOperationRun) {
-                cleanedUpMembers.add(member);
-            }
+    protected Object resolve(Object response) {
+        if (logger.isFineEnabled()) {
+            logger.fine("Processed owner authentication with principal " + principal);
         }
         return prepareAuthenticatedClientMessage();
     }
 
-    @Override
-    public Collection<Member> getTargets() {
-        return clientEngine.getClusterService().getMembers();
-    }
 
-    @Override
-    protected ClientEndpointImpl getEndpoint() {
-        return new ClientEndpointImpl(clientEngine, connection);
-    }
-
-    @Override
-    protected boolean isAuthenticationMessage() {
-        return true;
+    protected void doRun() throws Throwable {
+        initializeAndProcessMessage();
     }
 
     @Override
@@ -126,13 +95,16 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
         String uuid = getUuid();
         String localMemberUUID = clientEngine.getThisUuid();
         principal = new ClientPrincipal(uuid, localMemberUUID);
+        if (logger.isFineEnabled()) {
+            logger.fine("Processing owner authentication with principal " + principal);
+        }
         super.processMessage();
     }
 
     private void prepareAndSendResponse(AuthenticationStatus authenticationStatus) {
         boolean isNotMember = clientEngine.getClusterService().getMember(principal.getOwnerUuid()) == null;
         if (isNotMember) {
-            logger.warning("Member having uuid " + principal.getOwnerUuid()
+            logger.warning("Member having UUID " + principal.getOwnerUuid()
                     + " is not part of the cluster. Client Authentication rejected.");
             authenticationStatus = AuthenticationStatus.CREDENTIALS_FAILED;
         }
@@ -148,7 +120,7 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
                 sendClientMessage(prepareSerializationVersionMismatchClientMessage());
                 break;
             default:
-                sendClientMessage(new IllegalStateException("Unsupported authentication status :" + authenticationStatus));
+                sendClientMessage(new IllegalStateException("Unsupported authentication status: " + authenticationStatus));
         }
     }
 
@@ -189,17 +161,14 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
     private AuthenticationStatus authenticate(UsernamePasswordCredentials credentials) {
         GroupConfig groupConfig = nodeEngine.getConfig().getGroupConfig();
         String nodeGroupName = groupConfig.getName();
-        String nodeGroupPassword = groupConfig.getPassword();
         boolean usernameMatch = nodeGroupName.equals(credentials.getUsername());
-        boolean passwordMatch = nodeGroupPassword.equals(credentials.getPassword());
-        return usernameMatch && passwordMatch ? AuthenticationStatus.AUTHENTICATED : AuthenticationStatus.CREDENTIALS_FAILED;
+        return usernameMatch ? AuthenticationStatus.AUTHENTICATED : AuthenticationStatus.CREDENTIALS_FAILED;
     }
 
     private ClientMessage prepareUnauthenticatedClientMessage() {
         Connection connection = endpoint.getConnection();
         ILogger logger = clientEngine.getLogger(getClass());
-        logger.log(Level.WARNING,
-                "Received auth from " + connection + " with principal " + principal + " , authentication failed");
+        logger.warning("Received auth from " + connection + " with principal " + principal + ", authentication failed");
         byte status = AuthenticationStatus.CREDENTIALS_FAILED.getId();
         return encodeAuth(status, null, null, null, serializationService.getVersion(), null);
     }
@@ -215,8 +184,8 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
 
         endpoint.authenticated(principal, credentials, isOwnerConnection(), clientVersion, clientMessage.getCorrelationId());
         setConnectionType();
-        logger.info("Received auth from " + connection + ", successfully authenticated" + ", principal : " + principal
-                + ", owner connection : " + isOwnerConnection() + ", client version : " + clientVersion);
+        logger.info("Received auth from " + connection + ", successfully authenticated" + ", principal: " + principal
+                + ", owner connection: " + isOwnerConnection() + ", client version: " + clientVersion);
         if (endpointManager.registerEndpoint(endpoint)) {
             clientEngine.bind(endpoint);
         }
@@ -224,7 +193,7 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
         final Address thisAddress = clientEngine.getThisAddress();
         byte status = AuthenticationStatus.AUTHENTICATED.getId();
         return encodeAuth(status, thisAddress, principal.getUuid(), principal.getOwnerUuid(),
-                serializationService.getVersion(), cleanedUpMembers);
+                serializationService.getVersion(), Collections.<Member>emptyList());
     }
 
     private void setConnectionType() {
@@ -241,6 +210,8 @@ public abstract class AuthenticationBaseMessageTask<P> extends AbstractMultiTarg
             connection.setType(ConnectionType.RUBY_CLIENT);
         } else if (ClientTypes.NODEJS.equals(type)) {
             connection.setType(ConnectionType.NODEJS_CLIENT);
+        } else if (ClientTypes.GO.equals(type)) {
+            connection.setType(ConnectionType.GO_CLIENT);
         } else {
             clientEngine.getLogger(getClass()).info("Unknown client type: " + type);
             connection.setType(ConnectionType.BINARY_CLIENT);

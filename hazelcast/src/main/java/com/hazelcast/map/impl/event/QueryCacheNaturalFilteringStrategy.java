@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import com.hazelcast.spi.serialization.SerializationService;
 import com.hazelcast.util.collection.Int2ObjectHashMap;
 
 import java.util.Collection;
-import java.util.Map;
 
 import static com.hazelcast.core.EntryEventType.ADDED;
 import static com.hazelcast.core.EntryEventType.EVICTED;
@@ -39,6 +38,7 @@ import static com.hazelcast.core.EntryEventType.EXPIRED;
 import static com.hazelcast.core.EntryEventType.INVALIDATION;
 import static com.hazelcast.core.EntryEventType.REMOVED;
 import static com.hazelcast.core.EntryEventType.UPDATED;
+import static com.hazelcast.util.MapUtil.createInt2ObjectHashMap;
 
 /**
  * A filtering strategy that preserves the default behavior in most cases, but processes entry events for listeners with
@@ -187,10 +187,13 @@ public class QueryCacheNaturalFilteringStrategy extends AbstractFilteringStrateg
         }
     }
 
-    // Caches EntryEventData per {eventType, includingValues}
+    /**
+     * Caches 2 different {@link EntryEventData} objects for each event type - one for
+     * including values and one for excluding values.
+     */
     private class EntryEventDataPerEventTypeCache implements EntryEventDataCache {
-        Map<Integer, EntryEventData> eventDataIncludingValues;
-        Map<Integer, EntryEventData> eventDataExcludingValues;
+        Int2ObjectHashMap<EntryEventData> eventDataIncludingValues;
+        Int2ObjectHashMap<EntryEventData> eventDataExcludingValues;
         boolean empty = true;
 
         @Override
@@ -198,13 +201,13 @@ public class QueryCacheNaturalFilteringStrategy extends AbstractFilteringStrateg
                                                    Object mergingValue, int eventType, boolean includingValues) {
             if (includingValues) {
                 if (eventDataIncludingValues == null) {
-                    eventDataIncludingValues = new Int2ObjectHashMap<EntryEventData>(EVENT_DATA_MAP_CAPACITY);
+                    eventDataIncludingValues = createInt2ObjectHashMap(EVENT_DATA_MAP_CAPACITY);
                 }
                 return getOrCreateEventData(eventDataIncludingValues, mapName, caller, dataKey, newValue, oldValue, mergingValue,
                         eventType);
             } else {
                 if (eventDataExcludingValues == null) {
-                    eventDataExcludingValues = new Int2ObjectHashMap<EntryEventData>(EVENT_DATA_MAP_CAPACITY);
+                    eventDataExcludingValues = createInt2ObjectHashMap(EVENT_DATA_MAP_CAPACITY);
                 }
                 return getOrCreateEventData(eventDataExcludingValues, mapName, caller, dataKey, null, null, null,
                         eventType);
@@ -230,18 +233,21 @@ public class QueryCacheNaturalFilteringStrategy extends AbstractFilteringStrateg
          * If an {@code EntryEventData} is already mapped to the given {@code eventType} in {@code Map eventDataPerEventType},
          * then return the mapped value, otherwise create the {@code EntryEventData}, put it in {@code Map eventDataPerEventType}
          * and return it.
-         * @param eventDataPerEventType
-         * @param mapName
-         * @param caller
-         * @param dataKey
-         * @param newValue
-         * @param oldValue
-         * @param mergingValue
-         * @param eventType
+         *
+         * @param eventDataPerEventType map from event type to cached event data
+         * @param mapName               name of map
+         * @param caller                the address of the caller that caused the event
+         * @param dataKey               the key of the event map entry
+         * @param newValue              the new value of the map entry
+         * @param oldValue              the old value of the map entry
+         * @param mergingValue          the value used when performing a merge operation in case of
+         *                              a {@link EntryEventType#MERGED} event. This value together with the old value
+         *                              produced the new value.
+         * @param eventType             the event type
          * @return {@code EntryEventData} already cached in {@code Map eventDataPerEventType} for the given {@code eventType} or
-         *          if not already cached, a new {@code EntryEventData} object.
+         * if not already cached, a new {@code EntryEventData} object.
          */
-        private EntryEventData getOrCreateEventData(Map<Integer, EntryEventData> eventDataPerEventType, String mapName,
+        private EntryEventData getOrCreateEventData(Int2ObjectHashMap<EntryEventData> eventDataPerEventType, String mapName,
                                                     Address caller, Data dataKey, Object newValue, Object oldValue,
                                                     Object mergingValue, int eventType) {
 

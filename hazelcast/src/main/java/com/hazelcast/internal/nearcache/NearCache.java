@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.hazelcast.internal.adapter.DataStructureAdapter;
 import com.hazelcast.monitor.NearCacheStats;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.InitializingObject;
+import com.hazelcast.spi.properties.HazelcastProperty;
 
 /**
  * {@link NearCache} is the contract point to store keys and values in underlying
@@ -35,12 +36,26 @@ public interface NearCache<K, V> extends InitializingObject {
     /**
      * Default expiration task initial delay time as seconds
      */
-    int DEFAULT_EXPIRATION_TASK_INITIAL_DELAY_IN_SECONDS = 5;
+    int DEFAULT_EXPIRATION_TASK_INITIAL_DELAY_SECONDS = 5;
 
     /**
      * Default expiration task delay time as seconds
      */
-    int DEFAULT_EXPIRATION_TASK_DELAY_IN_SECONDS = 5;
+    int DEFAULT_EXPIRATION_TASK_PERIOD_SECONDS = 5;
+
+    String PROP_EXPIRATION_TASK_INITIAL_DELAY_SECONDS
+            = "hazelcast.internal.nearcache.expiration.task.initial.delay.seconds";
+
+    String PROP_EXPIRATION_TASK_PERIOD_SECONDS
+            = "hazelcast.internal.nearcache.expiration.task.period.seconds";
+
+    HazelcastProperty TASK_INITIAL_DELAY_SECONDS
+            = new HazelcastProperty(PROP_EXPIRATION_TASK_INITIAL_DELAY_SECONDS,
+            DEFAULT_EXPIRATION_TASK_INITIAL_DELAY_SECONDS);
+
+    HazelcastProperty TASK_PERIOD_SECONDS
+            = new HazelcastProperty(PROP_EXPIRATION_TASK_PERIOD_SECONDS,
+            DEFAULT_EXPIRATION_TASK_PERIOD_SECONDS);
 
     /**
      * NULL Object
@@ -70,24 +85,19 @@ public interface NearCache<K, V> extends InitializingObject {
     /**
      * Puts (associates) a value with the given {@code key}.
      *
-     * @param key   the key of the value will be stored
-     * @param value the value will be stored
+     * @param key     the key of the value will be stored
+     * @param keyData the key as {@link Data} of the value will be stored
+     * @param value   the value will be stored
      */
-    void put(K key, V value);
+    void put(K key, Data keyData, V value);
 
     /**
-     * Removes the value associated with the given {@code key}.
+     * Removes the value associated with the given {@code key}
+     * and increases the invalidation statistics.
      *
-     * @param key the key of the value will be removed
+     * @param key the key of the value will be invalidated
      */
-    boolean remove(K key);
-
-    /**
-     * Checks if values are invalidated on changes.
-     *
-     * @return {@code true} if values are invalidated on changes, {@code false} otherwise
-     */
-    boolean isInvalidatedOnChange();
+    void invalidate(K key);
 
     /**
      * Removes all stored values.
@@ -98,6 +108,13 @@ public interface NearCache<K, V> extends InitializingObject {
      * Clears the record store and destroys it.
      */
     void destroy();
+
+    /**
+     * Gets the count of stored records.
+     *
+     * @return the count of stored records
+     */
+    int size();
 
     /**
      * Gets the {@link com.hazelcast.config.InMemoryFormat} of the storage for internal records.
@@ -121,6 +138,13 @@ public interface NearCache<K, V> extends InitializingObject {
     NearCacheStats getNearCacheStats();
 
     /**
+     * Checks if the Near Cache key is stored in serialized format or by-reference.
+     *
+     * @return {@code true} if the key is stored in serialized format, {@code false} if stored by-reference.
+     */
+    boolean isSerializeKeys();
+
+    /**
      * Selects the best candidate object to store from the given {@code candidates}.
      *
      * @param candidates the candidates from which the best candidate object will be selected.
@@ -129,16 +153,9 @@ public interface NearCache<K, V> extends InitializingObject {
     Object selectToSave(Object... candidates);
 
     /**
-     * Gets the count of stored records.
-     *
-     * @return the count of stored records
-     */
-    int size();
-
-    /**
      * Executes the Near Cache pre-loader on the given {@link DataStructureAdapter}.
      */
-    void preload(DataStructureAdapter<Data, ?> adapter);
+    void preload(DataStructureAdapter<Object, ?> adapter);
 
     /**
      * Stores the keys of the Near Cache.
@@ -169,10 +186,11 @@ public interface NearCache<K, V> extends InitializingObject {
      * <p>
      * If one thread takes reservation, only that thread can update the key.
      *
-     * @param key key to be reserved for update
-     * @return reservation id if reservation succeeds, else returns {@link NearCacheRecord#NOT_RESERVED}
+     * @param key     key to be reserved for update
+     * @param keyData key to be reserved for update as {@link Data}
+     * @return reservation ID if reservation succeeds, else returns {@link NearCacheRecord#NOT_RESERVED}
      */
-    long tryReserveForUpdate(K key);
+    long tryReserveForUpdate(K key, Data keyData);
 
     /**
      * Tries to update reserved key with supplied value. If update happens, value is published.
@@ -180,7 +198,7 @@ public interface NearCache<K, V> extends InitializingObject {
      *
      * @param key           reserved key for update
      * @param value         value to be associated with reserved key
-     * @param reservationId id for this reservation
+     * @param reservationId ID for this reservation
      * @param deserialize   eagerly deserialize returning value
      * @return associated value if deserialize is {@code true} and update succeeds, otherwise returns null
      */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.adapter;
 
+import com.hazelcast.cache.HazelcastExpiryPolicy;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ReplicatedMap;
 import com.hazelcast.query.TruePredicate;
@@ -29,11 +30,13 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import javax.cache.expiry.ExpiryPolicy;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singleton;
@@ -83,6 +86,22 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
         adapter.set(23, "test");
     }
 
+    @Test(expected = MethodNotAvailableException.class)
+    public void testSetAsync() {
+        adapter.setAsync(42, "value");
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testSetAsyncWithTtl() {
+        adapter.setAsync(42, "value", 1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testSetAsyncWithExpiryPolicy() {
+        ExpiryPolicy expiryPolicy = new HazelcastExpiryPolicy(1, 1, 1, TimeUnit.MILLISECONDS);
+        adapter.setAsync(42, "value", expiryPolicy);
+    }
+
     @Test
     public void testPut() {
         map.put(42, "oldValue");
@@ -91,6 +110,27 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
 
         assertEquals("oldValue", oldValue);
         assertEquals("newValue", map.get(42));
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testPutAsync() {
+        adapter.putAsync(42, "newValue");
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testPutAsyncWithTtl() {
+        adapter.putAsync(42, "value", 1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testPutAsyncWithExpiryPolicy() {
+        ExpiryPolicy expiryPolicy = new HazelcastExpiryPolicy(1, 1, 1, TimeUnit.MILLISECONDS);
+        adapter.putAsync(42, "value", expiryPolicy);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testPutTransient() {
+        adapter.putTransient(42, "value", 1, TimeUnit.MILLISECONDS);
     }
 
     @Test(expected = MethodNotAvailableException.class)
@@ -118,7 +158,7 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
         map.put(23, "value-23");
         assertTrue(map.containsKey(23));
 
-        adapter.remove(23);
+        assertEquals("value-23", adapter.remove(23));
         assertFalse(map.containsKey(23));
     }
 
@@ -130,6 +170,21 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
     @Test(expected = MethodNotAvailableException.class)
     public void testRemoveAsync() {
         adapter.removeAsync(23);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testDelete() {
+        adapter.delete(23);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testDeleteAsync() {
+        adapter.deleteAsync(23);
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testEvict() {
+        adapter.evict(23);
     }
 
     @Test(expected = MethodNotAvailableException.class)
@@ -219,6 +274,11 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
     }
 
     @Test(expected = MethodNotAvailableException.class)
+    public void testEvictAll() {
+        adapter.evictAll();
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
     public void testInvokeAll() {
         Set<Integer> keys = new HashSet<Integer>(asList(23, 65, 88));
         adapter.invokeAll(keys, new ICacheReplaceEntryProcessor(), "value", "newValue");
@@ -231,6 +291,11 @@ public class ReplicatedMapDataStructureAdapterTest extends HazelcastTestSupport 
         adapter.clear();
 
         assertEquals(0, map.size());
+    }
+
+    @Test(expected = MethodNotAvailableException.class)
+    public void testClose() {
+        adapter.close();
     }
 
     @Test

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.query.impl;
 
 import com.hazelcast.config.MapAttributeConfig;
 import com.hazelcast.internal.serialization.InternalSerializationService;
+import com.hazelcast.monitor.impl.PerIndexStats;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.impl.getters.Extractors;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -47,13 +48,14 @@ public class IndexImplTest {
     public void setUp() {
         InternalSerializationService mockSerializationService = mock(InternalSerializationService.class);
         Extractors mockExtractors = new Extractors(Collections.<MapAttributeConfig>emptyList(), null);
-        index = new IndexImpl(ATTRIBUTE_NAME, false, mockSerializationService, mockExtractors);
+        index = new IndexImpl(ATTRIBUTE_NAME, false, mockSerializationService, mockExtractors, IndexCopyBehavior.COPY_ON_READ,
+                PerIndexStats.EMPTY);
     }
 
     @Test
     public void saveEntryIndex_doNotDeserializeKey() {
         QueryableEntry entry = createMockQueryableEntry();
-        index.saveEntryIndex(entry, null);
+        index.saveEntryIndex(entry, null, Index.OperationSource.USER);
         verify(entry, never()).getKey();
     }
 

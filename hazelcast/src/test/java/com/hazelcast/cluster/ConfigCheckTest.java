@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.config.PartitionGroupConfig;
 import com.hazelcast.internal.cluster.impl.ConfigCheck;
 import com.hazelcast.internal.cluster.impl.ConfigMismatchException;
+import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -28,8 +29,17 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -47,6 +57,54 @@ public class ConfigCheckTest {
         ConfigCheck configCheck2 = new ConfigCheck(config2, "joiner");
 
         assertIsCompatibleFalse(configCheck1, configCheck2);
+    }
+
+    @Test
+    public void whenGroupPasswordDifferent_thenJoin() {
+        Config config1 = new Config();
+        config1.getGroupConfig().setName("foo");
+        config1.getGroupConfig().setPassword("Here");
+
+        Config config2 = new Config();
+        config2.getGroupConfig().setName("foo");
+        config2.getGroupConfig().setPassword("There");
+
+        ConfigCheck configCheck1 = new ConfigCheck(config1, "joiner");
+        ConfigCheck configCheck2 = new ConfigCheck(config2, "joiner");
+
+        assertIsCompatibleTrue(configCheck1, configCheck2);
+    }
+
+    @Test
+    public void testGroupPasswordNotLeak_whenVersionAboveThreeNine() {
+        final Config config = new Config();
+        config.getNetworkConfig().getJoin().getMulticastConfig()
+                .setEnabled(true).setMulticastTimeoutSeconds(3);
+        config.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(false);
+
+        final AtomicBoolean leaked = new AtomicBoolean(false);
+
+        ObjectDataOutput odo = mock(ObjectDataOutput.class);
+
+        try {
+            ConfigCheck configCheck = new ConfigCheck(config, "multicast");
+            configCheck.writeData(odo);
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+
+        try {
+            ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+            verify(odo, times(7)).writeUTF(captor.capture());
+            List<String> values = captor.getAllValues();
+            if (values.contains(config.getGroupConfig().getPassword())) {
+                leaked.set(true);
+            }
+        } catch (IOException e) {
+            fail(e.getMessage());
+        }
+
+        assertEquals("Password leaked in output stream.", false, leaked.get());
     }
 
     @Test

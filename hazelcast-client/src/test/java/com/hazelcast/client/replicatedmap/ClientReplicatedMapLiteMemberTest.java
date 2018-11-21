@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ReplicatedMap;
+import com.hazelcast.nio.Address;
 import com.hazelcast.replicatedmap.ReplicatedMapCantBeCreatedOnLiteMemberException;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -33,7 +34,6 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
@@ -124,10 +124,10 @@ public class ClientReplicatedMapLiteMemberTest {
     }
 
     private void configureDummyClientConnection(HazelcastInstance instance) throws UnknownHostException {
-        InetSocketAddress socketAddress = getAddress(instance).getInetSocketAddress();
+        Address memberAddress = getAddress(instance);
         dummyClientConfig.setProperty(ClientProperty.SHUFFLE_MEMBER_LIST.getName(), "false");
         ClientNetworkConfig networkConfig = dummyClientConfig.getNetworkConfig();
-        networkConfig.addAddress(socketAddress.getHostName() + ":" + socketAddress.getPort());
+        networkConfig.addAddress(memberAddress.getHost() + ":" + memberAddress.getPort());
     }
 
     private List<HazelcastInstance> createNodes(int numberOfLiteNodes, int numberOfDataNodes) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.hazelcast.map.MapInterceptor;
 import com.hazelcast.nio.serialization.Portable;
 import com.hazelcast.nio.serialization.PortableReader;
 import com.hazelcast.nio.serialization.PortableWriter;
+import com.hazelcast.util.StringUtil;
 
 import java.io.IOException;
 
@@ -34,8 +35,9 @@ public class SimpleClientInterceptor implements MapInterceptor, Portable {
 
     @Override
     public Object interceptGet(Object value) {
-        if (value == null)
+        if (value == null) {
             return null;
+        }
         return value + ":";
     }
 
@@ -45,7 +47,7 @@ public class SimpleClientInterceptor implements MapInterceptor, Portable {
 
     @Override
     public Object interceptPut(Object oldValue, Object newValue) {
-        return newValue.toString().toUpperCase();
+        return newValue.toString().toUpperCase(StringUtil.LOCALE_INTERNAL);
     }
 
     @Override
@@ -54,8 +56,9 @@ public class SimpleClientInterceptor implements MapInterceptor, Portable {
 
     @Override
     public Object interceptRemove(Object removedValue) {
-        if (removedValue.equals("ISTANBUL"))
+        if (removedValue.equals("ISTANBUL")) {
             throw new RuntimeException("you can not remove this");
+        }
         return removedValue;
     }
 
@@ -83,4 +86,3 @@ public class SimpleClientInterceptor implements MapInterceptor, Portable {
         //To change body of implemented methods use File | Settings | File Templates.
     }
 }
-

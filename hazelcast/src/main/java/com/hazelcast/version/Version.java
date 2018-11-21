@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,14 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
 
     /**
      * Version 0.0 is UNKNOWN constant
+     * <p>
+     * <ul>
+     * <li>UNKNOWN is only equal to itself.</li>
+     * <li>{@code is(Less|Greater)Than} method with an UNKNOWN operand returns false.</li>
+     * <li>{@code is(Less|Greater)OrEqual} with an UNKNOWN operand returns false, unless both operands are UNKNOWN.</li>
+     * <li>{@code UNKNOWN.isUnknown(Less|Greater)(Than|OrEqual)} returns true.</li>
+     * <li>{@code otherVersion.isUnknown(Less|Greater)(Than|OrEqual)} with an UNKNOWN argument returns false.</li>
+     * </ul>
      */
     public static final Version UNKNOWN = new Version(UNKNOWN_VERSION, UNKNOWN_VERSION);
 
@@ -52,6 +60,9 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
     }
 
     private Version(int major, int minor) {
+        assert major >= 0 && major <= Byte.MAX_VALUE : "Invalid value: " + major + ", must be in range [0,127]";
+        assert minor >= 0 && minor <= Byte.MAX_VALUE : "Invalid value: " + minor + ", must be in range [0,127]";
+
         this.major = (byte) major;
         this.minor = (byte) minor;
     }
@@ -73,10 +84,7 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
             return false;
         }
         Version that = (Version) o;
-        if (major != that.major) {
-            return false;
-        }
-        return minor == that.minor;
+        return isEqualTo(that);
     }
 
     @Override
@@ -108,11 +116,9 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
     public int compareTo(Version o) {
         int thisVersion = this.pack();
         int thatVersion = o.pack();
-        if (thisVersion > thatVersion) {
-            return 1;
-        } else {
-            return thisVersion == thatVersion ? 0 : -1;
-        }
+        // min pack value is 0
+        // max pack value is lower than Short.MAX
+        return thisVersion - thatVersion;
     }
 
     @Override
@@ -151,24 +157,76 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
         }
     }
 
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version equals {@code version}
+     */
     public boolean isEqualTo(Version version) {
-        return this.equals(version);
+        return major == version.major && minor == version.minor;
     }
 
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is greater than {@code version}
+     */
     public boolean isGreaterThan(Version version) {
-        return this.compareTo(version) > 0;
+        return !version.isUnknown() && compareTo(version) > 0;
     }
 
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is unknown or if this version is greater than {@code version}
+     */
+    public boolean isUnknownOrGreaterThan(Version version) {
+        return isUnknown() || (!version.isUnknown() && compareTo(version) > 0);
+    }
+
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is greater than or equal to {@code version}
+     */
     public boolean isGreaterOrEqual(Version version) {
-        return this.compareTo(version) >= 0;
+        return (!version.isUnknown() && compareTo(version) >= 0) || (version.isUnknown() && isUnknown());
     }
 
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is unknown or if this version is greater than or equal to {@code version}
+     */
+    public boolean isUnknownOrGreaterOrEqual(Version version) {
+        return isUnknown() || (!version.isUnknown() && compareTo(version) >= 0);
+    }
+
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is less than {@code version}
+     */
     public boolean isLessThan(Version version) {
-        return this.compareTo(version) < 0;
+        return !isUnknown() && compareTo(version) < 0;
     }
 
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is unknown or if this version is less than {@code version}
+     */
+    public boolean isUnknownOrLessThan(Version version) {
+        return isUnknown() || compareTo(version) < 0;
+    }
+
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is less than or equal to {@code version}
+     */
     public boolean isLessOrEqual(Version version) {
-        return this.compareTo(version) <= 0;
+        return (!isUnknown() && compareTo(version) <= 0) || (isUnknown() && version.isUnknown());
+    }
+
+    /**
+     * @param version other version to compare to
+     * @return {@code true} if this version is unknown or if this version is less than or equal to {@code version}
+     */
+    public boolean isUnknownOrLessOrEqual(Version version) {
+        return isUnknown() || compareTo(version) <= 0;
     }
 
     /**
@@ -185,8 +243,11 @@ public final class Version implements IdentifiedDataSerializable, Comparable<Ver
         return thisVersion >= fromVersion && thisVersion <= toVersion;
     }
 
+    /**
+     * @return {@code true} if this version is equal to {@link Version#UNKNOWN}
+     */
     public boolean isUnknown() {
-        return equals(UNKNOWN);
+        return pack() == UNKNOWN_VERSION;
     }
 
     /**

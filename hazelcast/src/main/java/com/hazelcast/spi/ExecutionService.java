@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,11 @@ public interface ExecutionService {
     String CLIENT_QUERY_EXECUTOR = "hz:client-query";
 
     /**
+     * Name of the client management executor.
+     */
+    String CLIENT_MANAGEMENT_EXECUTOR = "hz:client-management";
+
+    /**
      * Name of the query executor.
      */
     String QUERY_EXECUTOR = "hz:query";
@@ -73,14 +78,21 @@ public interface ExecutionService {
     String OFFLOADABLE_EXECUTOR = "hz:offloadable";
 
     /**
-     * Name of the map-loader executor that loads the {@link com.hazelcast.core.MapLoader#loadAll(java.util.Collection)}.
+     * Name of the map-loader executor that loads the entry values
+     * for a given key set locally on the member owning the partition
+     * which contains the keys. This is the executor you want to
+     * configure when you want to load more data from the database
+     * in parallel.
      *
-     * This is the executor you want to configure when you want to load more data from the database in parallel.
+     * @see com.hazelcast.core.MapLoader#loadAll(java.util.Collection)
      */
     String MAP_LOADER_EXECUTOR = "hz:map-load";
 
     /**
-     * The name of the executor that loads the {@link com.hazelcast.core.MapLoader#loadAllKeys()}
+     * The name of the executor that loads the entry keys and dispatches
+     * the keys to the partition owners for value loading.
+     *
+     * @see com.hazelcast.core.MapLoader#loadAllKeys()
      */
     String MAP_LOAD_ALL_KEYS_EXECUTOR = "hz:map-loadAllKeys";
 

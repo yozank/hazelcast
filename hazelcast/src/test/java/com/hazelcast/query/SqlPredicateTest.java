@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,20 +20,20 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
-import com.hazelcast.query.SampleObjects.Employee;
-import com.hazelcast.query.SampleObjects.ObjectWithBigDecimal;
-import com.hazelcast.query.SampleObjects.ObjectWithBoolean;
-import com.hazelcast.query.SampleObjects.ObjectWithByte;
-import com.hazelcast.query.SampleObjects.ObjectWithChar;
-import com.hazelcast.query.SampleObjects.ObjectWithDate;
-import com.hazelcast.query.SampleObjects.ObjectWithDouble;
-import com.hazelcast.query.SampleObjects.ObjectWithFloat;
-import com.hazelcast.query.SampleObjects.ObjectWithInteger;
-import com.hazelcast.query.SampleObjects.ObjectWithLong;
-import com.hazelcast.query.SampleObjects.ObjectWithShort;
-import com.hazelcast.query.SampleObjects.ObjectWithSqlDate;
-import com.hazelcast.query.SampleObjects.ObjectWithSqlTimestamp;
-import com.hazelcast.query.SampleObjects.ObjectWithUUID;
+import com.hazelcast.query.SampleTestObjects.Employee;
+import com.hazelcast.query.SampleTestObjects.ObjectWithBigDecimal;
+import com.hazelcast.query.SampleTestObjects.ObjectWithBoolean;
+import com.hazelcast.query.SampleTestObjects.ObjectWithByte;
+import com.hazelcast.query.SampleTestObjects.ObjectWithChar;
+import com.hazelcast.query.SampleTestObjects.ObjectWithDate;
+import com.hazelcast.query.SampleTestObjects.ObjectWithDouble;
+import com.hazelcast.query.SampleTestObjects.ObjectWithFloat;
+import com.hazelcast.query.SampleTestObjects.ObjectWithInteger;
+import com.hazelcast.query.SampleTestObjects.ObjectWithLong;
+import com.hazelcast.query.SampleTestObjects.ObjectWithShort;
+import com.hazelcast.query.SampleTestObjects.ObjectWithSqlDate;
+import com.hazelcast.query.SampleTestObjects.ObjectWithSqlTimestamp;
+import com.hazelcast.query.SampleTestObjects.ObjectWithUUID;
 import com.hazelcast.query.impl.DateHelperTest;
 import com.hazelcast.query.impl.QueryEntry;
 import com.hazelcast.query.impl.getters.Extractors;
@@ -44,6 +44,7 @@ import com.hazelcast.query.impl.predicates.RegexPredicate;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.util.UuidUtil;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -57,11 +58,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.instance.TestUtil.toData;
 import static com.hazelcast.test.HazelcastTestSupport.assertInstanceOf;
 import static com.hazelcast.test.HazelcastTestSupport.randomString;
+import static java.util.concurrent.TimeUnit.DAYS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -72,25 +73,18 @@ import static org.junit.Assert.assertTrue;
 @Category(QuickTest.class)
 public class SqlPredicateTest {
 
-    private final InternalSerializationService serializationService = new DefaultSerializationServiceBuilder().build();
-
-    // these are used to test compound predicates flattening
-    TruePredicate leftOfOr = new TruePredicate();
-    TruePredicate rightOfOr = new TruePredicate();
-    TruePredicate leftOfAnd = new TruePredicate();
-    TruePredicate rightOfAnd = new TruePredicate();
-
-    static final String[] TEST_MATCHING_SQL_PREDICATES = new String[] {
+    private static final String[] TEST_MATCHING_SQL_PREDICATES = new String[]{
             "name = 'Joe' and age = 25 and (city = 'austin' or city = 'AUSTIN')",
             "name = 'Joe' or city = 'Athens'",
             "(name = 'Jane' or name = 'Joe' or city = 'AUSTIN') and age = 25",
             "(name = 'Jane' or name = 'Joe' or city = 'AUSTIN') and age = 25 and salary = 0",
             "(name = 'Jane' or name = 'Joe') and age = 25 and salary = 0 or age = 24",
-            "name = 'Jane' or age = 25 and name = 'Joe'", // correct precedence is "name = 'Jane' or (age = 25 and name = 'Joe')
+            // correct precedence is "name = 'Jane' or (age = 25 and name = 'Joe')
+            "name = 'Jane' or age = 25 and name = 'Joe'",
             "age = 35 or age = 24 or age = 31 or (name = 'Joe' and age = 25)",
-            };
+    };
 
-    static final String[] TEST_NOT_MATCHING_SQL_PREDICATES = new String[] {
+    private static final String[] TEST_NOT_MATCHING_SQL_PREDICATES = new String[]{
             "name = 'Joe' and age = 21 and (city = 'austin' or city = 'ATHENS')",
             "name = 'Jane' or city = 'Athens'",
             "(name = 'Jane' or name = 'Catie' or city = 'San Jose') and age = 25",
@@ -100,7 +94,15 @@ public class SqlPredicateTest {
             "(name = 'Jane' or name = 'Joe') and age = 25 and salary = 13 or age = 24",
             "name = 'Jane' or age = 25 and name = 'Catie'",
             "age = 35 or age = 24 or age = 31 or (name = 'Joe' and age = 27)",
-            };
+    };
+
+    private final InternalSerializationService serializationService = new DefaultSerializationServiceBuilder().build();
+
+    // these are used to test compound predicates flattening
+    private TruePredicate leftOfOr = new TruePredicate();
+    private TruePredicate rightOfOr = new TruePredicate();
+    private TruePredicate leftOfAnd = new TruePredicate();
+    private TruePredicate rightOfAnd = new TruePredicate();
 
     @Test
     public void testSqlPredicates() {
@@ -114,7 +116,10 @@ public class SqlPredicateTest {
     }
 
     public static class Record {
-        private String str1, str2, str3;
+
+        private String str1;
+        private String str2;
+        private String str3;
 
         public Record(String str1, String str2, String str3) {
             this.str1 = str1;
@@ -191,11 +196,11 @@ public class SqlPredicateTest {
     @Test
     public void testSql_withEnum() {
         Employee value = createValue();
-        value.setState(SampleObjects.State.STATE2);
+        value.setState(SampleTestObjects.State.STATE2);
         Employee nullNameValue = createValue(null);
 
         assertSqlMatching("state == TestUtil.State.STATE2", value);
-        assertSqlMatching("state == " + SampleObjects.State.STATE2, value);
+        assertSqlMatching("state == " + SampleTestObjects.State.STATE2, value);
         assertSqlNotMatching("state == TestUtil.State.STATE1", value);
         assertSqlNotMatching("state == TestUtil.State.STATE1", nullNameValue);
         assertSqlMatching("state == NULL", nullNameValue);
@@ -219,8 +224,8 @@ public class SqlPredicateTest {
         SimpleDateFormat format = new SimpleDateFormat(DateHelperTest.SQL_DATE_FORMAT, Locale.US);
         assertSqlMatching("attribute > '" + format.format(new java.sql.Date(0)) + "'", value);
         assertSqlMatching("attribute >= '" + format.format(new java.sql.Date(0)) + "'", value);
-        assertSqlMatching("attribute < '" + format.format(new java.sql.Date(date.getTime() + TimeUnit.DAYS.toMillis(2))) + "'", value);
-        assertSqlMatching("attribute <= '" + format.format(new java.sql.Date(date.getTime() + TimeUnit.DAYS.toMillis(2))) + "'", value);
+        assertSqlMatching("attribute < '" + format.format(new java.sql.Date(date.getTime() + DAYS.toMillis(2))) + "'", value);
+        assertSqlMatching("attribute <= '" + format.format(new java.sql.Date(date.getTime() + DAYS.toMillis(2))) + "'", value);
     }
 
     @Test
@@ -247,7 +252,7 @@ public class SqlPredicateTest {
 
     @Test
     public void testSql_withBigInteger() {
-        SampleObjects.ObjectWithBigInteger value = new SampleObjects.ObjectWithBigInteger(new BigInteger("123"));
+        SampleTestObjects.ObjectWithBigInteger value = new SampleTestObjects.ObjectWithBigInteger(new BigInteger("123"));
         assertSqlMatching("attribute > '" + new BigInteger("122") + "'", value);
         assertSqlMatching("attribute >= '" + new BigInteger("123") + "'", value);
         assertSqlMatching("attribute = '" + new BigInteger("123") + "'", value);
@@ -386,10 +391,10 @@ public class SqlPredicateTest {
 
     @Test
     public void testSql_withUUID() {
-        UUID uuid = UUID.randomUUID();
+        UUID uuid = UuidUtil.newUnsecureUUID();
         ObjectWithUUID value = new ObjectWithUUID(uuid);
         assertSqlMatching("attribute = '" + uuid.toString() + "'", value);
-        assertSqlNotMatching("attribute = '" + UUID.randomUUID().toString() + "'", value);
+        assertSqlNotMatching("attribute = '" + UuidUtil.newUnsecureUuidString() + "'", value);
     }
 
     @Test
@@ -644,8 +649,8 @@ public class SqlPredicateTest {
     @Test
     // http://stackoverflow.com/questions/37382505/hazelcast-imap-valuespredicate-miss-data
     public void testAndWithRegex_stackOverflowIssue() {
-        SqlPredicate sqlPredicate = new SqlPredicate("nextExecuteTime < 1463975296703 AND autoIncrementId REGEX '.*[5,6,7,8,9]$'");
-        Predicate predicate = sqlPredicate.predicate;
+        String sqlPredicate = "nextExecuteTime < 1463975296703 AND autoIncrementId REGEX '.*[5,6,7,8,9]$'";
+        Predicate predicate = new SqlPredicate(sqlPredicate).predicate;
 
         AndPredicate andPredicate = (AndPredicate) predicate;
         assertEquals(GreaterLessPredicate.class, andPredicate.getPredicates()[0].getClass());

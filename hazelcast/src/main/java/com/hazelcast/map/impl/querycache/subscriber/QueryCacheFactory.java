@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.map.impl.querycache.subscriber;
 
+import com.hazelcast.config.QueryCacheConfig;
 import com.hazelcast.core.IMap;
 import com.hazelcast.map.impl.querycache.QueryCacheContext;
 import com.hazelcast.util.ConcurrencyUtil;
@@ -27,7 +28,7 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * Static factory for simple {@link com.hazelcast.map.QueryCache QueryCache} implementations.
  */
-class QueryCacheFactory {
+public class QueryCacheFactory {
 
     /**
      * Constructor for an instance of {@link com.hazelcast.map.QueryCache QueryCache}.
@@ -41,13 +42,13 @@ class QueryCacheFactory {
         }
 
         @Override
-        public InternalQueryCache createNew(String ignored) {
+        public InternalQueryCache createNew(String cacheId) {
             String cacheName = request.getCacheName();
-            String userGivenCacheName = request.getUserGivenCacheName();
             IMap delegate = request.getMap();
             QueryCacheContext context = request.getContext();
+            QueryCacheConfig queryCacheConfig = request.getQueryCacheConfig();
 
-            return new DefaultQueryCache(cacheName, userGivenCacheName, delegate, context);
+            return new DefaultQueryCache(cacheId, cacheName, queryCacheConfig, delegate, context);
         }
     }
 
@@ -57,12 +58,21 @@ class QueryCacheFactory {
         this.internalQueryCaches = new ConcurrentHashMap<String, InternalQueryCache>();
     }
 
-    public InternalQueryCache create(QueryCacheRequest request) {
+    public InternalQueryCache create(QueryCacheRequest request, String cacheId) {
         return ConcurrencyUtil.getOrPutIfAbsent(internalQueryCaches,
-                request.getCacheName(), new InternalQueryCacheConstructor(request));
+                cacheId, new InternalQueryCacheConstructor(request));
     }
 
-    public InternalQueryCache getOrNull(String cacheName) {
-        return internalQueryCaches.get(cacheName);
+    public boolean remove(InternalQueryCache queryCache) {
+        return internalQueryCaches.remove(queryCache.getCacheId(), queryCache);
+    }
+
+    public InternalQueryCache getOrNull(String cacheId) {
+        return internalQueryCaches.get(cacheId);
+    }
+
+    // only used for testing
+    public int getQueryCacheCount() {
+        return internalQueryCaches.size();
     }
 }

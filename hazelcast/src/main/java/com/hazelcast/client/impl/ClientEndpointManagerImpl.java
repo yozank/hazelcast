@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,26 +16,27 @@
 
 package com.hazelcast.client.impl;
 
-import com.hazelcast.client.ClientEndpoint;
-import com.hazelcast.client.ClientEndpointManager;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.util.counters.MwCounter;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Connection;
+import com.hazelcast.spi.EventRegistration;
+import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import javax.security.auth.login.LoginException;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import static com.hazelcast.client.impl.ClientEngineImpl.SERVICE_NAME;
 import static com.hazelcast.internal.metrics.ProbeLevel.MANDATORY;
 import static com.hazelcast.internal.util.counters.MwCounter.newMwCounter;
 import static com.hazelcast.util.Preconditions.checkNotNull;
+import static com.hazelcast.util.SetUtil.createHashSet;
 
 /**
  * Manages and stores {@link com.hazelcast.client.impl.ClientEndpointImpl}s.
@@ -43,19 +44,18 @@ import static com.hazelcast.util.Preconditions.checkNotNull;
 public class ClientEndpointManagerImpl implements ClientEndpointManager {
 
     private final ILogger logger;
-    private final ClientEngineImpl clientEngine;
+    private final EventService eventService;
 
     @Probe(name = "count", level = MANDATORY)
     private final ConcurrentMap<Connection, ClientEndpoint> endpoints =
             new ConcurrentHashMap<Connection, ClientEndpoint>();
 
     @Probe(name = "totalRegistrations", level = MANDATORY)
-    private MwCounter totalRegistrations = newMwCounter();
+    private final MwCounter totalRegistrations = newMwCounter();
 
-    public ClientEndpointManagerImpl(ClientEngineImpl clientEngine, NodeEngine nodeEngine) {
-        this.clientEngine = clientEngine;
+    public ClientEndpointManagerImpl(NodeEngine nodeEngine) {
         this.logger = nodeEngine.getLogger(ClientEndpointManager.class);
-
+        this.eventService = nodeEngine.getEventService();
         MetricsRegistry metricsRegistry = ((NodeEngineImpl) nodeEngine).getMetricsRegistry();
         metricsRegistry.scanAndRegister(this, "client.endpoint");
     }
@@ -64,7 +64,7 @@ public class ClientEndpointManagerImpl implements ClientEndpointManager {
     public Set<ClientEndpoint> getEndpoints(String clientUuid) {
         checkNotNull(clientUuid, "clientUuid can't be null");
 
-        Set<ClientEndpoint> endpointSet = new HashSet<ClientEndpoint>();
+        Set<ClientEndpoint> endpointSet = createHashSet(endpoints.size());
         for (ClientEndpoint endpoint : endpoints.values()) {
             if (clientUuid.equals(endpoint.getUuid())) {
                 endpointSet.add(endpoint);
@@ -89,6 +89,11 @@ public class ClientEndpointManagerImpl implements ClientEndpointManager {
             return false;
         } else {
             totalRegistrations.inc();
+            ClientEvent event = new ClientEvent(endpoint.getUuid(),
+                    ClientEventType.CONNECTED,
+                    endpoint.getSocketAddress(),
+                    endpoint.getClientType());
+            sendClientEvent(event);
             return true;
         }
     }
@@ -111,6 +116,17 @@ public class ClientEndpointManagerImpl implements ClientEndpointManager {
             logger.warning(e);
         }
 
+        ClientEvent event = new ClientEvent(endpoint.getUuid(),
+                ClientEventType.DISCONNECTED,
+                endpoint.getSocketAddress(),
+                endpoint.getClientType());
+        sendClientEvent(event);
+    }
+
+    private void sendClientEvent(ClientEvent event) {
+        final Collection<EventRegistration> regs = eventService.getRegistrations(SERVICE_NAME, SERVICE_NAME);
+        String uuid = event.getUuid();
+        eventService.publishEvent(SERVICE_NAME, regs, event, uuid.hashCode());
     }
 
     @Override

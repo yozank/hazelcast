@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.internal.serialization.impl;
 
-import com.hazelcast.internal.cluster.impl.Versions;
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -45,7 +45,6 @@ public class VersionedObjectDataInputAndOutputTest {
 
         input.setVersion(version);
         assertEquals(version, input.getVersion());
-
     }
 
     @Test
@@ -55,7 +54,5 @@ public class VersionedObjectDataInputAndOutputTest {
 
         output.setVersion(version);
         assertEquals(version, output.getVersion());
-
     }
-
 }

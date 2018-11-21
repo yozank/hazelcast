@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,15 @@ package com.hazelcast.query.impl.extractor.predicates;
 import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.query.Predicates;
 import com.hazelcast.query.impl.extractor.AbstractExtractionTest;
+import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
+import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
 import java.util.Collection;
 
@@ -41,20 +44,30 @@ import static java.util.Collections.singletonList;
 
 /**
  * Tests whether all predicates work with the extraction in attributes that are not collections.
- *
+ * <p>
  * Extraction mechanism: IN-BUILT REFLECTION EXTRACTION
- *
+ * <p>
  * This test is parametrised:
  * - each test is executed separately for BINARY and OBJECT in memory format
  * - each test is executed separately having each query using NO_INDEX, UNORDERED_INDEX and ORDERED_INDEX.
  * In this way we are spec-testing most of the reasonable combinations of the configuration of map & extraction.
  */
 @RunWith(Parameterized.class)
+@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class SingleValueAllPredicatesReflectionTest extends AbstractExtractionTest {
 
     private static final Person BOND = person(130);
     private static final Person HUNT = person(120);
+
+    @Parameters(name = "{index}: {0}, {1}, {2}")
+    public static Collection<Object[]> data() {
+        return axes(
+                asList(BINARY, OBJECT),
+                asList(NO_INDEX, UNORDERED, ORDERED),
+                singletonList(SINGLE)
+        );
+    }
 
     public SingleValueAllPredicatesReflectionTest(InMemoryFormat inMemoryFormat, Index index, Multivalue multivalue) {
         super(inMemoryFormat, index, multivalue);
@@ -121,14 +134,5 @@ public class SingleValueAllPredicatesReflectionTest extends AbstractExtractionTe
         execute(Input.of(BOND, HUNT),
                 Query.of(Predicates.equal("__key", 0), mv),
                 Expected.of(BOND));
-    }
-
-    @Parameterized.Parameters(name = "{index}: {0}, {1}, {2}")
-    public static Collection<Object[]> data() {
-        return axes(
-                asList(BINARY, OBJECT),
-                asList(NO_INDEX, UNORDERED, ORDERED),
-                singletonList(SINGLE)
-        );
     }
 }

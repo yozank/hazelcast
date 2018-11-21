@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,18 @@ package com.hazelcast.test.compatibility;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.hotrestart.HotRestartService;
 import com.hazelcast.hotrestart.InternalHotRestartService;
+import com.hazelcast.instance.HazelcastInstanceImpl;
 import com.hazelcast.instance.NodeExtension;
+import com.hazelcast.internal.ascii.TextCommandService;
 import com.hazelcast.internal.cluster.impl.JoinMessage;
-import com.hazelcast.internal.networking.ReadHandler;
-import com.hazelcast.internal.networking.SocketChannelWrapperFactory;
-import com.hazelcast.internal.networking.WriteHandler;
+import com.hazelcast.internal.diagnostics.Diagnostics;
+import com.hazelcast.internal.dynamicconfig.DynamicConfigListener;
+import com.hazelcast.internal.jmx.ManagementService;
+import com.hazelcast.internal.management.ManagementCenterConnectionFactory;
+import com.hazelcast.internal.management.TimedMemberStateFactory;
+import com.hazelcast.internal.networking.InboundHandler;
+import com.hazelcast.internal.networking.ChannelInitializer;
+import com.hazelcast.internal.networking.OutboundHandler;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.memory.MemoryStats;
 import com.hazelcast.nio.Address;
@@ -31,6 +38,8 @@ import com.hazelcast.nio.IOService;
 import com.hazelcast.nio.MemberSocketInterceptor;
 import com.hazelcast.nio.tcp.TcpIpConnection;
 import com.hazelcast.security.SecurityContext;
+import com.hazelcast.security.SecurityService;
+import com.hazelcast.util.ByteArrayProcessor;
 import com.hazelcast.version.Version;
 
 import java.util.Map;
@@ -51,6 +60,11 @@ public class SamplingNodeExtension implements NodeExtension {
     public InternalSerializationService createSerializationService() {
         InternalSerializationService serializationService = nodeExtension.createSerializationService();
         return new SamplingSerializationService(serializationService);
+    }
+
+    @Override
+    public SecurityService getSecurityService() {
+        return nodeExtension.getSecurityService();
     }
 
     @Override
@@ -109,18 +123,18 @@ public class SamplingNodeExtension implements NodeExtension {
     }
 
     @Override
-    public SocketChannelWrapperFactory getSocketChannelWrapperFactory() {
-        return nodeExtension.getSocketChannelWrapperFactory();
+    public InboundHandler[] createInboundHandlers(TcpIpConnection connection, IOService ioService) {
+        return nodeExtension.createInboundHandlers(connection, ioService);
     }
 
     @Override
-    public ReadHandler createReadHandler(TcpIpConnection connection, IOService ioService) {
-        return nodeExtension.createReadHandler(connection, ioService);
+    public OutboundHandler[] createOutboundHandlers(TcpIpConnection connection, IOService ioService) {
+        return nodeExtension.createOutboundHandlers(connection, ioService);
     }
 
     @Override
-    public WriteHandler createWriteHandler(TcpIpConnection connection, IOService ioService) {
-        return nodeExtension.createWriteHandler(connection, ioService);
+    public ChannelInitializer createChannelInitializer(IOService ioService) {
+        return nodeExtension.createChannelInitializer(ioService);
     }
 
     @Override
@@ -154,6 +168,11 @@ public class SamplingNodeExtension implements NodeExtension {
     }
 
     @Override
+    public void onMemberListChange() {
+        nodeExtension.onMemberListChange();
+    }
+
+    @Override
     public void onClusterVersionChange(Version newVersion) {
         nodeExtension.onClusterVersionChange(newVersion);
     }
@@ -183,4 +202,46 @@ public class SamplingNodeExtension implements NodeExtension {
         return nodeExtension.createMemberUuid(address);
     }
 
+    @Override
+    public TimedMemberStateFactory createTimedMemberStateFactory(HazelcastInstanceImpl instance) {
+        return nodeExtension.createTimedMemberStateFactory(instance);
+    }
+
+    @Override
+    public ManagementCenterConnectionFactory getManagementCenterConnectionFactory() {
+        return nodeExtension.getManagementCenterConnectionFactory();
+    }
+
+    @Override
+    public ByteArrayProcessor createMulticastInputProcessor(IOService ioService) {
+        return nodeExtension.createMulticastInputProcessor(ioService);
+    }
+
+    @Override
+    public ByteArrayProcessor createMulticastOutputProcessor(IOService ioService) {
+        return nodeExtension.createMulticastOutputProcessor(ioService);
+    }
+
+    @Override
+    public DynamicConfigListener createDynamicConfigListener() {
+        return nodeExtension.createDynamicConfigListener();
+    }
+
+    @Override
+    public void registerPlugins(Diagnostics diagnostics) {
+    }
+
+    @Override
+    public ManagementService createJMXManagementService(HazelcastInstanceImpl instance) {
+        return nodeExtension.createJMXManagementService(instance);
+    }
+
+    @Override
+    public TextCommandService createTextCommandService() {
+        return nodeExtension.createTextCommandService();
+    }
+
+    @Override
+    public void sendPhoneHome() {
+    }
 }

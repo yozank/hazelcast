@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,8 +57,16 @@ public class RingbufferServiceTest extends HazelcastTestSupport {
 
     @Test
     public void reset() {
-        service.getContainer("foo");
-        service.getContainer("bar");
+        final String foo = "foo";
+        final String bar = "bar";
+        service.getOrCreateContainer(
+                service.getRingbufferPartitionId(foo),
+                RingbufferService.getRingbufferNamespace(foo),
+                service.getRingbufferConfig(foo));
+        service.getOrCreateContainer(
+                service.getRingbufferPartitionId(bar),
+                RingbufferService.getRingbufferNamespace(bar),
+                service.getRingbufferConfig(bar));
 
         service.reset();
 

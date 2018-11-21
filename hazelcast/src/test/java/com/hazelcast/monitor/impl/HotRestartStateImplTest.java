@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,20 +27,22 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class HotRestartStateImplTest {
 
     @Test
-    public void testSerializationAndDeserizalization() throws Exception {
+    public void testSerializationAndDeserizalization() {
         final BackupTaskStatus backupTaskStatus = new BackupTaskStatus(BackupTaskState.IN_PROGRESS, 5, 10);
-        final HotRestartState state = new HotRestartStateImpl(backupTaskStatus,false);
+        final String backupDirectory = "/some/dir";
+        final HotRestartState state = new HotRestartStateImpl(backupTaskStatus, true, backupDirectory);
         final HotRestartStateImpl deserialized = new HotRestartStateImpl();
         deserialized.fromJson(state.toJson());
 
         assertEquals(backupTaskStatus, deserialized.getBackupTaskStatus());
-        assertEquals(false, deserialized.isHotBackupEnabled());
+        assertTrue(deserialized.isHotBackupEnabled());
+        assertEquals(backupDirectory, deserialized.getBackupDirectory());
     }
-
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ public interface JobProcessInformation {
      * and the processing owner of this partition.<br/>
      * The index of the {@link com.hazelcast.mapreduce.JobPartitionState} inside of the
      * array is the number of the processed partition if the {@link com.hazelcast.mapreduce.KeyValueSource}
-     * is {@link com.hazelcast.mapreduce.PartitionIdAware} or a randomly assigned id for
+     * is {@link com.hazelcast.mapreduce.PartitionIdAware} or a randomly assigned ID for
      * the different members of the cluster.
      *
      * @return partition state array with actual state information

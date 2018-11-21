@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Flyweight Tests
@@ -39,8 +40,9 @@ import static org.junit.Assert.assertThat;
 @Category(QuickTest.class)
 public class FlyweightTest {
 
-    private static byte[] DATA = new byte[]{(byte) 0x61, (byte) 0x62, (byte) 0x63, (byte) 0xC2, (byte) 0xA9, (byte) 0xE2,
-            (byte) 0x98, (byte) 0xBA};
+    private static final byte[] DATA = new byte[]{
+            (byte) 0x61, (byte) 0x62, (byte) 0x63, (byte) 0xC2, (byte) 0xA9, (byte) 0xE2, (byte) 0x98, (byte) 0xBA,
+    };
 
     private MessageFlyweight flyweight = new MessageFlyweight();
     private ByteBuffer byteBuffer;
@@ -58,7 +60,7 @@ public class FlyweightTest {
 
     @Test
     public void shouldEncodeLong() {
-        flyweight.set(0x12345678l);
+        flyweight.set(0x12345678L);
         assertEquals(8, flyweight.index());
         assertThat(byteBuffer.get(0), is((byte) 0x78));
         assertThat(byteBuffer.get(1), is((byte) 0x56));
@@ -83,7 +85,8 @@ public class FlyweightTest {
 
     @Test
     public void shouldEncodeStringUtf8() {
-        flyweight.set("abc©☺");//0x61 0x62 0x63 0xC2 0xA9 0xE2 0x98 0xBA
+        //0x61 0x62 0x63 0xC2 0xA9 0xE2 0x98 0xBA
+        flyweight.set("abc©☺");
         assertEquals(12, flyweight.index());
         assertThat(byteBuffer.get(0), is((byte) 0x08));
         assertThat(byteBuffer.get(1), is((byte) 0x00));
@@ -101,8 +104,9 @@ public class FlyweightTest {
 
     @Test
     public void shouldEncodeByteArray() {
-        byte[] data = new byte[]{(byte) 0x61, (byte) 0x62, (byte) 0x63, (byte) 0xC2, (byte) 0xA9, (byte) 0xE2,
-                (byte) 0x98, (byte) 0xBA};
+        byte[] data = new byte[]{
+                (byte) 0x61, (byte) 0x62, (byte) 0x63, (byte) 0xC2, (byte) 0xA9, (byte) 0xE2, (byte) 0x98, (byte) 0xBA,
+        };
 
         flyweight.set(data);
         assertEquals(12, flyweight.index());
@@ -122,9 +126,9 @@ public class FlyweightTest {
 
     @Test
     public void shouldDecodeLong() {
-        flyweight.set(0x12345678l);
+        flyweight.set(0x12345678L);
         flyweight.index(0);
-        assertEquals(0x12345678l, flyweight.getLong());
+        assertEquals(0x12345678L, flyweight.getLong());
     }
 
     @Test
@@ -139,7 +143,7 @@ public class FlyweightTest {
     public void shouldDecodeBoolean() {
         flyweight.set(true);
         flyweight.index(0);
-        assertEquals(true, flyweight.getBoolean());
+        assertTrue(flyweight.getBoolean());
         assertEquals(1, flyweight.index());
     }
 
@@ -155,7 +159,6 @@ public class FlyweightTest {
 
     @Test
     public void shouldDecodeByteArray() {
-
         flyweight.set(DATA);
         flyweight.index(0);
 
@@ -174,11 +177,10 @@ public class FlyweightTest {
 
     @Test
     public void shouldEncodeDecodeMultipleData() {
-        flyweight.set(0x12345678l);
+        flyweight.set(0x12345678L);
         flyweight.set(0x1234);
         flyweight.set((short) 0x12);
         flyweight.set(true);
         flyweight.set(DATA);
     }
-
 }

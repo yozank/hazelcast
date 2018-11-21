@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,18 +59,12 @@ public class ScheduledTaskResult
         return exception;
     }
 
-    public boolean isCancelled() {
+    boolean wasCancelled() {
         return cancelled;
     }
 
-    public boolean isDone() {
-        return done || cancelled || exception != null;
-    }
-
-    public void checkErroneousState()
-            throws ExecutionException {
-
-        if (isCancelled()) {
+    void checkErroneousState() {
+        if (wasCancelled()) {
             throw new CancellationException();
         } else if (exception != null) {
             throw new ExecutionExceptionDecorator(new ExecutionException(exception));
@@ -106,12 +100,11 @@ public class ScheduledTaskResult
     }
 
     @Override
-    public String
-    toString() {
+    public String toString() {
         return "ScheduledTaskResult{"
-                + "result=" + result + ", "
-                + "exception=" + exception + ", "
-                + "cancelled=" + cancelled
+                + "result=" + result
+                + ", exception=" + exception
+                + ", cancelled=" + cancelled
                 + '}';
     }
 

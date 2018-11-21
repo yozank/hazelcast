@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,9 @@ public interface OperationResponseHandler<O extends Operation> {
      *
      * @param op       the operation that got executed.
      * @param response the response of the operation that got executed.
+     * @throws com.hazelcast.nio.serialization.HazelcastSerializationException if response is not serializable or
+     *                                                                         contains non serializable object
+     *                                                                         inside NormalResponse
      */
     void sendResponse(O op, Object response);
 }

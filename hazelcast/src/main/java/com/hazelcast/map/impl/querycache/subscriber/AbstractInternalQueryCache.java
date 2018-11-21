@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 
 package com.hazelcast.map.impl.querycache.subscriber;
 
+import com.hazelcast.config.EvictionConfig;
+import com.hazelcast.config.MapIndexConfig;
 import com.hazelcast.config.QueryCacheConfig;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.PartitioningStrategy;
 import com.hazelcast.internal.eviction.EvictionListener;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.map.impl.proxy.MapProxyImpl;
-import com.hazelcast.map.impl.querycache.QueryCacheConfigurator;
 import com.hazelcast.map.impl.querycache.QueryCacheContext;
 import com.hazelcast.map.impl.querycache.QueryCacheEventService;
 import com.hazelcast.map.impl.querycache.subscriber.record.QueryCacheRecord;
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.hazelcast.core.EntryEventType.EVICTED;
+import static com.hazelcast.query.impl.IndexCopyBehavior.COPY_ON_READ;
 
 /**
  * Contains helper methods for {@link InternalQueryCache} main implementation.
@@ -45,35 +47,47 @@ import static com.hazelcast.core.EntryEventType.EVICTED;
  * @param <V> the value type for this {@link InternalQueryCache}
  */
 abstract class AbstractInternalQueryCache<K, V> implements InternalQueryCache<K, V> {
-
     protected final boolean includeValue;
     protected final String mapName;
+    protected final String cacheId;
     protected final String cacheName;
-    protected final String userGivenCacheName;
     protected final IMap delegate;
-    protected final QueryCacheContext context;
-    protected final QueryCacheRecordStore recordStore;
     protected final Indexes indexes;
+    protected final QueryCacheContext context;
+    protected final QueryCacheConfig queryCacheConfig;
+    protected final QueryCacheRecordStore recordStore;
     protected final InternalSerializationService serializationService;
     protected final PartitioningStrategy partitioningStrategy;
-
     /**
-     * Id of registered listener on publisher side.
+     * ID of registered listener on publisher side.
      */
     protected String publisherListenerId;
 
-    public AbstractInternalQueryCache(String cacheName, String userGivenCacheName, IMap delegate, QueryCacheContext context) {
+    public AbstractInternalQueryCache(String cacheId, String cacheName, QueryCacheConfig queryCacheConfig,
+                                      IMap delegate, QueryCacheContext context) {
+        this.cacheId = cacheId;
         this.cacheName = cacheName;
-        this.userGivenCacheName = userGivenCacheName;
+        this.queryCacheConfig = queryCacheConfig;
         this.mapName = delegate.getName();
         this.delegate = delegate;
         this.context = context;
         this.serializationService = context.getSerializationService();
-        this.indexes = new Indexes(serializationService, Extractors.empty());
+        // We are not using injected index provider since we're not supporting off-heap indexes in CQC due
+        // to threading incompatibility. If we injected the IndexProvider from the MapServiceContext
+        // the EE side would create HD indexes which is undesired.
+        this.indexes = Indexes.newBuilder(serializationService, COPY_ON_READ).build();
         this.includeValue = isIncludeValue();
         this.partitioningStrategy = getPartitioningStrategy();
-        this.recordStore = new DefaultQueryCacheRecordStore(serializationService, indexes, getQueryCacheConfig(),
-                getEvictionListener());
+        this.recordStore = new DefaultQueryCacheRecordStore(serializationService, indexes,
+                queryCacheConfig, getEvictionListener());
+
+        for (MapIndexConfig indexConfig : queryCacheConfig.getIndexConfigs()) {
+            indexes.addOrGetIndex(indexConfig.getAttribute(), indexConfig.isOrdered());
+        }
+    }
+
+    public QueryCacheContext getContext() {
+        return context;
     }
 
     @Override
@@ -81,20 +95,28 @@ abstract class AbstractInternalQueryCache<K, V> implements InternalQueryCache<K,
         this.publisherListenerId = publisherListenerId;
     }
 
-    protected Predicate getPredicate() {
-        return getQueryCacheConfig().getPredicateConfig().getImplementation();
+    @Override
+    public String getCacheId() {
+        return cacheId;
     }
 
-    private QueryCacheConfig getQueryCacheConfig() {
-        QueryCacheConfigurator queryCacheConfigurator = context.getQueryCacheConfigurator();
-        return queryCacheConfigurator.getOrCreateConfiguration(mapName, userGivenCacheName);
+    protected Predicate getPredicate() {
+        return queryCacheConfig.getPredicateConfig().getImplementation();
+    }
+
+    @Override
+    public boolean reachedMaxCapacity() {
+        EvictionConfig evictionConfig = queryCacheConfig.getEvictionConfig();
+        EvictionConfig.MaxSizePolicy maximumSizePolicy = evictionConfig.getMaximumSizePolicy();
+        return maximumSizePolicy == EvictionConfig.MaxSizePolicy.ENTRY_COUNT
+                && size() == evictionConfig.getSize();
     }
 
     private EvictionListener getEvictionListener() {
         return new EvictionListener<Data, QueryCacheRecord>() {
             @Override
             public void onEvict(Data dataKey, QueryCacheRecord record, boolean wasExpired) {
-                EventPublisherHelper.publishEntryEvent(context, mapName, cacheName, dataKey, null, record, EVICTED);
+                EventPublisherHelper.publishEntryEvent(context, mapName, cacheId, dataKey, null, record, EVICTED);
             }
         };
     }
@@ -167,8 +189,7 @@ abstract class AbstractInternalQueryCache<K, V> implements InternalQueryCache<K,
     }
 
     private boolean isIncludeValue() {
-        QueryCacheConfig config = getQueryCacheConfig();
-        return config.isIncludeValue();
+        return queryCacheConfig.isIncludeValue();
     }
 
     protected QueryCacheEventService getEventService() {
@@ -187,6 +208,6 @@ abstract class AbstractInternalQueryCache<K, V> implements InternalQueryCache<K,
     @Override
     public void clear() {
         recordStore.clear();
-        indexes.clearIndexes();
+        indexes.destroyIndexes();
     }
 }

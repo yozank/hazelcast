@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import com.hazelcast.nio.BufferObjectDataOutput;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.nio.serialization.DataType;
 import com.hazelcast.nio.serialization.PortableReader;
 import com.hazelcast.test.TestEnvironment;
 
@@ -51,14 +52,12 @@ public class SamplingSerializationService implements InternalSerializationServic
             new ConcurrentHashMap<String, List<byte[]>>(1000);
     // cache classes for which samples have already been captured
     static final Set<String> SAMPLED_CLASSES = newSetFromMap(new ConcurrentHashMap<String, Boolean>(1000));
+
     private static final int MAX_SERIALIZED_SAMPLES_PER_CLASS = 5;
     // utility strings to locate test classes commonly used as user objects
-    private static final String DUMMY_CLASS_INFIX = "Dummy";
-    private static final String TEST_CLASS_INFIX = "Test";
+    private static final String DUMMY_CLASS_PREFIX = "Dummy";
+    private static final String TEST_CLASS_SUFFIX = "Test";
     private static final String TEST_PACKAGE_INFIX = ".test";
-    private static final String SAMPLE_OBJECTS_TEST_CLASS_NAME = "com.hazelcast.query.SampleObjects";
-    private static final String COMPLEX_DATA_STRUCTURE_TEST_CLASS_NAME =
-            "com.hazelcast.query.impl.extractor.specification.ComplexDataStructure";
 
     protected final InternalSerializationService delegate;
 
@@ -113,24 +112,25 @@ public class SamplingSerializationService implements InternalSerializationServic
     }
 
     @Override
-    public byte[] toBytes(int padding, Object obj) {
-        byte[] bytes = delegate.toBytes(padding, obj);
+    public byte[] toBytes(Object obj, int leftPadding, boolean insertPartitionHash) {
+        byte[] bytes = delegate.toBytes(obj, leftPadding, insertPartitionHash);
         sampleObject(obj, bytes);
         return bytes;
     }
 
     @Override
-    public byte[] toBytes(Object obj, PartitioningStrategy strategy) {
-        byte[] bytes = delegate.toBytes(obj, strategy);
-        sampleObject(obj, bytes);
-        return bytes;
+    public <B extends Data> B toData(Object obj, DataType type) {
+        return toData(obj);
     }
 
     @Override
-    public byte[] toBytes(int padding, Object obj, PartitioningStrategy strategy) {
-        byte[] bytes = delegate.toBytes(padding, obj, strategy);
-        sampleObject(obj, bytes);
-        return bytes;
+    public <B extends Data> B toData(Object obj, DataType type, PartitioningStrategy strategy) {
+        return toData(obj, strategy);
+    }
+
+    @Override
+    public <B extends Data> B convertData(Data data, DataType type) {
+        return (B) data;
     }
 
     @Override
@@ -195,9 +195,10 @@ public class SamplingSerializationService implements InternalSerializationServic
     }
 
     // record the given object, then return it
-    static <T> T sampleObject(T obj, byte[] serializedObject) {
-        if (obj == null)
+    protected static <T> T sampleObject(T obj, byte[] serializedObject) {
+        if (obj == null) {
             return null;
+        }
 
         if (serializedObject != null && shouldAddSerializedSample(obj)) {
             addSerializedSample(obj, serializedObject);
@@ -221,6 +222,7 @@ public class SamplingSerializationService implements InternalSerializationServic
         }
 
         String className = klass.getName();
+
         if (SAMPLED_CLASSES.contains(className)) {
             return false;
         }
@@ -245,9 +247,8 @@ public class SamplingSerializationService implements InternalSerializationServic
     }
 
     public static boolean isTestClass(String className) {
-        if (className.contains(TEST_CLASS_INFIX) || className.contains(TEST_PACKAGE_INFIX)
-                || className.contains(DUMMY_CLASS_INFIX) || className.startsWith(SAMPLE_OBJECTS_TEST_CLASS_NAME)
-                || className.startsWith(COMPLEX_DATA_STRUCTURE_TEST_CLASS_NAME)) {
+        if (className.contains(TEST_CLASS_SUFFIX) || className.contains(TEST_PACKAGE_INFIX)
+                || className.contains(DUMMY_CLASS_PREFIX)) {
             return true;
         }
         return false;

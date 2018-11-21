@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,8 @@ public class FailOnTimeoutStatement extends Statement {
                 return task.get();
             }
         } catch (InterruptedException e) {
-            return e; // caller will re-throw; no need to call Thread.interrupt()
+            // caller will re-throw; no need to call Thread.interrupt()
+            return e;
         } catch (ExecutionException e) {
             // test failed; have caller re-throw the exception thrown by the test
             return e.getCause();

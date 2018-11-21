@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,16 @@
 package com.hazelcast.spi.impl.proxyservice.impl;
 
 import com.hazelcast.core.DistributedObject;
+import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.spi.AbstractDistributedObject;
 import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.InitializingObject;
 import com.hazelcast.spi.RemoteService;
+import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.eventservice.InternalEventService;
 import com.hazelcast.util.EmptyStatement;
-import com.hazelcast.util.ExceptionUtil;
 
 import java.util.Collection;
 import java.util.Map;
@@ -34,6 +35,8 @@ import java.util.concurrent.ConcurrentMap;
 
 import static com.hazelcast.core.DistributedObjectEvent.EventType.CREATED;
 import static com.hazelcast.core.DistributedObjectEvent.EventType.DESTROYED;
+import static com.hazelcast.util.EmptyStatement.ignore;
+import static com.hazelcast.util.ExceptionUtil.rethrow;
 
 /**
  * A ProxyRegistry contains all proxies for a given service. For example, it contains all proxies for the IMap.
@@ -49,7 +52,29 @@ public final class ProxyRegistry {
     ProxyRegistry(ProxyServiceImpl proxyService, String serviceName) {
         this.proxyService = proxyService;
         this.serviceName = serviceName;
-        this.service = proxyService.nodeEngine.getService(serviceName);
+        this.service = getService(proxyService.nodeEngine, serviceName);
+    }
+
+    /**
+     * Returns the service for the given {@code serviceName} or throws an
+     * exception. This method never returns {@code null}.
+     *
+     * @param nodeEngine  the node engine
+     * @param serviceName the remote service name
+     * @return the service instance
+     * @throws HazelcastException                  if there is no service with the given name
+     * @throws HazelcastInstanceNotActiveException if this instance is shutting down
+     */
+    private RemoteService getService(NodeEngineImpl nodeEngine, String serviceName) {
+        try {
+            return nodeEngine.getService(serviceName);
+        } catch (HazelcastException e) {
+            if (!nodeEngine.isRunning()) {
+                throw new HazelcastInstanceNotActiveException(e.getMessage());
+            } else {
+                throw e;
+            }
+        }
     }
 
     /**
@@ -117,7 +142,7 @@ public final class ProxyRegistry {
                 result.add(object);
             } catch (Throwable ignored) {
                 // ignore if proxy creation failed
-                EmptyStatement.ignore(ignored);
+                ignore(ignored);
             }
         }
     }
@@ -204,7 +229,7 @@ public final class ProxyRegistry {
             // deregister future to avoid infinite hang on future.get()
             proxyFuture.setError(e);
             proxies.remove(name);
-            throw ExceptionUtil.rethrow(e);
+            throw rethrow(e);
         }
 
         InternalEventService eventService = proxyService.nodeEngine.getEventService();
@@ -262,11 +287,26 @@ public final class ProxyRegistry {
             if (!future.isSetAndInitialized()) {
                 continue;
             }
-            DistributedObject distributedObject = future.get();
-            if (distributedObject instanceof AbstractDistributedObject) {
-                ((AbstractDistributedObject) distributedObject).invalidate();
-            }
+
+            DistributedObject distributedObject = extractDistributedObject(future);
+            invalidate(distributedObject);
         }
         proxies.clear();
+    }
+
+    private DistributedObject extractDistributedObject(DistributedObjectFuture future) {
+        try {
+            return future.get();
+        } catch (Throwable ex) {
+            EmptyStatement.ignore(ex);
+        }
+        return null;
+    }
+
+    private void invalidate(DistributedObject distributedObject) {
+        if (distributedObject != null
+                && distributedObject instanceof AbstractDistributedObject) {
+            ((AbstractDistributedObject) distributedObject).invalidate();
+        }
     }
 }

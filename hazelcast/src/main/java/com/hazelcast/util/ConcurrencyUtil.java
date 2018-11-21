@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,10 +48,10 @@ public final class ConcurrencyUtil {
         }
     }
 
-    public static boolean setIfGreaterThan(AtomicLong oldValue, long newValue) {
+    public static boolean setIfEqualOrGreaterThan(AtomicLong oldValue, long newValue) {
         while (true) {
             long local = oldValue.get();
-            if (newValue <= local) {
+            if (newValue < local) {
                 return false;
             }
             if (oldValue.compareAndSet(local, newValue)) {

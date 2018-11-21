@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package com.hazelcast.nio.tcp;
 import com.hazelcast.instance.BuildInfoProvider;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.impl.MetricsRegistryImpl;
-import com.hazelcast.internal.networking.nonblocking.Select_NonBlockingIOThreadingModelFactory;
+import com.hazelcast.internal.networking.nio.Select_NioNetworkingFactory;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
 import com.hazelcast.logging.ILogger;
@@ -38,27 +38,29 @@ import static com.hazelcast.internal.metrics.ProbeLevel.INFO;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
+@SuppressWarnings("WeakerAccess")
 public abstract class TcpIpConnection_AbstractTest extends HazelcastTestSupport {
 
-    protected IOThreadingModelFactory threadingModelFactory = new Select_NonBlockingIOThreadingModelFactory();
+    protected NetworkingFactory networkingFactory = new Select_NioNetworkingFactory();
 
     protected ILogger logger;
     protected LoggingServiceImpl loggingService;
     protected InternalSerializationService serializationService;
 
     protected Address addressA;
-    protected TcpIpConnectionManager connManagerA;
-    protected MockIOService ioServiceA;
-    protected MetricsRegistryImpl metricsRegistryA;
-
     protected Address addressB;
-    protected TcpIpConnectionManager connManagerB;
-    protected MockIOService ioServiceB;
-    protected MetricsRegistryImpl metricsRegistryB;
-
-    protected TcpIpConnectionManager connManagerC;
     protected Address addressC;
+
+    protected TcpIpConnectionManager connManagerA;
+    protected TcpIpConnectionManager connManagerB;
+    protected TcpIpConnectionManager connManagerC;
+
+    protected MockIOService ioServiceA;
+    protected MockIOService ioServiceB;
     protected MockIOService ioServiceC;
+
+    protected MetricsRegistryImpl metricsRegistryA;
+    protected MetricsRegistryImpl metricsRegistryB;
     protected MetricsRegistryImpl metricsRegistryC;
 
     @Before
@@ -82,15 +84,9 @@ public abstract class TcpIpConnection_AbstractTest extends HazelcastTestSupport 
         connManagerC = newConnectionManager(addressC.getPort(), metricsRegistryC);
         ioServiceC = (MockIOService) connManagerB.getIoService();
 
-        serializationService = (InternalSerializationService) new DefaultSerializationServiceBuilder()
+        serializationService = new DefaultSerializationServiceBuilder()
                 .addDataSerializableFactory(TestDataFactory.FACTORY_ID, new TestDataFactory())
                 .build();
-    }
-
-    public void startAllConnectionManagers() {
-        connManagerA.start();
-        connManagerB.start();
-        connManagerC.start();
     }
 
     @After
@@ -102,6 +98,12 @@ public abstract class TcpIpConnection_AbstractTest extends HazelcastTestSupport 
         metricsRegistryA.shutdown();
         metricsRegistryB.shutdown();
         metricsRegistryC.shutdown();
+    }
+
+    protected void startAllConnectionManagers() {
+        connManagerA.start();
+        connManagerB.start();
+        connManagerC.start();
     }
 
     protected MetricsRegistryImpl newMetricsRegistry() {
@@ -116,7 +118,7 @@ public abstract class TcpIpConnection_AbstractTest extends HazelcastTestSupport 
                 ioService.serverSocketChannel,
                 ioService.loggingService,
                 metricsRegistry,
-                threadingModelFactory.create(ioService, metricsRegistry));
+                networkingFactory.create(ioService, metricsRegistry));
     }
 
     // ====================== support ========================================
@@ -131,7 +133,7 @@ public abstract class TcpIpConnection_AbstractTest extends HazelcastTestSupport 
         final AtomicReference<TcpIpConnection> ref = new AtomicReference<TcpIpConnection>();
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 Connection c = connectionManager.getConnection(address);
                 assertNotNull(c);
                 ref.set((TcpIpConnection) c);

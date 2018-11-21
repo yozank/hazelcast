@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -144,7 +144,8 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
     public void testPagingWithFilteringAndComparator() {
         final Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 8);
         final TestComparator comparator = new TestComparator(false, IterationType.VALUE);
-        final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize);
+        final PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize);
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 8, 7, 6, 5, 4);
@@ -166,7 +167,8 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
         }
         final Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 8); // less than 8
         final TestComparator comparator = new TestComparator(true, IterationType.KEY); //ascending keys
-        final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize);
+        final PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize);
 
         Set<Integer> keySet = map.keySet(predicate);
         assertIterableEquals(keySet, 42, 43, 44, 45, 46);
@@ -188,7 +190,8 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
 
         final Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 8); // entries which has value less than 8
         final TestComparator comparator = new TestComparator(true, IterationType.VALUE); //ascending values
-        final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
+        final PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 0, 0, 1, 1, 2);
@@ -210,7 +213,8 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
     public void testNextPageAfterResultSetEmpty() {
         final Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 3); // entries which has value less than 3
         final TestComparator comparator = new TestComparator(true, IterationType.VALUE); //ascending values
-        final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
+        final PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 0, 1, 2, 3);
@@ -361,9 +365,7 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
         final int START_ID_FOR_QUERY = 0;
         final int FINISH_ID_FOR_QUERY = 50;
         final int queriedElementCount = FINISH_ID_FOR_QUERY - START_ID_FOR_QUERY + 1;
-        final int expectedPageCount =
-                (queriedElementCount / PAGE_SIZE) +
-                        (queriedElementCount % PAGE_SIZE == 0 ? 0 : 1);
+        final int expectedPageCount = (queriedElementCount / PAGE_SIZE) + (queriedElementCount % PAGE_SIZE == 0 ? 0 : 1);
 
         for (int i = 0; i < 1000; i++) {
             map.put(i, new Employee(i));
@@ -377,12 +379,12 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
         Collection<Employee> values;
         int passedPageCount = 0;
 
-        for (values = map.values(predicate); !values.isEmpty() &&
-                passedPageCount <= expectedPageCount; // To prevent from infinite loop
-             values = map.values(predicate)) {
+        do {
             predicate.nextPage();
             passedPageCount++;
-        }
+            values = map.values(predicate);
+            // to prevent infinite loop
+        } while (!values.isEmpty() && passedPageCount <= expectedPageCount);
 
         assertEquals(expectedPageCount, passedPageCount);
     }
@@ -406,10 +408,38 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
         PagingPredicate<Integer, Employee> predicate = new PagingPredicate<Integer, Employee>(pred, PAGE_SIZE);
         Collection<BaseEmployee> values;
 
-        for (values = map.values(predicate); !values.isEmpty() &&
-                values != null;
+        for (values = map.values(predicate); !values.isEmpty() && values != null;
              values = map.values(predicate)) {
             predicate.nextPage();
+        }
+    }
+
+    @Test
+    public void testLargePageSizeIsNotCausingIndexOutBoundsExceptions() {
+        final int[] pageSizesToCheck = new int[]{
+                Integer.MAX_VALUE / 2,
+                Integer.MAX_VALUE - 1000,
+                Integer.MAX_VALUE - 1,
+                Integer.MAX_VALUE,
+        };
+
+        final int[] pagesToCheck = new int[]{
+                1,
+                1000,
+                Integer.MAX_VALUE / 2,
+                Integer.MAX_VALUE - 1000,
+                Integer.MAX_VALUE - 1,
+                Integer.MAX_VALUE,
+        };
+
+        for (int pageSize : pageSizesToCheck) {
+            final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(pageSize);
+
+            assertEquals(size, map.keySet(predicate).size());
+            for (int page : pagesToCheck) {
+                predicate.setPage(page);
+                assertEquals(0, map.keySet(predicate).size());
+            }
         }
     }
 
@@ -516,13 +546,13 @@ public class ClientPagingPredicateTest extends HazelcastTestSupport {
 
         @Override
         public String toString() {
-            return "Employee{" +
-                    "id=" + id +
-                    ", name='" + name + '\'' +
-                    ", age=" + age +
-                    ", active=" + active +
-                    ", salary=" + salary +
-                    '}';
+            return "Employee{"
+                    + "id=" + id
+                    + ", name='" + name + '\''
+                    + ", age=" + age
+                    + ", active=" + active
+                    + ", salary=" + salary
+                    + '}';
         }
 
     }

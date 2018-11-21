@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import com.hazelcast.map.impl.querycache.QueryCacheConfigurator;
 import com.hazelcast.map.impl.querycache.QueryCacheEventService;
 import com.hazelcast.map.impl.querycache.subscriber.AbstractQueryCacheConfigurator;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -41,37 +40,24 @@ public class ClientQueryCacheConfigurator extends AbstractQueryCacheConfigurator
     }
 
     @Override
-    public QueryCacheConfig getOrCreateConfiguration(String mapName, String cacheName) {
-        Map<String, Map<String, QueryCacheConfig>> allQueryCacheConfig = clientConfig.getQueryCacheConfigs();
-
-        Map<String, QueryCacheConfig> mapQueryCacheConfig = allQueryCacheConfig.get(mapName);
-        if (mapQueryCacheConfig == null) {
-            mapQueryCacheConfig = new HashMap<String, QueryCacheConfig>();
-            allQueryCacheConfig.put(mapName, mapQueryCacheConfig);
-        }
-
-        QueryCacheConfig config = mapQueryCacheConfig.get(cacheName);
-        if (config == null) {
-            config = new QueryCacheConfig(cacheName);
-            mapQueryCacheConfig.put(cacheName, config);
-        }
+    public QueryCacheConfig getOrCreateConfiguration(String mapName, String cacheName, String cacheId) {
+        QueryCacheConfig config = clientConfig.getOrCreateQueryCacheConfig(mapName, cacheName);
 
         setPredicateImpl(config);
-        setEntryListener(mapName, cacheName, config);
+        setEntryListener(mapName, cacheId, config);
 
         return config;
     }
 
     @Override
-    public QueryCacheConfig getOrNull(String mapName, String cacheName) {
-        Map<String, Map<String, QueryCacheConfig>> allQueryCacheConfig = clientConfig.getQueryCacheConfigs();
-
-        Map<String, QueryCacheConfig> mapQueryCacheConfig = allQueryCacheConfig.get(mapName);
-        if (mapQueryCacheConfig == null) {
-            return null;
+    public QueryCacheConfig getOrNull(String mapName, String cacheName, String cacheId) {
+        QueryCacheConfig config = clientConfig.getOrNullQueryCacheConfig(mapName, cacheName);
+        if (config != null) {
+            setPredicateImpl(config);
+            setEntryListener(mapName, cacheId, config);
         }
 
-        return mapQueryCacheConfig.get(cacheName);
+        return config;
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,12 @@ import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ClientGetPartitionsCodec;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
+import com.hazelcast.internal.partition.PartitionTableView;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
-import com.hazelcast.spi.partition.IPartition;
 
 import java.security.Permission;
-import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -40,23 +39,11 @@ public class GetPartitionsMessageTask
     protected Object call() {
         InternalPartitionService service = getService(InternalPartitionService.SERVICE_NAME);
         service.firstArrangement();
-
-        Map<Address, List<Integer>> partitionsMap = new HashMap<Address, List<Integer>>();
-
-        for (IPartition partition : service.getPartitions()) {
-            Address owner = partition.getOwnerOrNull();
-            if (owner == null) {
-                partitionsMap.clear();
-                return ClientGetPartitionsCodec.encodeResponse(partitionsMap.entrySet());
-            }
-            List<Integer> indexes = partitionsMap.get(owner);
-            if (indexes == null) {
-                indexes = new LinkedList<Integer>();
-                partitionsMap.put(owner, indexes);
-            }
-            indexes.add(partition.getPartitionId());
-        }
-        return ClientGetPartitionsCodec.encodeResponse(partitionsMap.entrySet());
+        PartitionTableView partitionTableView = service.createPartitionTableView();
+        int partitionStateVersion = partitionTableView.getVersion();
+        Collection<Map.Entry<Address, List<Integer>>> partitions =
+                clientEngine.getPartitionListenerService().getPartitions(partitionTableView);
+        return ClientGetPartitionsCodec.encodeResponse(partitions, partitionStateVersion);
     }
 
     @Override

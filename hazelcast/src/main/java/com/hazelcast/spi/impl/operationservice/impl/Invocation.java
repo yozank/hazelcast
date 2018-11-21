@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package com.hazelcast.spi.impl.operationservice.impl;
 
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
+import com.hazelcast.core.IndeterminateOperationStateException;
+import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
@@ -45,6 +47,7 @@ import com.hazelcast.spi.exception.WrongTargetException;
 import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 import com.hazelcast.spi.impl.executionservice.InternalExecutionService;
 import com.hazelcast.spi.impl.operationexecutor.OperationExecutor;
+import com.hazelcast.spi.impl.operationservice.TargetAware;
 import com.hazelcast.spi.impl.operationservice.impl.responses.BackupAckResponse;
 import com.hazelcast.spi.impl.operationservice.impl.responses.CallTimeoutResponse;
 import com.hazelcast.spi.impl.operationservice.impl.responses.ErrorResponse;
@@ -58,8 +61,6 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.logging.Level;
 
-import static com.hazelcast.cluster.ClusterState.FROZEN;
-import static com.hazelcast.cluster.ClusterState.PASSIVE;
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
 import static com.hazelcast.spi.OperationAccessor.hasActiveInvocation;
 import static com.hazelcast.spi.OperationAccessor.setCallTimeout;
@@ -155,6 +156,18 @@ public abstract class Invocation implements OperationResponseHandler {
     boolean remote;
     Address invTarget;
     MemberImpl targetMember;
+    /**
+     * The connection endpoint which operation is sent through to the {@link #invTarget}.
+     * It can be null if invocation is local or there's no established connection to the target yet.
+     * <p>
+     * Used mainly for logging/diagnosing the invocation.
+     */
+    Connection connection;
+    /**
+     * Member list version read before operation is invoked on target. This version is used while notifying
+     * invocation during a member left event.
+     */
+    int memberListVersion;
 
     final Context context;
     final InvocationFuture future;
@@ -162,11 +175,18 @@ public abstract class Invocation implements OperationResponseHandler {
     final long tryPauseMillis;
     final long callTimeoutMillis;
 
-    /** Refer to {@link com.hazelcast.spi.InvocationBuilder#setDoneCallback(Runnable)} for an explanation */
+    /**
+     * Refer to {@link com.hazelcast.spi.InvocationBuilder#setDoneCallback(Runnable)} for an explanation
+     */
     private final Runnable taskDoneCallback;
 
-    Invocation(Context context, Operation op, Runnable taskDoneCallback, int tryCount, long tryPauseMillis,
-               long callTimeoutMillis, boolean deserialize) {
+    Invocation(Context context,
+               Operation op,
+               Runnable taskDoneCallback,
+               int tryCount,
+               long tryPauseMillis,
+               long callTimeoutMillis,
+               boolean deserialize) {
         this.context = context;
         this.op = op;
         this.taskDoneCallback = taskDoneCallback;
@@ -180,7 +200,7 @@ public abstract class Invocation implements OperationResponseHandler {
     public void sendResponse(Operation op, Object response) {
         if (!RESPONSE_RECEIVED.compareAndSet(this, FALSE, TRUE)) {
             throw new ResponseAlreadySentException("NormalResponse already responseReceived for callback: " + this
-                    + ", current-response: : " + response);
+                    + ", current-response: " + response);
         }
 
         if (response instanceof CallTimeoutResponse) {
@@ -206,6 +226,10 @@ public abstract class Invocation implements OperationResponseHandler {
         return future;
     }
 
+    protected boolean shouldFailOnIndeterminateOperationState() {
+        return false;
+    }
+
     protected abstract Address getTarget();
 
     abstract ExceptionAction onException(Throwable t);
@@ -221,26 +245,37 @@ public abstract class Invocation implements OperationResponseHandler {
     /**
      * Initializes the invocation target.
      *
-     * @return {@code true} if the initialization was a success, {@code false} otherwise
+     * @throws Exception if the initialization was a failure
      */
-    boolean initInvocationTarget() {
+    private void initInvocationTarget() throws Exception {
         invTarget = getTarget();
 
         if (invTarget == null) {
             remote = false;
-            notifyWithExceptionWhenTargetIsNull();
-            return false;
+            throw newTargetNullException();
         }
 
+        MemberImpl previousTargetMember = targetMember;
         targetMember = context.clusterService.getMember(invTarget);
-        if (targetMember == null && !(isJoinOperation(op) || isWanReplicationOperation(op))) {
-            notifyError(new TargetNotMemberException(
-                    invTarget, op.getPartitionId(), op.getClass().getName(), op.getServiceName()));
-            return false;
+        memberListVersion = context.clusterService.getMemberListVersion();
+
+        if (targetMember == null) {
+            if (previousTargetMember != null) {
+                // If a target member was found earlier but current target member is null
+                // then it means a member left.
+                throw new MemberLeftException(previousTargetMember);
+            }
+            if (!(isJoinOperation(op) || isWanReplicationOperation(op))) {
+                throw new TargetNotMemberException(
+                        invTarget, op.getPartitionId(), op.getClass().getName(), op.getServiceName());
+            }
+        }
+
+        if (op instanceof TargetAware) {
+            ((TargetAware) op).setTarget(invTarget);
         }
 
         remote = !context.thisAddress.equals(invTarget);
-        return true;
     }
 
     void notifyError(Object error) {
@@ -438,6 +473,11 @@ public abstract class Invocation implements OperationResponseHandler {
             return false;
         }
 
+        if (shouldFailOnIndeterminateOperationState()) {
+            complete(new IndeterminateOperationStateException(this + " failed because backup acks missed."));
+            return true;
+        }
+
         boolean targetDead = context.clusterService.getMember(invTarget) == null;
         if (targetDead) {
             // the target doesn't exist, so we are going to re-invoke this invocation;
@@ -505,11 +545,23 @@ public abstract class Invocation implements OperationResponseHandler {
 
         setInvocationTime(op, context.clusterClock.getClusterTime());
 
+        // We'll initialize the invocation before registering it. Invocation monitor iterates over
+        // registered invocations and it must observe completely initialized invocations.
+        Exception initializationFailure = null;
+        try {
+            initInvocationTarget();
+        } catch (Exception e) {
+            // We'll keep initialization failure and notify invocation with this failure
+            // after invocation is registered to the invocation registry.
+            initializationFailure = e;
+        }
+
         if (!context.invocationRegistry.register(this)) {
             return;
         }
 
-        if (!initInvocationTarget()) {
+        if (initializationFailure != null) {
+            notifyError(initializationFailure);
             return;
         }
 
@@ -536,8 +588,10 @@ public abstract class Invocation implements OperationResponseHandler {
     }
 
     private void doInvokeRemote() {
-        if (!context.operationService.send(op, invTarget)) {
-            notifyError(new RetryableIOException("Packet not send to -> " + invTarget));
+        Connection connection = context.connectionManager.getOrConnect(invTarget);
+        this.connection = connection;
+        if (!context.outboundOperationHandler.send(op, connection)) {
+            notifyError(new RetryableIOException("Packet not sent to -> " + invTarget + " over " + connection));
         }
     }
 
@@ -576,17 +630,19 @@ public abstract class Invocation implements OperationResponseHandler {
         }
     }
 
-    private void notifyWithExceptionWhenTargetIsNull() {
+    private Exception newTargetNullException() {
         ClusterState clusterState = context.clusterService.getClusterState();
-        if (clusterState == FROZEN || clusterState == PASSIVE) {
-            notifyError(new IllegalStateException("Partitions can't be assigned since cluster-state: " + clusterState));
-        } else if (context.clusterService.getSize(DATA_MEMBER_SELECTOR) == 0) {
-            notifyError(new NoDataMemberInClusterException(
-                    "Partitions can't be assigned since all nodes in the cluster are lite members"));
-        } else {
-            notifyError(new WrongTargetException(context.thisAddress, null, op.getPartitionId(),
-                    op.getReplicaIndex(), op.getClass().getName(), op.getServiceName()));
+        if (!clusterState.isMigrationAllowed()) {
+            return new IllegalStateException("Target of invocation cannot be found! Partition owner is null "
+                    + "but partitions can't be assigned in cluster-state: " + clusterState);
         }
+        if (context.clusterService.getSize(DATA_MEMBER_SELECTOR) == 0) {
+            return new NoDataMemberInClusterException(
+                    "Target of invocation cannot be found! Partition owner is null "
+                            + "but partitions can't be assigned since all nodes in the cluster are lite members.");
+        }
+        return new WrongTargetException(context.thisAddress, null, op.getPartitionId(),
+                    op.getReplicaIndex(), op.getClass().getName(), op.getServiceName());
     }
 
     // This is an idempotent operation
@@ -617,7 +673,9 @@ public abstract class Invocation implements OperationResponseHandler {
                     // fast retry for the first few invocations
                     context.invocationMonitor.execute(retryTask);
                 } else {
-                    context.invocationMonitor.schedule(retryTask, tryPauseMillis);
+                    // progressive retry delay
+                    long delayMillis = Math.min(1 << (invokeCount - MAX_FAST_INVOCATION_COUNT), tryPauseMillis);
+                    context.invocationMonitor.schedule(retryTask, delayMillis);
                 }
             } catch (RejectedExecutionException e) {
                 completeWhenRetryRejected(e);
@@ -648,14 +706,6 @@ public abstract class Invocation implements OperationResponseHandler {
 
     @Override
     public String toString() {
-        String connectionStr = null;
-        Address invTarget = this.invTarget;
-        if (invTarget != null) {
-            ConnectionManager connectionManager = context.connectionManager;
-            Connection connection = connectionManager.getConnection(invTarget);
-            connectionStr = connection == null ? null : connection.toString();
-        }
-
         return "Invocation{"
                 + "op=" + op
                 + ", tryCount=" + tryCount
@@ -670,7 +720,7 @@ public abstract class Invocation implements OperationResponseHandler {
                 + ", pendingResponse={" + pendingResponse + '}'
                 + ", backupsAcksExpected=" + backupsAcksExpected
                 + ", backupsAcksReceived=" + backupsAcksReceived
-                + ", connection=" + connectionStr
+                + ", connection=" + connection
                 + '}';
     }
 
@@ -681,7 +731,7 @@ public abstract class Invocation implements OperationResponseHandler {
             // When a cluster is being merged into another one then local node is marked as not-joined and invocations are
             // notified with MemberLeftException.
             // We do not want to retry them before the node is joined again because partition table is stale at this point.
-            if (!context.node.joined() && !isJoinOperation(op) && !(op instanceof AllowedDuringPassiveState)) {
+            if (!context.clusterService.isJoined() && !isJoinOperation(op) && !(op instanceof AllowedDuringPassiveState)) {
                 if (!engineActive()) {
                     context.invocationRegistry.deregister(Invocation.this);
                     return;
@@ -753,25 +803,27 @@ public abstract class Invocation implements OperationResponseHandler {
         final MwCounter retryCount;
         final InternalSerializationService serializationService;
         final Address thisAddress;
+        final OutboundOperationHandler outboundOperationHandler;
 
         @SuppressWarnings("checkstyle:parameternumber")
         Context(ManagedExecutorService asyncExecutor,
-                       ClusterClock clusterClock,
-                       ClusterService clusterService,
-                       ConnectionManager connectionManager,
-                       InternalExecutionService executionService,
-                       long defaultCallTimeoutMillis,
-                       InvocationRegistry invocationRegistry,
-                       InvocationMonitor invocationMonitor,
-                       ILogger logger,
-                       Node node,
-                       NodeEngine nodeEngine,
-                       InternalPartitionService partitionService,
-                       OperationServiceImpl operationService,
-                       OperationExecutor operationExecutor,
-                       MwCounter retryCount,
-                       InternalSerializationService serializationService,
-                       Address thisAddress) {
+                ClusterClock clusterClock,
+                ClusterService clusterService,
+                ConnectionManager connectionManager,
+                InternalExecutionService executionService,
+                long defaultCallTimeoutMillis,
+                InvocationRegistry invocationRegistry,
+                InvocationMonitor invocationMonitor,
+                ILogger logger,
+                Node node,
+                NodeEngine nodeEngine,
+                InternalPartitionService partitionService,
+                OperationServiceImpl operationService,
+                OperationExecutor operationExecutor,
+                MwCounter retryCount,
+                InternalSerializationService serializationService,
+                Address thisAddress,
+                OutboundOperationHandler outboundOperationHandler) {
             this.asyncExecutor = asyncExecutor;
             this.clusterClock = clusterClock;
             this.clusterService = clusterService;
@@ -789,6 +841,7 @@ public abstract class Invocation implements OperationResponseHandler {
             this.retryCount = retryCount;
             this.serializationService = serializationService;
             this.thisAddress = thisAddress;
+            this.outboundOperationHandler = outboundOperationHandler;
         }
     }
 }

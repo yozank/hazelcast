@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package com.hazelcast.internal.cluster.impl;
 
 import com.hazelcast.cluster.ClusterState;
+import com.hazelcast.instance.BuildInfoProvider;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
 import com.hazelcast.nio.Address;
@@ -35,21 +36,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.hazelcast.instance.BuildInfoProvider.BUILD_INFO;
 import static org.junit.Assert.assertEquals;
 
-/**
- *
- */
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class ClusterDataSerializationTest {
 
     private static final SerializationService SERIALIZATION_SERVICE = new DefaultSerializationServiceBuilder().build();
-    private static final ClusterStateChange<MemberVersion> VERSION_CLUSTER_STATE_CHANGE = ClusterStateChange.from(MemberVersion.of(
-            BUILD_INFO.getVersion()));
+    private static final ClusterStateChange<MemberVersion> VERSION_CLUSTER_STATE_CHANGE
+            = ClusterStateChange.from(MemberVersion.of(
+            BuildInfoProvider.getBuildInfo().getVersion()));
     private static final ClusterStateChange<ClusterState> CLUSTER_STATE_CHANGE = ClusterStateChange.from(ClusterState.FROZEN);
-
 
     @Test
     public void testSerializationOf_clusterStateChange_fromVersion() {
@@ -68,7 +65,8 @@ public class ClusterDataSerializationTest {
     @Test
     public void testSerializationOf_clusterStateChangeTxnLogRecord_whenVersionChange() throws UnknownHostException {
         ClusterStateTransactionLogRecord txnLogRecord = new ClusterStateTransactionLogRecord(VERSION_CLUSTER_STATE_CHANGE,
-                new Address("127.0.0.1", 5071), new Address("127.0.0.1", 5702), UUID.randomUUID().toString(), 120, 130, false);
+                new Address("127.0.0.1", 5071), new Address("127.0.0.1", 5702), UUID.randomUUID().toString(), 120,
+                111, 130, false);
 
         Data serialized = SERIALIZATION_SERVICE.toData(txnLogRecord);
 
@@ -79,13 +77,15 @@ public class ClusterDataSerializationTest {
         assertEquals(txnLogRecord.txnId, deserialized.txnId);
         assertEquals(txnLogRecord.leaseTime, deserialized.leaseTime);
         assertEquals(txnLogRecord.isTransient, deserialized.isTransient);
+        assertEquals(txnLogRecord.memberListVersion, deserialized.memberListVersion);
         assertEquals(txnLogRecord.partitionStateVersion, deserialized.partitionStateVersion);
     }
 
     @Test
     public void testSerializationOf_clusterStateChangeTxnLogRecord_whenStateChange() throws UnknownHostException {
         ClusterStateTransactionLogRecord txnLogRecord = new ClusterStateTransactionLogRecord(CLUSTER_STATE_CHANGE,
-                new Address("127.0.0.1", 5071), new Address("127.0.0.1", 5702), UUID.randomUUID().toString(), 120, 130, false);
+                new Address("127.0.0.1", 5071), new Address("127.0.0.1", 5702), UUID.randomUUID().toString(), 120,
+                111, 130, false);
 
         Data serialized = SERIALIZATION_SERVICE.toData(txnLogRecord);
 
@@ -96,6 +96,7 @@ public class ClusterDataSerializationTest {
         assertEquals(txnLogRecord.txnId, deserialized.txnId);
         assertEquals(txnLogRecord.leaseTime, deserialized.leaseTime);
         assertEquals(txnLogRecord.isTransient, deserialized.isTransient);
+        assertEquals(txnLogRecord.memberListVersion, deserialized.memberListVersion);
         assertEquals(txnLogRecord.partitionStateVersion, deserialized.partitionStateVersion);
     }
 
@@ -107,7 +108,7 @@ public class ClusterDataSerializationTest {
         attributes.put("b", "b");
         attributes.put("c", new Address("127.0.0.1", 5999));
         MemberInfo memberInfo = new MemberInfo(new Address("127.0.0.1", 5071), UUID.randomUUID().toString(), attributes,
-                false, MemberVersion.of(BUILD_INFO.getVersion()));
+                false, MemberVersion.of(BuildInfoProvider.getBuildInfo().getVersion()));
 
         Data serialized = SERIALIZATION_SERVICE.toData(memberInfo);
 

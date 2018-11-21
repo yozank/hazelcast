@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,10 +45,14 @@ public class RingbufferTTLTest extends HazelcastTestSupport {
         Config config = new Config();
         config.addRingBufferConfig(ringbufferConfig);
         hz = createHazelcastInstance(config);
-        ringbuffer = hz.getRingbuffer(ringbufferConfig.getName());
+        final String name = ringbufferConfig.getName();
+        ringbuffer = hz.getRingbuffer(name);
 
         RingbufferService ringbufferService = getNodeEngineImpl(hz).getService(RingbufferService.SERVICE_NAME);
-        ringbufferContainer = ringbufferService.getContainer(ringbufferConfig.getName());
+        ringbufferContainer = ringbufferService.getOrCreateContainer(
+                ringbufferService.getRingbufferPartitionId(name),
+                RingbufferService.getRingbufferNamespace(name),
+                ringbufferConfig);
         arrayRingbuffer = (ArrayRingbuffer) ringbufferContainer.getRingbuffer();
     }
 
@@ -81,7 +85,7 @@ public class RingbufferTTLTest extends HazelcastTestSupport {
 
         // and we verify that the slots are nulled so we don't have a memory leak on our hands.
         for (int k = 0; k < ringbuffer.capacity(); k++) {
-            assertNull(arrayRingbuffer.ringItems[k]);
+            assertNull(arrayRingbuffer.getItems()[k]);
         }
     }
 

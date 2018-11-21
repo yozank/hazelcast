@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,19 +35,25 @@ import static java.lang.System.currentTimeMillis;
 import static java.lang.Thread.sleep;
 
 /**
- * Common methods used in ScheduledExecutorService tests
+ * Common methods used in ScheduledExecutorService tests.
  */
 public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
+
+    public static final int MAP_INCREMENT_TASK_MAX_ENTRIES = 10000;
 
     public IScheduledExecutorService getScheduledExecutor(HazelcastInstance[] instances, String name) {
         return instances[0].getScheduledExecutorService(name);
     }
 
-    public HazelcastInstance[] createClusterWithCount(int count) {
+    int getPartitionIdFromPartitionAwareTask(HazelcastInstance instance, PartitionAware task) {
+        return instance.getPartitionService().getPartition(task.getPartitionKey()).getPartitionId();
+    }
+
+    protected HazelcastInstance[] createClusterWithCount(int count) {
         return createClusterWithCount(count, new Config());
     }
 
-    HazelcastInstance[] createClusterWithCount(int count, Config config) {
+    protected HazelcastInstance[] createClusterWithCount(int count, Config config) {
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
         HazelcastInstance[] instances = factory.newInstances(config, count);
         waitAllForSafeState(instances);
@@ -65,13 +71,10 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         return total;
     }
 
-    static class StatefulRunnableTask
-            implements Runnable, Serializable, HazelcastInstanceAware, StatefulTask<String, Integer> {
+    static class StatefulRunnableTask implements Runnable, Serializable, HazelcastInstanceAware, StatefulTask<String, Integer> {
 
         final String latchName;
-
         final String runCounterName;
-
         final String loadCounterName;
 
         int status = 0;
@@ -108,17 +111,14 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class ICountdownLatchCallableTask
-            implements Callable<Double>, Serializable, HazelcastInstanceAware {
+    static class ICountdownLatchCallableTask implements Callable<Double>, Serializable, HazelcastInstanceAware {
 
         final String runLatchName;
-
         final int sleepPeriod;
 
         transient HazelcastInstance instance;
 
-        ICountdownLatchCallableTask(String runLatchName,
-                                    int sleepPeriod) {
+        ICountdownLatchCallableTask(String runLatchName, int sleepPeriod) {
             this.runLatchName = runLatchName;
             this.sleepPeriod = sleepPeriod;
         }
@@ -141,36 +141,36 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class ICountdownLatchMapIncrementCallableTask
-            implements Runnable, Serializable, HazelcastInstanceAware {
+    static class ICountdownLatchMapIncrementCallableTask implements Runnable, Serializable, HazelcastInstanceAware {
 
-        final String runLatchName;
-
+        final String startedLatch;
+        final String finishedLatch;
         final String runEntryCounterName;
-
         final String mapName;
 
         transient HazelcastInstance instance;
 
         ICountdownLatchMapIncrementCallableTask(String mapName, String runEntryCounterName,
-                                                String runLatchName) {
+                                                String startedLatch, String finishedLatch) {
             this.mapName = mapName;
             this.runEntryCounterName = runEntryCounterName;
-            this.runLatchName = runLatchName;
+            this.startedLatch = startedLatch;
+            this.finishedLatch = finishedLatch;
         }
 
         @Override
         public void run() {
             instance.getAtomicLong(runEntryCounterName).incrementAndGet();
+            instance.getCountDownLatch(startedLatch).countDown();
 
             IMap<String, Integer> map = instance.getMap(mapName);
-            for (int i = 0; i < 100000; i++) {
+            for (int i = 0; i < MAP_INCREMENT_TASK_MAX_ENTRIES; i++) {
                 if (map.get(String.valueOf(i)) == i) {
                     map.put(String.valueOf(i), i + 1);
                 }
             }
 
-            instance.getCountDownLatch(runLatchName).countDown();
+            instance.getCountDownLatch(finishedLatch).countDown();
         }
 
         @Override
@@ -179,20 +179,19 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class ICountdownLatchRunnableTask
-            implements Runnable, Serializable, HazelcastInstanceAware {
+    static class ICountdownLatchRunnableTask implements Runnable, Serializable, HazelcastInstanceAware {
 
-        final String[] runsCounterlatchNames;
+        final String[] runsCountDownLatchNames;
 
         transient HazelcastInstance instance;
 
-        ICountdownLatchRunnableTask(String... runsCounterlatchNames) {
-            this.runsCounterlatchNames = runsCounterlatchNames;
+        ICountdownLatchRunnableTask(String... runsCountDownLatchNames) {
+            this.runsCountDownLatchNames = runsCountDownLatchNames;
         }
 
         @Override
         public void run() {
-            for (String runsCounterLatchName : runsCounterlatchNames) {
+            for (String runsCounterLatchName : runsCountDownLatchNames) {
                 instance.getCountDownLatch(runsCounterLatchName).countDown();
             }
         }
@@ -203,10 +202,10 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class HotLoopBusyTask
-            implements Runnable, HazelcastInstanceAware, Serializable {
+    static class HotLoopBusyTask implements Runnable, HazelcastInstanceAware, Serializable {
 
         private final String runFinishedLatchName;
+
         private transient HazelcastInstance instance;
 
         HotLoopBusyTask(String runFinishedLatchName) {
@@ -235,8 +234,7 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class PlainCallableTask
-            implements Callable<Double>, Serializable {
+    static class PlainCallableTask implements Callable<Double>, Serializable {
 
         private int delta = 0;
 
@@ -248,11 +246,13 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
 
         @Override
-        public Double call()
-                throws Exception {
-            return 5 * 5.0 + delta;
+        public Double call() throws Exception {
+            return calculateResult(delta);
         }
 
+        public static double calculateResult(int delta) {
+            return 5 * 5.0 + delta;
+        }
     }
 
     static class EchoTask implements Runnable, Serializable {
@@ -266,23 +266,22 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
 
     }
-    
-    static class ErroneousCallableTask
-            implements Callable<Double>, Serializable, HazelcastInstanceAware {
+
+    static class ErroneousCallableTask implements Callable<Double>, Serializable, HazelcastInstanceAware {
 
         private String completionLatchName;
 
         private transient HazelcastInstance instance;
 
-        ErroneousCallableTask() {}
+        ErroneousCallableTask() {
+        }
 
         ErroneousCallableTask(String completionLatchName) {
             this.completionLatchName = completionLatchName;
         }
 
         @Override
-        public Double call()
-                throws Exception {
+        public Double call() throws Exception {
             try {
                 throw new IllegalStateException("Erroneous task");
             } finally {
@@ -298,18 +297,42 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
     }
 
-    static class PlainPartitionAwareCallableTask
-            implements Callable<Double>, Serializable, PartitionAware<String> {
+    static class PlainPartitionAwareCallableTask implements Callable<Double>, Serializable, PartitionAware<String> {
 
         @Override
-        public Double call()
-                throws Exception {
+        public Double call() throws Exception {
             return 5 * 5.0;
         }
 
         @Override
         public String getPartitionKey() {
             return "TestKey";
+        }
+    }
+
+    static class PlainPartitionAwareRunnableTask implements Runnable, Serializable, PartitionAware<String>, HazelcastInstanceAware {
+
+        private final String latchName;
+
+        private transient HazelcastInstance instance;
+
+        PlainPartitionAwareRunnableTask(String latchName) {
+            this.latchName = latchName;
+        }
+
+        @Override
+        public void run() {
+            this.instance.getCountDownLatch(latchName).countDown();
+        }
+
+        @Override
+        public String getPartitionKey() {
+            return "TestKey";
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance hazelcastInstance) {
+            this.instance = hazelcastInstance;
         }
     }
 
@@ -342,7 +365,6 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
     public static class AllTasksRunningWithinNumOfNodes extends AssertTask {
 
         private final IScheduledExecutorService scheduler;
-
         private final int expectedNodesWithTasks;
 
         AllTasksRunningWithinNumOfNodes(IScheduledExecutorService scheduler, int expectedNodesWithTasks) {
@@ -351,8 +373,7 @@ public class ScheduledExecutorServiceTestSupport extends HazelcastTestSupport {
         }
 
         @Override
-        public void run()
-                throws Exception {
+        public void run() throws Exception {
 
             int actualNumOfNodesWithTasks = 0;
             Map<Member, List<IScheduledFuture<Object>>> allScheduledFutures = scheduler.getAllScheduledFutures();

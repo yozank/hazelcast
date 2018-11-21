@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.IOUtil;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.spi.annotation.PrivateApi;
 import com.hazelcast.version.MemberVersion;
 
@@ -49,23 +49,12 @@ public abstract class AbstractMember implements Member {
     protected AbstractMember() {
     }
 
-    protected AbstractMember(Address address, MemberVersion version) {
-        this(address, version, null, null);
-    }
-
-    protected AbstractMember(Address address, MemberVersion version, String uuid) {
-        this(address, version, uuid, null);
-    }
-
-    protected AbstractMember(Address address, MemberVersion version, String uuid, Map<String, Object> attributes) {
-        this(address, version, uuid, attributes, false);
-    }
-
     protected AbstractMember(Address address, MemberVersion version, String uuid, Map<String, Object> attributes,
                              boolean liteMember) {
+        assert address != null : "Address is required!";
         this.address = address;
         this.version = version;
-        this.uuid = uuid;
+        this.uuid = uuid != null ? uuid : "<" + address.toString() + ">";
         if (attributes != null) {
             this.attributes.putAll(attributes);
         }
@@ -207,9 +196,8 @@ public abstract class AbstractMember implements Member {
 
     @Override
     public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((address == null) ? 0 : address.hashCode());
+        int result = address.hashCode();
+        result = 31 * result + uuid.hashCode();
         return result;
     }
 
@@ -221,17 +209,11 @@ public abstract class AbstractMember implements Member {
         if (obj == null) {
             return false;
         }
-        if (!(obj instanceof AbstractMember)) {
+        if (!(obj instanceof Member)) {
             return false;
         }
-        final AbstractMember other = (AbstractMember) obj;
-        if (address == null) {
-            if (other.address != null) {
-                return false;
-            }
-        } else if (!address.equals(other.address)) {
-            return false;
-        }
-        return true;
+
+        Member that = (Member) obj;
+        return address.equals(that.getAddress()) && uuid.equals(that.getUuid());
     }
 }

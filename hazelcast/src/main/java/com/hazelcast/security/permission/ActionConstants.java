@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,11 @@ import com.hazelcast.concurrent.countdownlatch.CountDownLatchService;
 import com.hazelcast.concurrent.idgen.IdGeneratorService;
 import com.hazelcast.concurrent.lock.LockService;
 import com.hazelcast.concurrent.semaphore.SemaphoreService;
+import com.hazelcast.crdt.pncounter.PNCounterService;
 import com.hazelcast.durableexecutor.impl.DistributedDurableExecutorService;
 import com.hazelcast.executor.impl.DistributedExecutorService;
+import com.hazelcast.flakeidgen.impl.FlakeIdGeneratorService;
+import com.hazelcast.internal.usercodedeployment.UserCodeDeploymentService;
 import com.hazelcast.map.impl.MapService;
 import com.hazelcast.mapreduce.impl.MapReduceService;
 import com.hazelcast.multimap.impl.MultiMapService;
@@ -40,6 +43,7 @@ import java.security.Permission;
 import java.util.HashMap;
 import java.util.Map;
 
+@SuppressWarnings({"checkstyle:executablestatementcount"})
 public final class ActionConstants {
 
     public static final String ACTION_ALL = "all";
@@ -59,6 +63,7 @@ public final class ActionConstants {
     public static final String ACTION_PUBLISH = "publish";
     public static final String ACTION_AGGREGATE = "aggregate";
     public static final String ACTION_PROJECTION = "projection";
+    public static final String ACTION_USER_CODE_DEPLOY = "deploy";
 
     public static final String LISTENER_INSTANCE = "instance";
     public static final String LISTENER_MEMBER = "member";
@@ -139,6 +144,12 @@ public final class ActionConstants {
                 return new AtomicLongPermission(IdGeneratorService.ATOMIC_LONG_NAME + name, actions);
             }
         });
+        PERMISSION_FACTORY_MAP.put(FlakeIdGeneratorService.SERVICE_NAME, new PermissionFactory() {
+            @Override
+            public Permission create(String name, String... actions) {
+                return new FlakeIdGeneratorPermission(name, actions);
+            }
+        });
         PERMISSION_FACTORY_MAP.put(MapReduceService.SERVICE_NAME, new PermissionFactory() {
             @Override
             public Permission create(String name, String... actions) {
@@ -179,6 +190,18 @@ public final class ActionConstants {
             @Override
             public Permission create(String name, String... actions) {
                 return new CardinalityEstimatorPermission(name, actions);
+            }
+        });
+        PERMISSION_FACTORY_MAP.put(UserCodeDeploymentService.SERVICE_NAME, new PermissionFactory() {
+            @Override
+            public Permission create(String name, String... actions) {
+                return new UserCodeDeploymentPermission(actions);
+            }
+        });
+        PERMISSION_FACTORY_MAP.put(PNCounterService.SERVICE_NAME, new PermissionFactory() {
+            @Override
+            public Permission create(String name, String... actions) {
+                return new PNCounterPermission(name, actions);
             }
         });
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.client.scheduledexecutor;
 
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
@@ -25,6 +26,8 @@ import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
+import org.junit.Ignore;
+import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
@@ -42,13 +45,40 @@ public class ClientScheduledExecutorServiceBasicTest extends ScheduledExecutorSe
     }
 
     @Override
-    public HazelcastInstance[] createClusterWithCount(int count) {
+    protected HazelcastInstance[] createClusterWithCount(int count) {
+        return createClusterWithCount(count, new Config());
+    }
+
+    @Override
+    protected HazelcastInstance[] createClusterWithCount(int count, Config config) {
         factory = new TestHazelcastFactory();
-        return factory.newInstances(new Config(), count);
+        HazelcastInstance[] instances = factory.newInstances(config, count);
+        waitAllForSafeState(instances);
+        return instances;
     }
 
     @Override
     public IScheduledExecutorService getScheduledExecutor(HazelcastInstance[] instances, String name) {
-        return factory.newHazelcastClient().getScheduledExecutorService(name);
+        ClientConfig config = new ClientConfig();
+        config.getNetworkConfig().setConnectionAttemptLimit(Integer.MAX_VALUE);
+        return factory.newHazelcastClient(config).getScheduledExecutorService(name);
+    }
+
+    @Test
+    @Ignore("Never supported feature")
+    @Override
+    public void schedule_testPartitionLostEvent_withDurabilityCount() {
+    }
+
+    @Test
+    @Ignore("Never supported feature")
+    @Override
+    public void schedule_testPartitionLostEvent_withMaxBackupCount() {
+    }
+
+    @Test
+    @Ignore("Never supported feature")
+    @Override
+    public void scheduleOnMember_testMemberLostEvent() {
     }
 }

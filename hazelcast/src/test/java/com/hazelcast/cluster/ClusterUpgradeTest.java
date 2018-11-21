@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.SerializationSamplesExcluded;
 import com.hazelcast.version.MemberVersion;
 import org.junit.After;
 import org.junit.Before;
@@ -40,7 +41,7 @@ import static com.hazelcast.test.TestClusterUpgradeUtils.upgradeClusterMembers;
  * Create a cluster, then change cluster version. This test uses artificial version numbers, to avoid relying on current version.
  */
 @RunWith(HazelcastParallelClassRunner.class)
-@Category({QuickTest.class, ParallelTest.class})
+@Category({QuickTest.class, ParallelTest.class, SerializationSamplesExcluded.class})
 public class ClusterUpgradeTest extends HazelcastTestSupport {
 
     static final MemberVersion VERSION_2_0_5 = MemberVersion.of(2, 0, 5);
@@ -62,7 +63,7 @@ public class ClusterUpgradeTest extends HazelcastTestSupport {
     public void setup() {
         System.setProperty(HAZELCAST_INTERNAL_OVERRIDE_VERSION, VERSION_2_1_0.toString());
         clusterMembers = new HazelcastInstance[CLUSTER_MEMBERS_COUNT];
-        for (int i=0; i < CLUSTER_MEMBERS_COUNT; i++) {
+        for (int i = 0; i < CLUSTER_MEMBERS_COUNT; i++) {
             clusterMembers[i] = factory.newHazelcastInstance(getConfig());
         }
         clusterService = (ClusterService) clusterMembers[0].getCluster();

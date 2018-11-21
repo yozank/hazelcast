@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,9 +75,7 @@ public class FrozenPartitionTableTest extends HazelcastTestSupport {
         terminateInstance(hz3);
         hz3 = factory.newHazelcastInstance(hz3Address);
 
-        assertClusterSizeEventually(3, hz1);
-        assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
+        assertClusterSizeEventually(3, hz1, hz2, hz3);
 
         for (HazelcastInstance instance : Arrays.asList(hz1, hz2, hz3)) {
             final HazelcastInstance hz = instance;

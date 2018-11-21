@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.hazelcast.client.spi.ClientContext;
 import com.hazelcast.client.spi.ClientListenerService;
 import com.hazelcast.client.spi.EventHandler;
 import com.hazelcast.client.spi.impl.ListenerMessageCodec;
-import com.hazelcast.client.spi.impl.listener.ClientListenerServiceImpl;
+import com.hazelcast.client.spi.impl.listener.AbstractClientListenerService;
 import com.hazelcast.core.IMapEvent;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.logging.ILogger;
@@ -87,7 +87,7 @@ public class ClientQueryCacheEventService implements QueryCacheEventService {
     private final ClientListenerService listenerService;
 
     public ClientQueryCacheEventService(ClientContext clientContext) {
-        ClientListenerServiceImpl listenerService = (ClientListenerServiceImpl) clientContext.getListenerService();
+        AbstractClientListenerService listenerService = (AbstractClientListenerService) clientContext.getListenerService();
         this.listenerService = listenerService;
         this.serializationService = clientContext.getSerializationService();
         this.executor = listenerService.getEventExecutor();
@@ -95,17 +95,18 @@ public class ClientQueryCacheEventService implements QueryCacheEventService {
     }
 
     @Override
-    public boolean hasListener(String mapName, String cacheName) {
+    public boolean hasListener(String mapName, String cacheId) {
         QueryCacheToListenerMapper queryCacheToListenerMapper = registrations.get(mapName);
         if (queryCacheToListenerMapper == null) {
             return false;
         }
 
-        Collection<ListenerInfo> infos = queryCacheToListenerMapper.getListenerInfos(cacheName);
-        if (infos.isEmpty()) {
-            return false;
-        }
-        return true;
+        return queryCacheToListenerMapper.hasListener(cacheId);
+    }
+
+    // used for testing purposes
+    public ConcurrentMap<String, QueryCacheToListenerMapper> getRegistrations() {
+        return registrations;
     }
 
     @Override
@@ -115,32 +116,32 @@ public class ClientQueryCacheEventService implements QueryCacheEventService {
     }
 
     @Override
-    public void publish(String mapName, String cacheName, Object event, int orderKey) {
+    public void publish(String mapName, String cacheId, Object event, int orderKey) {
         checkHasText(mapName, "mapName");
-        checkHasText(cacheName, "cacheName");
+        checkHasText(cacheId, "cacheId");
         checkNotNull(event, "event cannot be null");
 
-        Collection<ListenerInfo> listeners = getListeners(mapName, cacheName);
+        Collection<ListenerInfo> listeners = getListeners(mapName, cacheId);
         for (ListenerInfo info : listeners) {
             try {
                 executor.execute(new EventDispatcher(event, info, orderKey, serializationService, EVENT_QUEUE_TIMEOUT_MILLIS));
             } catch (RejectedExecutionException e) {
                 // TODO Should we notify user when we overloaded?
                 logger.warning("EventQueue overloaded! Can not process IMap=[" + mapName + "]"
-                        + ", QueryCache=[ " + cacheName + "]" + ", Event=[" + event + "]");
+                        + ", QueryCache=[ " + cacheId + "]" + ", Event=[" + event + "]");
             }
         }
     }
 
     @Override
-    public String listenPublisher(String mapName, String cacheName, ListenerAdapter adapter) {
-        final String listenerName = generateListenerName(mapName, cacheName);
+    public String addPublisherListener(String mapName, String cacheId, ListenerAdapter adapter) {
+        final String listenerName = generateListenerName(mapName, cacheId);
         EventHandler handler = new QueryCacheHandler(adapter);
         return listenerService.registerListener(createPublisherListenerCodec(listenerName), handler);
     }
 
     @Override
-    public boolean removePublisherListener(String mapName, String listenerId) {
+    public boolean removePublisherListener(String mapName, String cacheId, String listenerId) {
         return listenerService.deregisterListener(listenerId);
     }
 
@@ -170,29 +171,40 @@ public class ClientQueryCacheEventService implements QueryCacheEventService {
     }
 
     @Override
-    public String addListener(String mapName, String cacheName, MapListener listener) {
-        return addListener(mapName, cacheName, listener, null);
+    public String addListener(String mapName, String cacheId, MapListener listener) {
+        return addListener(mapName, cacheId, listener, null);
     }
 
     @Override
-    public String addListener(String mapName, String cacheName, MapListener listener, EventFilter filter) {
+    public String addListener(String mapName, String cacheId, MapListener listener, EventFilter filter) {
         checkHasText(mapName, "mapName");
-        checkHasText(cacheName, "cacheName");
+        checkHasText(cacheId, "cacheId");
         checkNotNull(listener, "listener cannot be null");
 
         QueryCacheToListenerMapper queryCacheToListenerMapper = getOrPutIfAbsent(registrations, mapName, REGISTRY_CONSTRUCTOR);
         ListenerAdapter listenerAdaptor = createQueryCacheListenerAdaptor(listener);
-        return queryCacheToListenerMapper.addListener(cacheName, listenerAdaptor, filter);
+        return queryCacheToListenerMapper.addListener(cacheId, listenerAdaptor, filter);
     }
 
     @Override
-    public boolean removeListener(String mapName, String cacheName, String id) {
+    public boolean removeListener(String mapName, String cacheId, String listenerId) {
         checkHasText(mapName, "mapName");
-        checkHasText(cacheName, "cacheName");
-        checkHasText(id, "id");
+        checkHasText(cacheId, "cacheId");
+        checkHasText(listenerId, "listenerId");
 
         QueryCacheToListenerMapper queryCacheToListenerMapper = getOrPutIfAbsent(registrations, mapName, REGISTRY_CONSTRUCTOR);
-        return queryCacheToListenerMapper.removeListener(cacheName, id);
+        return queryCacheToListenerMapper.removeListener(cacheId, listenerId);
+    }
+
+    @Override
+    public void removeAllListeners(String mapName, String cacheId) {
+        checkHasText(mapName, "mapName");
+        checkHasText(cacheId, "cacheId");
+
+        QueryCacheToListenerMapper queryCacheToListenerMap = registrations.get(mapName);
+        if (queryCacheToListenerMap != null) {
+            queryCacheToListenerMap.removeAllListeners(cacheId);
+        }
     }
 
     /**
@@ -217,12 +229,12 @@ public class ClientQueryCacheEventService implements QueryCacheEventService {
         }
 
         @Override
-        public void handle(QueryCacheEventData data) {
+        public void handleQueryCacheSingleEventV10(QueryCacheEventData data) {
             adapter.onEvent(new SingleIMapEvent(data));
         }
 
         @Override
-        public void handle(Collection<QueryCacheEventData> events, String source, int partitionId) {
+        public void handleQueryCacheBatchEventV10(Collection<QueryCacheEventData> events, String source, int partitionId) {
             adapter.onEvent(new BatchIMapEvent(new BatchEventData(events, source, partitionId)));
         }
     }

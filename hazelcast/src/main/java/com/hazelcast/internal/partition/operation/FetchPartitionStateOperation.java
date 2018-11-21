@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,13 @@ import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.PartitionDataSerializerHook;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.ExceptionAction;
-import com.hazelcast.spi.exception.RetryableHazelcastException;
+import com.hazelcast.spi.NodeEngine;
+import com.hazelcast.spi.exception.CallerNotMemberException;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 
+/**
+ * Operation sent by the master to the cluster members to fetch their partition state.
+ */
 public final class FetchPartitionStateOperation extends AbstractPartitionOperation
         implements MigrationCycleOperation {
 
@@ -37,13 +41,13 @@ public final class FetchPartitionStateOperation extends AbstractPartitionOperati
 
     @Override
     public void run() {
-        final Address caller = getCallerAddress();
-        final Address master = getNodeEngine().getMasterAddress();
+        Address caller = getCallerAddress();
+        NodeEngine nodeEngine = getNodeEngine();
+        Address master = nodeEngine.getMasterAddress();
         if (!caller.equals(master)) {
-            final String msg =
-                    caller + " requested our partition table but it's not our known master. " + "Master: " + master;
+            String msg = caller + " requested our partition table but it's not our known master. " + "Master: " + master;
             getLogger().warning(msg);
-            throw new RetryableHazelcastException(msg);
+            throw new IllegalStateException(msg);
         }
         InternalPartitionServiceImpl service = getService();
         partitionState = service.createPartitionStateInternal();
@@ -52,7 +56,8 @@ public final class FetchPartitionStateOperation extends AbstractPartitionOperati
     @Override
     public ExceptionAction onInvocationException(Throwable throwable) {
         if (throwable instanceof MemberLeftException
-                || throwable instanceof TargetNotMemberException) {
+                || throwable instanceof TargetNotMemberException
+                || throwable instanceof CallerNotMemberException) {
             return ExceptionAction.THROW_EXCEPTION;
         }
         return super.onInvocationException(throwable);

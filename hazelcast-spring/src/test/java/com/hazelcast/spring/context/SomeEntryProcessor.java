@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,6 @@ import org.springframework.context.ApplicationContextAware;
 
 import java.util.Map;
 
-/**
- * @ali 28/11/13
- */
 @SpringAware
 public class SomeEntryProcessor extends AbstractEntryProcessor implements ApplicationContextAware {
 
@@ -35,13 +32,15 @@ public class SomeEntryProcessor extends AbstractEntryProcessor implements Applic
     @Autowired
     private transient SomeBean someBean;
 
+    @Override
     public Object process(Map.Entry entry) {
-        if (someBean == null ){
+        if (someBean == null) {
             return ">null";
         }
         return "notNull";
     }
 
+    @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.context = applicationContext;
     }

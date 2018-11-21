@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package com.hazelcast.nio.tcp;
 
+import com.hazelcast.internal.networking.OutboundFrame;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
 import com.hazelcast.nio.ConnectionManager;
 import com.hazelcast.nio.ConnectionType;
-import com.hazelcast.nio.OutboundFrame;
-import com.hazelcast.test.mocknetwork.MockConnectionManager;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.ExceptionUtil;
 
@@ -77,10 +76,7 @@ class DroppingConnection implements Connection {
         if (!isAlive.compareAndSet(true, false)) {
             return;
         }
-
-        if (connectionManager instanceof MockConnectionManager) {
-            ((MockConnectionManager) connectionManager).onClose(this);
-        }
+        connectionManager.onConnectionClose(this);
     }
 
     @Override

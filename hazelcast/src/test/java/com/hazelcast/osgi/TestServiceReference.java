@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,7 @@ package com.hazelcast.osgi;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.ServiceReference;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 class TestServiceReference implements ServiceReference {
-
-    private static AtomicInteger COUNTER = new AtomicInteger();
 
     private final TestBundle testBundle;
     private final Object service;
@@ -71,5 +67,4 @@ class TestServiceReference implements ServiceReference {
         }
         return -1;
     }
-
 }

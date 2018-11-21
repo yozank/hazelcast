@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import static org.junit.Assert.assertSame;
 public class AbstractInvocationFuture_CompleteTest extends AbstractInvocationFuture_AbstractTest {
 
     @Test
-    public void whenAlreadyCompleted_thenIgnored(){
+    public void whenAlreadyCompleted_thenIgnored() {
         future.complete(value);
 
         Object newValue = new Object();

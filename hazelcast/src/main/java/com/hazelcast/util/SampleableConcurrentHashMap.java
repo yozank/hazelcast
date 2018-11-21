@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.util;
 
 import com.hazelcast.internal.eviction.Expirable;
 import com.hazelcast.internal.util.ThreadLocalRandomProvider;
+import com.hazelcast.nio.serialization.SerializableByConvention;
 
 import java.util.AbstractMap;
 import java.util.Collections;
@@ -33,6 +34,7 @@ import java.util.NoSuchElementException;
  * @param <K> Type of the key
  * @param <V> Type of the value
  */
+@SerializableByConvention
 public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMap<K, V> {
 
     private static final float LOAD_FACTOR = 0.91f;
@@ -195,10 +197,7 @@ public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMa
     }
 
     /**
-     * This class is implements both of "Iterable" and "Iterator" interfaces.
-     * So we can use only one object (instead of two) both for "Iterable" and "Iterator" interfaces.
-     *
-     * NOTE: Assumed that it is not accessed by multiple threads. So there is no synchronization.
+     * Not thread safe
      */
     private final class LazySamplingEntryIterableIterator<E extends SamplingEntry> implements Iterable<E>, Iterator<E> {
 
@@ -207,7 +206,7 @@ public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMa
         private final int firstSegmentIndex;
         private int currentSegmentIndex;
         private int currentBucketIndex;
-        private HashEntry<K, V> currentEntry;
+        private HashEntry<K, V> mostRecentlyReturnedEntry;
         private int returnedEntryCount;
         private boolean reachedToEnd;
         private E currentSample;
@@ -229,7 +228,7 @@ public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMa
          * Originally taken by Jaromir Hamala's implementation and changed as incremental implementation.
          * So kudos to Jaromir :)
          */
-        //CHECKSTYLE:OFF
+        @SuppressWarnings({"checkstyle:npathcomplexity", "checkstyle:cyclomaticcomplexity"})
         private void iterate() {
             if (returnedEntryCount >= maxEntryCount || reachedToEnd) {
                 currentSample = null;
@@ -248,28 +247,26 @@ public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMa
                     }
                     do {
                         // If current entry is not initialized yet, initialize it
-                        if (currentEntry == null) {
-                            currentEntry = table[currentBucketIndex];
+                        if (mostRecentlyReturnedEntry == null) {
+                            mostRecentlyReturnedEntry = table[currentBucketIndex];
+                        } else {
+                            mostRecentlyReturnedEntry = mostRecentlyReturnedEntry.next;
                         }
-                        while (currentEntry != null) {
-                            V value = currentEntry.value();
-                            K key = currentEntry.key();
-                            // Advance to next entry
-                            currentEntry = currentEntry.next;
+
+                        while (mostRecentlyReturnedEntry != null) {
+                            V value = mostRecentlyReturnedEntry.value();
+                            K key = mostRecentlyReturnedEntry.key();
+
                             if (isValidForSampling(value)) {
                                 currentSample = createSamplingEntry(key, value);
                                 // If we reached end of entries, advance current bucket index
-                                if (currentEntry == null) {
-                                    currentBucketIndex = ++currentBucketIndex < table.length ? currentBucketIndex : 0;
-                                }
                                 returnedEntryCount++;
                                 return;
                             }
+                            mostRecentlyReturnedEntry = mostRecentlyReturnedEntry.next;
                         }
                         // Advance current bucket index
                         currentBucketIndex = ++currentBucketIndex < table.length ? currentBucketIndex : 0;
-                        // Clear current entry index to initialize at next bucket
-                        currentEntry = null;
                     } while (currentBucketIndex != firstBucketIndex);
                 }
                 // Advance current segment index
@@ -277,24 +274,27 @@ public class SampleableConcurrentHashMap<K, V> extends ConcurrentReferenceHashMa
                 // Clear current bucket index to initialize at next segment
                 currentBucketIndex = -1;
                 // Clear current entry index to initialize at next segment
-                currentEntry = null;
+                mostRecentlyReturnedEntry = null;
             } while (currentSegmentIndex != firstSegmentIndex);
 
             reachedToEnd = true;
             currentSample = null;
         }
-        //CHECKSTYLE:ON
 
         @Override
         public boolean hasNext() {
-            iterate();
+            if (currentSample == null) {
+                iterate();
+            }
             return currentSample != null;
         }
 
         @Override
         public E next() {
-            if (currentSample != null) {
-                return currentSample;
+            if (hasNext()) {
+                E returnValue = currentSample;
+                currentSample = null;
+                return returnValue;
             } else {
                 throw new NoSuchElementException();
             }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package com.hazelcast.config;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.spi.annotation.Beta;
 import com.hazelcast.spi.annotation.PrivateApi;
 
 import java.io.IOException;
@@ -34,7 +33,7 @@ import static com.hazelcast.util.Preconditions.checkPositive;
  *
  * @since 3.8
  */
-@Beta
+@SuppressWarnings("WeakerAccess")
 public class NearCachePreloaderConfig implements IdentifiedDataSerializable, Serializable {
 
     /**
@@ -58,37 +57,16 @@ public class NearCachePreloaderConfig implements IdentifiedDataSerializable, Ser
     }
 
     public NearCachePreloaderConfig(NearCachePreloaderConfig nearCachePreloaderConfig) {
-        /**
-         * ===== NOTE =====
-         *
-         * Do not use setters, because they are overridden in the readonly version of this config and
-         * they cause an "UnsupportedOperationException". Just set directly if the value is valid.
-         */
-
         this(nearCachePreloaderConfig.enabled, nearCachePreloaderConfig.directory);
         this.storeInitialDelaySeconds = nearCachePreloaderConfig.storeInitialDelaySeconds;
         this.storeIntervalSeconds = nearCachePreloaderConfig.storeIntervalSeconds;
     }
 
     public NearCachePreloaderConfig(String directory) {
-        /**
-         * ===== NOTE =====
-         *
-         * Do not use setters, because they are overridden in the readonly version of this config and
-         * they cause an "UnsupportedOperationException". Just set directly if the value is valid.
-         */
-
         this(true, directory);
     }
 
     public NearCachePreloaderConfig(boolean enabled, String directory) {
-        /**
-         * ===== NOTE =====
-         *
-         * Do not use setters, because they are overridden in the readonly version of this config and
-         * they cause an "UnsupportedOperationException". Just set directly if the value is valid.
-         */
-
         this.enabled = enabled;
         this.directory = checkNotNull(directory, "directory cannot be null!");
     }
@@ -174,10 +152,41 @@ public class NearCachePreloaderConfig implements IdentifiedDataSerializable, Ser
         return readOnly;
     }
 
+    @Override
+    @SuppressWarnings("checkstyle:npathcomplexity")
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        NearCachePreloaderConfig that = (NearCachePreloaderConfig) o;
+        if (enabled != that.enabled) {
+            return false;
+        }
+        if (storeInitialDelaySeconds != that.storeInitialDelaySeconds) {
+            return false;
+        }
+        if (storeIntervalSeconds != that.storeIntervalSeconds) {
+            return false;
+        }
+        return directory != null ? directory.equals(that.directory) : that.directory == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = (enabled ? 1 : 0);
+        result = 31 * result + (directory != null ? directory.hashCode() : 0);
+        result = 31 * result + storeInitialDelaySeconds;
+        result = 31 * result + storeIntervalSeconds;
+        return result;
+    }
+
     /**
      * A readonly version of the {@link NearCachePreloaderConfig}.
      */
-    @Beta
     @PrivateApi
     private static class NearCachePreloaderConfigReadOnly extends NearCachePreloaderConfig {
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.hazelcast.config.SerializerConfig;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.core.PartitioningStrategy;
+import com.hazelcast.instance.BuildInfoProvider;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.SimpleMemberImpl;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
@@ -38,6 +39,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.util.UuidUtil;
 import com.hazelcast.version.MemberVersion;
+import com.hazelcast.version.Version;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -83,7 +85,7 @@ public class SerializationTest extends HazelcastTestSupport {
         globalSerializerConfig.setOverrideJavaSerialization(true);
         final AtomicInteger writeCounter = new AtomicInteger();
         final AtomicInteger readCounter = new AtomicInteger();
-        final JavaSerializer javaSerializer = new JavaSerializer(true, false);
+        final JavaSerializer javaSerializer = new JavaSerializer(true, false, null);
         SerializationConfig serializationConfig = new SerializationConfig().setGlobalSerializerConfig(
                 globalSerializerConfig.setImplementation(new StreamSerializer<Object>() {
                     @Override
@@ -250,8 +252,15 @@ public class SerializationTest extends HazelcastTestSupport {
     }
 
     private static class SingletonValue {
+
+        @Override
         public boolean equals(Object obj) {
             return obj instanceof SingletonValue;
+        }
+
+        @Override
+        public int hashCode() {
+            return super.hashCode();
         }
     }
 
@@ -367,7 +376,8 @@ public class SerializationTest extends HazelcastTestSupport {
         SerializationService serializationService = new DefaultSerializationServiceBuilder()
                 .setEnableCompression(true)
                 .build();
-        long key = 1, value = 5000;
+        long key = 1;
+        long value = 5000;
         Properties properties = new Properties();
         properties.put(key, value);
         Data data = serializationService.toData(properties);
@@ -421,7 +431,7 @@ public class SerializationTest extends HazelcastTestSupport {
         String host = "127.0.0.1";
         int port = 5000;
 
-        Member member = new MemberImpl(new Address(host, port), MemberVersion.of("3.8.0"), false, uuid, null);
+        Member member = new MemberImpl(new Address(host, port), MemberVersion.of("3.8.0"), false, uuid);
 
         testMemberLeftException(uuid, host, port, member);
     }
@@ -442,7 +452,7 @@ public class SerializationTest extends HazelcastTestSupport {
         String host = "127.0.0.1";
         int port = 5000;
 
-        Member member = new MemberImpl(new Address(host, port), MemberVersion.of("3.8.0"), false, uuid, null, null, true);
+        Member member = new MemberImpl(new Address(host, port), MemberVersion.of("3.8.0"), false, uuid, null, true);
 
         testMemberLeftException(uuid, host, port, member);
     }
@@ -531,7 +541,8 @@ public class SerializationTest extends HazelcastTestSupport {
             DynamicProxyTestClassLoader cl = new DynamicProxyTestClassLoader(current);
             Thread.currentThread().setContextClassLoader(cl);
             SerializationService ss = new DefaultSerializationServiceBuilder().setClassLoader(cl).build();
-            IObjectA oa = (IObjectA) Proxy.newProxyInstance(current, new Class[]{IObjectA.class}, DummyInvocationHandler.INSTANCE);
+            IObjectA oa
+                    = (IObjectA) Proxy.newProxyInstance(current, new Class[]{IObjectA.class}, DummyInvocationHandler.INSTANCE);
             Data data = ss.toData(oa);
             Object o = ss.toObject(data);
             Assert.assertSame("context classloader is not used", cl, o.getClass().getClassLoader());
@@ -552,7 +563,8 @@ public class SerializationTest extends HazelcastTestSupport {
         DynamicProxyTestClassLoader cl1 = new DynamicProxyTestClassLoader(current, IPrivateObjectB.class.getName());
         DynamicProxyTestClassLoader cl2 = new DynamicProxyTestClassLoader(cl1, IPrivateObjectC.class.getName());
         SerializationService ss = new DefaultSerializationServiceBuilder().setClassLoader(cl2).build();
-        Object ocd = Proxy.newProxyInstance(current, new Class[]{IPrivateObjectB.class, IPrivateObjectC.class}, DummyInvocationHandler.INSTANCE);
+        Object ocd
+                = Proxy.newProxyInstance(current, new Class[]{IPrivateObjectB.class, IPrivateObjectC.class}, DummyInvocationHandler.INSTANCE);
         Data data = ss.toData(ocd);
         try {
             ss.toObject(data);
@@ -560,6 +572,24 @@ public class SerializationTest extends HazelcastTestSupport {
         } catch (IllegalAccessError expected) {
             // expected
         }
+    }
+
+    @Test
+    public void testVersionedDataSerializable_outputHasMemberVersion() {
+        SerializationService ss = new DefaultSerializationServiceBuilder().build();
+        VersionedDataSerializable object = new VersionedDataSerializable();
+        ss.toData(object);
+        assertEquals("ObjectDataOutput.getVersion should be equal to member version",
+                Version.of(BuildInfoProvider.getBuildInfo().getVersion()), object.getVersion());
+    }
+
+    @Test
+    public void testVersionedDataSerializable_inputHasMemberVersion() {
+        SerializationService ss = new DefaultSerializationServiceBuilder().build();
+        VersionedDataSerializable object = new VersionedDataSerializable();
+        VersionedDataSerializable otherObject = ss.toObject(ss.toData(object));
+        assertEquals("ObjectDataInput.getVersion should be equal to member version",
+                Version.of(BuildInfoProvider.getBuildInfo().getVersion()), otherObject.getVersion());
     }
 
     private static final class DynamicProxyTestClassLoader extends ClassLoader {

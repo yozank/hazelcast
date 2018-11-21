@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,16 +39,16 @@ public class MadePublishableOperation extends MapOperation {
 
     private final ILogger logger = Logger.getLogger(getClass());
 
-    private String cacheName;
+    private String cacheId;
 
     private transient boolean done;
 
     public MadePublishableOperation() {
     }
 
-    public MadePublishableOperation(String mapName, String cacheName) {
+    public MadePublishableOperation(String mapName, String cacheId) {
         super(mapName);
-        this.cacheName = cacheName;
+        this.cacheId = cacheId;
     }
 
     @Override
@@ -57,7 +57,7 @@ public class MadePublishableOperation extends MapOperation {
     }
 
     private void setPublishable() {
-        PartitionAccumulatorRegistry registry = QueryCacheUtil.getAccumulatorRegistryOrNull(getContext(), name, cacheName);
+        PartitionAccumulatorRegistry registry = QueryCacheUtil.getAccumulatorRegistryOrNull(getContext(), name, cacheId);
         if (registry == null) {
             return;
         }
@@ -86,13 +86,13 @@ public class MadePublishableOperation extends MapOperation {
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
         super.writeInternal(out);
-        out.writeUTF(cacheName);
+        out.writeUTF(cacheId);
     }
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
         super.readInternal(in);
-        cacheName = in.readUTF();
+        cacheId = in.readUTF();
     }
 
     @Override

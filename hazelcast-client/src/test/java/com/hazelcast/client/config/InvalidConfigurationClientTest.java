@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,16 +80,6 @@ public class InvalidConfigurationClientTest {
     @Test
     public void testWhenValid_InsideAwsEnabled() {
         buildConfig("inside-aws-enabled", "true");
-    }
-
-    @Test(expected = InvalidConfigurationException.class)
-    public void testWhenIamRoleEnabled_InsideAwsDisabled() {
-        buildConfig("inside-aws-enabled", "false");
-    }
-
-    @Test(expected = InvalidConfigurationException.class)
-    public void testWhenInvalid_InsideAwsEnabled() {
-        buildConfig("inside-aws-enabled", "tRue");
     }
 
     @Test
@@ -190,6 +180,26 @@ public class InvalidConfigurationClientTest {
     @Test
     public void testWhenValid_NearCacheEvictionSize() {
         buildConfig("near-cache-eviction-size", "100");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testClassPathConfigWhenNullClassLoader() {
+        new ClientClasspathXmlConfig(null, "my_config.xml", System.getProperties());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testClassPathConfigWhenNullProperties() {
+        new ClientClasspathXmlConfig(Thread.currentThread().getContextClassLoader(), "my_config.xml", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testClassPathConfigWhenNullResource() {
+        new ClientClasspathXmlConfig(Thread.currentThread().getContextClassLoader(), null, System.getProperties());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testClassPathConfigWhenNonExistentConfig() {
+        new ClientClasspathXmlConfig(Thread.currentThread().getContextClassLoader(), "non-existent-client-config.xml", System.getProperties());
     }
 
     @Test(expected = InvalidConfigurationException.class)

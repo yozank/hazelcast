@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,9 +38,10 @@ import java.util.Set;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+@SuppressWarnings("WeakerAccess")
 public abstract class ReplicatedMapAbstractTest extends HazelcastTestSupport {
 
-    protected static Field REPLICATED_MAP_SERVICE;
+    protected static final Field REPLICATED_MAP_SERVICE;
 
     static {
         try {
@@ -101,10 +102,10 @@ public abstract class ReplicatedMapAbstractTest extends HazelcastTestSupport {
         return service.getReplicatedRecordStore(map.getName(), false, key);
     }
 
-    public List<ReplicatedMap> createMapOnEachInstance(HazelcastInstance[] instances, String replicatedMapName) {
-        ArrayList<ReplicatedMap> maps = new ArrayList<ReplicatedMap>();
+    public List<ReplicatedMap<String, Object>> createMapOnEachInstance(HazelcastInstance[] instances, String replicatedMapName) {
+        ArrayList<ReplicatedMap<String, Object>> maps = new ArrayList<ReplicatedMap<String, Object>>();
         for (HazelcastInstance instance : instances) {
-            ReplicatedMap<Object, Object> replicatedMap = instance.getReplicatedMap(replicatedMapName);
+            ReplicatedMap<String, Object> replicatedMap = instance.getReplicatedMap(replicatedMapName);
             maps.add(replicatedMap);
         }
         return maps;
@@ -126,7 +127,7 @@ public abstract class ReplicatedMapAbstractTest extends HazelcastTestSupport {
         }
 
         Set<Integer> partitionIds = new HashSet<Integer>();
-        for(String key : keys) {
+        for (String key : keys) {
             assertTrue(partitionIds.add(getPartitionId(instance, key)));
         }
 
@@ -142,5 +143,4 @@ public abstract class ReplicatedMapAbstractTest extends HazelcastTestSupport {
         }
         return testValues;
     }
-
 }

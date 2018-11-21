@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,14 +85,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         JobTracker tracker = client.getJobTracker("default");
@@ -118,14 +117,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         JobTracker tracker = client.getJobTracker("default");
@@ -152,9 +150,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -182,9 +179,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -219,14 +215,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         JobTracker tracker = client.getJobTracker("default");
@@ -250,9 +245,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -277,9 +271,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -305,14 +298,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         JobTracker tracker = client.getJobTracker("default");
@@ -341,9 +333,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -388,9 +379,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -435,9 +425,8 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
@@ -489,14 +478,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         final int[] result = new int[1];
@@ -542,14 +530,13 @@ public class ClientMultiMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
         MultiMap<Integer, Integer> m1 = client.getMultiMap(randomString());
         for (int i = 0; i < 100; i++) {
-            m1.put(i/2, i);
+            m1.put(i / 2, i);
         }
 
         final int[] result = new int[1];

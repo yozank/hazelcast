@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,18 +64,18 @@ public class ClientConcurrentLockTest {
         concurrent_LockTest(true);
     }
 
-    private void concurrent_LockTest(boolean tryLockWithTimeOut) throws InterruptedException {
+    private void concurrent_LockTest(boolean tryLockWithTimeOut) {
         final ILock lock = client.getLock(randomString());
         final AtomicInteger upTotal = new AtomicInteger(0);
         final AtomicInteger downTotal = new AtomicInteger(0);
 
-        LockTestThread threads[] = new LockTestThread[8];
-        for ( int i=0; i<threads.length; i++ ) {
+        LockTestThread[] threads = new LockTestThread[8];
+        for (int i = 0; i < threads.length; i++) {
             LockTestThread t;
 
-            if (tryLockWithTimeOut){
+            if (tryLockWithTimeOut) {
                 t = new TryLockWithTimeOutThread(lock, upTotal, downTotal);
-            }else{
+            } else {
                 t = new TryLockThread(lock, upTotal, downTotal);
             }
             t.start();
@@ -87,12 +87,12 @@ public class ClientConcurrentLockTest {
     }
 
     static class TryLockThread extends LockTestThread {
-        public TryLockThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal){
+        public TryLockThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal) {
             super(lock, upTotal, downTotal);
         }
 
-        public void doRun() throws Exception{
-            if ( lock.tryLock() ) {
+        public void doRun() {
+            if (lock.tryLock()) {
                 work();
                 lock.unlock();
             }
@@ -100,44 +100,47 @@ public class ClientConcurrentLockTest {
     }
 
     static class TryLockWithTimeOutThread extends LockTestThread {
-        public TryLockWithTimeOutThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal){
+        public TryLockWithTimeOutThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal) {
             super(lock, upTotal, downTotal);
         }
 
-        public void doRun() throws Exception{
-            if ( lock.tryLock(1, TimeUnit.MILLISECONDS) ) {
+        public void doRun() throws Exception {
+            if (lock.tryLock(1, TimeUnit.MILLISECONDS)) {
                 work();
                 lock.unlock();
             }
         }
     }
 
-    static abstract class LockTestThread extends Thread{
-        private static final int ITERATIONS = 1000*10;
+    abstract static class LockTestThread extends Thread {
+
+        private static final int ITERATIONS = 1000 * 10;
+
         private final Random random = new Random();
+
         protected final ILock lock;
         protected final AtomicInteger upTotal;
         protected final AtomicInteger downTotal;
 
-        public LockTestThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal){
+        public LockTestThread(ILock lock, AtomicInteger upTotal, AtomicInteger downTotal) {
             this.lock = lock;
             this.upTotal = upTotal;
             this.downTotal = downTotal;
         }
 
-        public void run()  {
-            try{
-                for ( int i=0; i<ITERATIONS; i++ ) {
+        public void run() {
+            try {
+                for (int i = 0; i < ITERATIONS; i++) {
                     doRun();
                 }
-            }catch (Exception e){
+            } catch (Exception e) {
                 throw new RuntimeException("LockTestThread throws: ", e);
             }
         }
 
         abstract void doRun() throws Exception;
 
-        protected void work(){
+        protected void work() {
             int delta = random.nextInt(1000);
             upTotal.addAndGet(delta);
             downTotal.addAndGet(-delta);

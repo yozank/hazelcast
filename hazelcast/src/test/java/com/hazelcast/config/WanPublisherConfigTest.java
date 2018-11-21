@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ public class WanPublisherConfigTest {
         properties.put("key", "value");
 
         config.setGroupName("groupName");
+        config.setPublisherId("publisherId");
         config.setQueueCapacity(500);
         config.setQueueFullBehavior(WANQueueFullBehavior.THROW_EXCEPTION);
         config.setProperties(properties);
@@ -58,6 +59,7 @@ public class WanPublisherConfigTest {
 
     static void assertWanPublisherConfig(WanPublisherConfig expected, WanPublisherConfig actual) {
         assertEquals(expected.getGroupName(), actual.getGroupName());
+        assertEquals(expected.getPublisherId(), actual.getPublisherId());
         assertEquals(expected.getQueueCapacity(), actual.getQueueCapacity());
         assertEquals(expected.getQueueFullBehavior(), actual.getQueueFullBehavior());
         assertEquals(expected.getProperties(), actual.getProperties());

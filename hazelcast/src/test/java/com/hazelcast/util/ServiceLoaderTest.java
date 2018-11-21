@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.util;
 
 import com.hazelcast.core.HazelcastException;
 import com.hazelcast.internal.serialization.PortableHook;
+import com.hazelcast.nio.IOUtil;
 import com.hazelcast.nio.serialization.ClassDefinition;
 import com.hazelcast.nio.serialization.PortableFactory;
 import com.hazelcast.nio.serialization.Serializer;
@@ -33,14 +34,18 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Collection;
+import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import static com.hazelcast.nio.IOUtil.toByteArray;
 import static com.hazelcast.test.TestCollectionUtils.setOf;
 import static java.util.Collections.singleton;
 import static org.junit.Assert.assertEquals;
@@ -53,6 +58,67 @@ import static org.junit.Assert.assertTrue;
 public class ServiceLoaderTest extends HazelcastTestSupport {
 
     @Test
+    public void selectClassLoaders_whenTCCL_isNull_thenDoNotSelectNullClassloader() {
+        Thread.currentThread().setContextClassLoader(null);
+        ClassLoader dummyClassLoader = new URLClassLoader(new URL[0]);
+        List<ClassLoader> classLoaders = ServiceLoader.selectClassLoaders(dummyClassLoader);
+
+        assertNotContains(classLoaders, null);
+    }
+
+    @Test
+    public void selectClassLoaders_whenPassedClassLoaderIsisNull_thenDoNotSelectNullClassloader() {
+        Thread.currentThread().setContextClassLoader(null);
+        List<ClassLoader> classLoaders = ServiceLoader.selectClassLoaders(null);
+
+        assertNotContains(classLoaders, null);
+    }
+
+    @Test
+    public void testMultipleClassloaderLoadsTheSameClass() throws Exception {
+        ClassLoader parent = this.getClass().getClassLoader();
+
+        //child classloader will steal bytecode from the parent and will define classes on its own
+        ClassLoader childLoader = new StealingClassloader(parent);
+
+        Class<?> interfaceClass = childLoader.loadClass(PortableHook.class.getName());
+        Iterator<? extends Class<?>> iterator
+                = ServiceLoader.classIterator(interfaceClass, "com.hazelcast.PortableHook", childLoader);
+
+        //make sure some hook were found.
+        assertTrue(iterator.hasNext());
+
+        while (iterator.hasNext()) {
+            Class<?> hook = iterator.next();
+            assertEquals(childLoader, hook.getClassLoader());
+        }
+    }
+
+    @Test
+    public void testHookDeduplication() {
+        Class<?> hook = newClassImplementingInterface("com.hazelcast.internal.serialization.SomeHook",
+                PortableHook.class, PortableHook.class.getClassLoader());
+
+        ClassLoader parentClassloader = hook.getClassLoader();
+
+        //child classloader delegating everything to its parent
+        URLClassLoader childClassloader = new URLClassLoader(new URL[]{}, parentClassloader);
+
+        ServiceLoader.ServiceDefinition definition1 = new ServiceLoader.ServiceDefinition(hook.getName(), parentClassloader);
+        //the definition loaded by the child classloader -> it only delegates to the parent -> it's a duplicated
+        ServiceLoader.ServiceDefinition definition2 = new ServiceLoader.ServiceDefinition(hook.getName(), childClassloader);
+
+        Set<ServiceLoader.ServiceDefinition> definitions = setOf(definition1, definition2);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+
+        assertTrue(iterator.hasNext());
+        Class<PortableHook> hookFromIterator = iterator.next();
+        assertEquals(hook, hookFromIterator);
+        assertFalse(iterator.hasNext());
+    }
+
+    @Test
     public void testSkipHooksWithImplementingTheExpectedInterfaceButLoadedByDifferentClassloader() {
         Class<?> otherInterface = newInterface(PortableHook.class.getName());
         ClassLoader otherClassloader = otherInterface.getClassLoader();
@@ -62,7 +128,8 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
 
         ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition(otherHook.getName(), otherClassloader);
         Set<ServiceLoader.ServiceDefinition> definitions = singleton(definition);
-        ServiceLoader.ClassIterator<PortableHook> iterator = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
 
         assertFalse(iterator.hasNext());
     }
@@ -77,25 +144,30 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
 
         ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition(otherHook.getName(), otherClassloader);
         Set<ServiceLoader.ServiceDefinition> definitions = singleton(definition);
-        ServiceLoader.ClassIterator<PortableHook> iterator = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
 
         assertFalse(iterator.hasNext());
     }
 
     @Test
     public void testSkipUnknownClassesStartingFromHazelcastPackage() {
-        ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition("com.hazelcast.DoesNotExist", getClass().getClassLoader());
+        ServiceLoader.ServiceDefinition definition
+                = new ServiceLoader.ServiceDefinition("com.hazelcast.DoesNotExist", getClass().getClassLoader());
         Set<ServiceLoader.ServiceDefinition> definitions = singleton(definition);
-        ServiceLoader.ClassIterator<PortableHook> iterator = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
 
         assertFalse(iterator.hasNext());
     }
 
     @Test(expected = HazelcastException.class)
     public void testFailFastOnUnknownClassesFromNonHazelcastPackage() {
-        ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition("non.a.hazelcast.DoesNotExist", getClass().getClassLoader());
+        ServiceLoader.ServiceDefinition definition
+                = new ServiceLoader.ServiceDefinition("non.a.hazelcast.DoesNotExist", getClass().getClassLoader());
         Set<ServiceLoader.ServiceDefinition> definitions = singleton(definition);
-        ServiceLoader.ClassIterator<PortableHook> iterator = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
         assertFalse(iterator.hasNext());
     }
 
@@ -110,10 +182,12 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
         //otherHook is loaded by other classloader -> it should be skipped
         ServiceLoader.ServiceDefinition definition1 = new ServiceLoader.ServiceDefinition(otherHook.getName(), otherClassloader);
         //this hook should be loaded
-        ServiceLoader.ServiceDefinition definition2 = new ServiceLoader.ServiceDefinition(SpiPortableHook.class.getName(), SpiPortableHook.class.getClassLoader());
+        ServiceLoader.ServiceDefinition definition2
+                = new ServiceLoader.ServiceDefinition(SpiPortableHook.class.getName(), SpiPortableHook.class.getClassLoader());
 
         Set<ServiceLoader.ServiceDefinition> definitions = setOf(definition1, definition2);
-        ServiceLoader.ClassIterator<PortableHook> iterator = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
+        ServiceLoader.ClassIterator<PortableHook> iterator
+                = new ServiceLoader.ClassIterator<PortableHook>(definitions, PortableHook.class);
 
         assertTrue(iterator.hasNext());
         Class<PortableHook> hook = iterator.next();
@@ -127,8 +201,10 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
         ClassLoader classLoader = DummyPrivatePortableHook.class.getClassLoader();
         ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition(hookName, classLoader);
 
-        ServiceLoader.ClassIterator<PortableHook> classIterator = new ServiceLoader.ClassIterator<PortableHook>(singleton(definition), PortableHook.class);
-        ServiceLoader.NewInstanceIterator<PortableHook> instanceIterator = new ServiceLoader.NewInstanceIterator<PortableHook>(classIterator);
+        ServiceLoader.ClassIterator<PortableHook> classIterator
+                = new ServiceLoader.ClassIterator<PortableHook>(singleton(definition), PortableHook.class);
+        ServiceLoader.NewInstanceIterator<PortableHook> instanceIterator
+                = new ServiceLoader.NewInstanceIterator<PortableHook>(classIterator);
 
         assertTrue(instanceIterator.hasNext());
         DummyPrivatePortableHook hook = (DummyPrivatePortableHook) instanceIterator.next();
@@ -141,8 +217,10 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
         ClassLoader classLoader = DummyPrivateSerializerHook.class.getClassLoader();
         ServiceLoader.ServiceDefinition definition = new ServiceLoader.ServiceDefinition(hookName, classLoader);
 
-        ServiceLoader.ClassIterator<SerializerHook> classIterator = new ServiceLoader.ClassIterator<SerializerHook>(singleton(definition), SerializerHook.class);
-        ServiceLoader.NewInstanceIterator<SerializerHook> instanceIterator = new ServiceLoader.NewInstanceIterator<SerializerHook>(classIterator);
+        ServiceLoader.ClassIterator<SerializerHook> classIterator
+                = new ServiceLoader.ClassIterator<SerializerHook>(singleton(definition), SerializerHook.class);
+        ServiceLoader.NewInstanceIterator<SerializerHook> instanceIterator
+                = new ServiceLoader.NewInstanceIterator<SerializerHook>(classIterator);
 
         assertTrue(instanceIterator.hasNext());
         DummyPrivateSerializerHook hook = (DummyPrivateSerializerHook) instanceIterator.next();
@@ -311,9 +389,9 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
         String factoryId = "com.hazelcast.ServiceLoaderSpecialCharsTestInterface";
 
         String externalForm = ClassLoader.getSystemResource("test with special chars^")
-                                         .toExternalForm()
-                                         .replace("%20", " ")
-                                         .replace("%5e", "^");
+                .toExternalForm()
+                .replace("%20", " ")
+                .replace("%5e", "^");
 
         URL url = new URL(externalForm + "/");
         ClassLoader given = new URLClassLoader(new URL[]{url});
@@ -372,5 +450,63 @@ public class ServiceLoaderTest extends HazelcastTestSupport {
         public boolean isOverwritable() {
             return false;
         }
+    }
+
+    /**
+     * Delegates everything to a given parent classloader.
+     * When a loaded class is defined by the parent then it "steals"
+     * its bytecode and try to define it on its own.
+     * <p>
+     * It simulates the situation where child and parent defines the same classes.
+     */
+    private static class StealingClassloader extends ClassLoader {
+        private final ClassLoader parent;
+
+        private StealingClassloader(ClassLoader parent) {
+            super(parent);
+            this.parent = parent;
+        }
+
+        @Override
+        public Class<?> loadClass(String name) throws ClassNotFoundException {
+            Class<?> loadedByParent = parent.loadClass(name);
+            if (loadedByParent != null && parent.equals(loadedByParent.getClassLoader())) {
+                byte[] bytecode = loadBytecodeFromParent(name);
+                Class<?> clazz = defineClass(name, bytecode, 0, bytecode.length);
+                resolveClass(clazz);
+                return clazz;
+            } else {
+                return loadedByParent;
+            }
+        }
+
+        @Override
+        public Enumeration<URL> getResources(String name) throws IOException {
+            return parent.getResources(name);
+        }
+
+        @Override
+        public InputStream getResourceAsStream(String name) {
+            return parent.getResourceAsStream(name);
+        }
+
+        private byte[] loadBytecodeFromParent(String className) {
+            String resource = className.replace('.', '/').concat(".class");
+            InputStream is = null;
+            try {
+                is = parent.getResourceAsStream(resource);
+                if (is != null) {
+                    try {
+                        return toByteArray(is);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            } finally {
+                IOUtil.closeResource(is);
+            }
+            return null;
+        }
+
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.hazelcast.config.InMemoryFormat.BINARY;
 import static com.hazelcast.map.impl.querycache.AbstractQueryCacheTestSupport.getMap;
 import static org.junit.Assert.assertEquals;
 
@@ -52,7 +53,7 @@ public class QueryCacheInMemoryFormatTest extends HazelcastTestSupport {
     @Test
     public void testBinaryFormat_deserializeMoreTime() {
         int expectedDeserializationCount = 10;
-        testInMemoryFormat(InMemoryFormat.BINARY, expectedDeserializationCount);
+        testInMemoryFormat(BINARY, expectedDeserializationCount);
     }
 
     private void testInMemoryFormat(InMemoryFormat inMemoryFormat, int expectedDeserializationCount) {
@@ -75,11 +76,14 @@ public class QueryCacheInMemoryFormatTest extends HazelcastTestSupport {
         IMap<Integer, SerializableObject> map = getMap(node, mapName);
 
         map.put(1, new SerializableObject());
+        assertEquals(0, SerializableObject.deserializationCount.get());
 
         QueryCache<Integer, SerializableObject> cache = map.getQueryCache(cacheName);
 
         for (int i = 0; i < 10; i++) {
             cache.get(1);
+            int expectedInitialCountInLoop = inMemoryFormat == BINARY ? i + 1 : 1;
+            assertEquals("Error on iteration " + i, expectedInitialCountInLoop, SerializableObject.deserializationCount.get());
         }
 
         assertEquals(expectedDeserializationCount, SerializableObject.deserializationCount.get());
@@ -91,6 +95,7 @@ public class QueryCacheInMemoryFormatTest extends HazelcastTestSupport {
 
         private void readObject(java.io.ObjectInputStream stream) throws IOException, ClassNotFoundException {
             deserializationCount.incrementAndGet();
+            Thread.dumpStack();
         }
     }
 }

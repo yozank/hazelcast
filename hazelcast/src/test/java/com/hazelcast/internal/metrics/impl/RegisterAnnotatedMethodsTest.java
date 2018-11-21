@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -303,7 +303,6 @@ public class RegisterAnnotatedMethodsTest extends HazelcastTestSupport {
         }
     }
 
-
     @Test
     public void register_staticMethod() {
         StaticMethod object = new StaticMethod();
@@ -353,7 +352,7 @@ public class RegisterAnnotatedMethodsTest extends HazelcastTestSupport {
         assertEquals(object.field, fieldGauge.read());
     }
 
-    public static abstract class ClassWithGauges {
+    abstract static class ClassWithGauges {
         @Probe
         int method() {
             return 10;
@@ -363,7 +362,6 @@ public class RegisterAnnotatedMethodsTest extends HazelcastTestSupport {
         int field = 10;
     }
 
-    public static class SubclassWithGauges extends ClassWithGauges {
-
+    private static class SubclassWithGauges extends ClassWithGauges {
     }
 }

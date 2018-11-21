@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.test.HazelcastTestSupport.assertClusterSize;
 import static com.hazelcast.test.HazelcastTestSupport.assertClusterSizeEventually;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -64,10 +65,8 @@ public class MapReduceLiteMemberTest {
         instance = factory.newHazelcastInstance();
         instance2 = factory.newHazelcastInstance();
 
-        assertClusterSizeEventually(4, lite);
-        assertClusterSizeEventually(4, lite2);
-        assertClusterSizeEventually(4, instance);
-        assertClusterSizeEventually(4, instance2);
+        assertClusterSize(4, lite, instance2);
+        assertClusterSizeEventually(4, lite2, instance);
 
         client = factory.newHazelcastClient();
     }
@@ -111,8 +110,7 @@ public class MapReduceLiteMemberTest {
     public void testMapReduceJobSubmissionWithNoDataNode() throws Exception {
         instance.getLifecycleService().terminate();
         instance2.getLifecycleService().terminate();
-        assertClusterSizeEventually(2, lite);
-        assertClusterSizeEventually(2, lite2);
+        assertClusterSizeEventually(2, lite, lite2);
 
         ICompletableFuture<Map<String, List<Integer>>> future = com.hazelcast.mapreduce.MapReduceLiteMemberTest
                 .testMapReduceJobSubmissionWithNoDataNode(client);

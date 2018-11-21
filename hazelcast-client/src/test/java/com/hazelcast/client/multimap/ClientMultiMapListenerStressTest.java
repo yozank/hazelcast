@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,6 @@ public class ClientMultiMapListenerStressTest {
     private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
     private HazelcastInstance server;
 
-
     @After
     public void tearDown() {
         hazelcastFactory.terminateAll();
@@ -87,7 +86,6 @@ public class ClientMultiMapListenerStressTest {
         final int expectedSize = PutItemsThread.MAX_ITEMS * putThreads.length;
         assertEquals(expectedSize, multiMap.size());
         assertReceivedEventsSize(expectedSize, putThreads);
-
     }
 
     private void assertReceivedEventsSize(final int expectedSize, final PutItemsThread[] putThreads) {
@@ -134,5 +132,4 @@ public class ClientMultiMapListenerStressTest {
             add.incrementAndGet();
         }
     }
-
 }

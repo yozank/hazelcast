@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.client.protocol;
 
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.MapPutCodec;
+import com.hazelcast.client.impl.protocol.codec.MapPutWithMaxIdleCodec;
 import com.hazelcast.client.impl.protocol.util.ClientProtocolBuffer;
 import com.hazelcast.client.impl.protocol.util.SafeBuffer;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
@@ -44,7 +45,7 @@ public class MapMessageEncodeDecodeTest {
 
     private static final String NAME = "name";
     private static final Data DATA = serializationService.toData("The Test");
-    private static final long THE_LONG = 0xFFFFl;
+    private static final long THE_LONG = 0xFFFFL;
 
     private ClientProtocolBuffer byteBuffer;
 
@@ -57,8 +58,7 @@ public class MapMessageEncodeDecodeTest {
     public void shouldEncodeDecodeCorrectly_PUT() {
         final int calculatedSize = MapPutCodec.RequestParameters.calculateDataSize(NAME, DATA, DATA, THE_LONG, THE_LONG);
         ClientMessage cmEncode = MapPutCodec.encodeRequest(NAME, DATA, DATA, THE_LONG, THE_LONG);
-        cmEncode.setVersion((short) 3).addFlag(ClientMessage.BEGIN_AND_END_FLAGS)
-                .setCorrelationId(Long.MAX_VALUE).setPartitionId(77);
+        cmEncode.setVersion((short) 3).addFlag(ClientMessage.BEGIN_AND_END_FLAGS).setCorrelationId(Long.MAX_VALUE).setPartitionId(77);
 
         assertTrue(calculatedSize > cmEncode.getFrameLength());
         byteBuffer = cmEncode.buffer();
@@ -79,4 +79,29 @@ public class MapMessageEncodeDecodeTest {
         assertEquals(THE_LONG, decodeParams.ttl);
     }
 
+    @Test
+    public void shouldEncodeDecodeCorrectly_PUT_withMaxIdle() {
+        final int calculatedSize = MapPutWithMaxIdleCodec.RequestParameters.calculateDataSize(NAME, DATA, DATA, THE_LONG, THE_LONG, THE_LONG);
+        ClientMessage cmEncode = MapPutWithMaxIdleCodec.encodeRequest(NAME, DATA, DATA, THE_LONG, THE_LONG, THE_LONG);
+        cmEncode.setVersion((short) 3).addFlag(ClientMessage.BEGIN_AND_END_FLAGS).setCorrelationId(Long.MAX_VALUE).setPartitionId(77);
+
+        assertTrue(calculatedSize > cmEncode.getFrameLength());
+        byteBuffer = cmEncode.buffer();
+
+        ClientMessage cmDecode = ClientMessage.createForDecode(byteBuffer, 0);
+        MapPutWithMaxIdleCodec.RequestParameters decodeParams = MapPutWithMaxIdleCodec.decodeRequest(cmDecode);
+
+        assertEquals(MapPutWithMaxIdleCodec.REQUEST_TYPE.id(), cmDecode.getMessageType());
+        assertEquals(3, cmDecode.getVersion());
+        assertEquals(ClientMessage.BEGIN_AND_END_FLAGS, cmDecode.getFlags());
+        assertEquals(Long.MAX_VALUE, cmDecode.getCorrelationId());
+        assertEquals(77, cmDecode.getPartitionId());
+
+        assertEquals(NAME, decodeParams.name);
+        assertEquals(DATA, decodeParams.key);
+        assertEquals(DATA, decodeParams.value);
+        assertEquals(THE_LONG, decodeParams.threadId);
+        assertEquals(THE_LONG, decodeParams.ttl);
+        assertEquals(THE_LONG, decodeParams.maxIdle);
+    }
 }

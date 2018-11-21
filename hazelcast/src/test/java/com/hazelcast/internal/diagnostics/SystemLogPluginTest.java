@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(QuickTest.class)
+@SuppressWarnings("WeakerAccess")
 public class SystemLogPluginTest extends AbstractDiagnosticsPluginTest {
 
     protected Config config;
@@ -75,7 +76,7 @@ public class SystemLogPluginTest extends AbstractDiagnosticsPluginTest {
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 plugin.run(logWriter);
 
                 assertContains("Lifecycle[" + LINE_SEPARATOR + "                          SHUTTING_DOWN]");
@@ -88,7 +89,7 @@ public class SystemLogPluginTest extends AbstractDiagnosticsPluginTest {
         HazelcastInstance instance = hzFactory.newHazelcastInstance(config);
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 plugin.run(logWriter);
                 assertContains("MemberAdded[");
             }
@@ -97,7 +98,7 @@ public class SystemLogPluginTest extends AbstractDiagnosticsPluginTest {
         instance.shutdown();
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 plugin.run(logWriter);
                 assertContains("MemberRemoved[");
             }
@@ -115,7 +116,7 @@ public class SystemLogPluginTest extends AbstractDiagnosticsPluginTest {
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 plugin.run(logWriter);
                 assertContains("MigrationStarted");
                 assertContains("MigrationCompleted");

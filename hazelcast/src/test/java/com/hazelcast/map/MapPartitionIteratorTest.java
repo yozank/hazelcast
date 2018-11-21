@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ public class MapPartitionIteratorTest extends HazelcastTestSupport {
         Iterator<Map.Entry<Object, Object>> iterator = proxy.iterator(10, 1, prefetchValues);
         iterator.next();
         iterator.remove();
-        assertEquals(0,proxy.size());
+        assertEquals(0, proxy.size());
     }
 
     @Test

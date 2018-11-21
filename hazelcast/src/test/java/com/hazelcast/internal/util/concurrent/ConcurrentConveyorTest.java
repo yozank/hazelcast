@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -280,16 +280,18 @@ public class ConcurrentConveyorTest {
         final AtomicBoolean flag = new AtomicBoolean();
         final CountDownLatch latch = new CountDownLatch(1);
 
-        new Thread() { public void run() {
-            // when
-            conveyor.backpressureOn();
-            latch.countDown();
-            parkNanos(MILLISECONDS.toNanos(10));
+        new Thread() {
+            public void run() {
+                // when
+                conveyor.backpressureOn();
+                latch.countDown();
+                parkNanos(MILLISECONDS.toNanos(10));
 
-            // then
-            assertFalse(flag.get());
-            conveyor.backpressureOff();
-        }}.start();
+                // then
+                assertFalse(flag.get());
+                conveyor.backpressureOff();
+            }
+        }.start();
 
         latch.await();
         conveyor.submit(defaultQ, item1);
@@ -302,16 +304,18 @@ public class ConcurrentConveyorTest {
         final AtomicBoolean flag = new AtomicBoolean();
         final CountDownLatch latch = new CountDownLatch(1);
 
-        new Thread() { public void run() {
-            // when
-            conveyor.drainerArrived();
-            latch.countDown();
-            parkNanos(MILLISECONDS.toNanos(10));
+        new Thread() {
+            public void run() {
+                // when
+                conveyor.drainerArrived();
+                latch.countDown();
+                parkNanos(MILLISECONDS.toNanos(10));
 
-            // then
-            assertFalse(flag.get());
-            conveyor.drainerDone();
-        }}.start();
+                // then
+                assertFalse(flag.get());
+                conveyor.drainerDone();
+            }
+        }.start();
 
         latch.await();
         conveyor.awaitDrainerGone();

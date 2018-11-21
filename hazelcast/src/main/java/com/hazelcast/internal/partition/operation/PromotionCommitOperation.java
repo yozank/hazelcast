@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,18 @@ import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
+import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.PartitionDataSerializerHook;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.spi.CallStatus;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.OperationService;
+import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.operationservice.InternalOperationService;
@@ -42,8 +45,11 @@ import java.util.Collection;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Used for committing a promotion on destination.
- * Updates the partition table on destination and commits the promotion.
+ * Used for committing a promotion on destination. Sent by the master to update the partition table on destination and
+ * commit the promotion.
+ * The promotion is executed in two stages which are denoted by the {@link #beforeStateCompleted} property. First it invokes
+ * {@link BeforePromotionOperation}s for every promoted partition. After all operations return it will reschedule itself
+ * and finalize the promotions by sending {@link FinalizePromotionOperation} for every promotion.
  */
 public class PromotionCommitOperation extends AbstractPartitionOperation implements MigrationCycleOperation {
 
@@ -92,30 +98,45 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
     }
 
     @Override
-    public void run() {
-        if (beforeStateCompleted) {
-            finalizePromotion();
-        }
-    }
-
-    @Override
-    public void afterRun() throws Exception {
+    public CallStatus call() throws Exception {
         if (!beforeStateCompleted) {
-            // Triggering before-promotion tasks in afterRun() after response phase is done,
-            // to avoid inadvertently reading `beforeStateCompleted` as true when asked to send a response.
-            // `beforeStateCompleted` will be set when all before-promotion tasks are completed.
-            beforePromotion();
+            return beforePromotion();
+        } else {
+            finalizePromotion();
+            return CallStatus.DONE_RESPONSE;
         }
     }
 
-    private void beforePromotion() {
+    /**
+     * Sends {@link BeforePromotionOperation}s for all promotions and register a callback on each operation to track when
+     * operations are finished.
+     */
+    private CallStatus beforePromotion() {
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
         InternalOperationService operationService = nodeEngine.getOperationService();
         InternalPartitionServiceImpl partitionService = getService();
 
+        if (!partitionService.getMigrationManager().acquirePromotionPermit()) {
+            throw new RetryableHazelcastException("Another promotion is being run currently. "
+                    + "This is only expected when promotion is retried to an unresponsive destination.");
+        }
+
         ILogger logger = getLogger();
+        int partitionStateVersion = partitionService.getPartitionStateVersion();
+        if (partitionState.getVersion() <= partitionStateVersion) {
+            logger.warning("Already applied promotions to the partition state. Promotion state version: "
+                    + partitionState.getVersion() + ", current version: " + partitionStateVersion);
+            partitionService.getMigrationManager().releasePromotionPermit();
+            success = true;
+            return CallStatus.DONE_RESPONSE;
+        }
+
+        partitionService.getInternalMigrationListener().onPromotionStart(MigrationParticipant.DESTINATION, promotions);
+
         if (logger.isFineEnabled()) {
-            logger.fine("Submitting BeforePromotionOperations for " + promotions.size() + " promotions.");
+            logger.fine("Submitting BeforePromotionOperations for " + promotions.size() + " promotions. "
+                    + "Promotion partition state version: " + partitionState.getVersion()
+                    + ", current partition state version: " + partitionStateVersion);
         }
 
         Runnable beforePromotionsCallback = new BeforePromotionOperationCallback(this, new AtomicInteger(promotions.size()));
@@ -124,13 +145,14 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
             if (logger.isFinestEnabled()) {
                 logger.finest("Submitting BeforePromotionOperation for promotion: " + promotion);
             }
-            int currentReplicaIndex = promotion.getDestinationCurrentReplicaIndex();
-            BeforePromotionOperation op = new BeforePromotionOperation(currentReplicaIndex, beforePromotionsCallback);
+            BeforePromotionOperation op = new BeforePromotionOperation(promotion, beforePromotionsCallback);
             op.setPartitionId(promotion.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
             operationService.execute(op);
         }
+        return CallStatus.DONE_VOID;
     }
 
+    /** Processes the sent partition state and sends {@link FinalizePromotionOperation} for all promotions. */
     private void finalizePromotion() {
         NodeEngine nodeEngine = getNodeEngine();
         InternalPartitionServiceImpl partitionService = getService();
@@ -140,18 +162,27 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
         success = partitionService.processPartitionRuntimeState(partitionState);
 
         ILogger logger = getLogger();
+        if (!success) {
+            logger.severe("Promotion of " + promotions.size() + " partitions failed. "
+                    + ". Promotion partition state version: " + partitionState.getVersion()
+                    + ", current partition state version: " + partitionService.getPartitionStateVersion());
+        }
         if (logger.isFineEnabled()) {
-            logger.fine("Submitting FinalizePromotionOperations for " + promotions.size() + " promotions. Result: " + success);
+            logger.fine("Submitting FinalizePromotionOperations for " + promotions.size() + " promotions. Result: " + success
+                    + ". Promotion partition state version: " + partitionState.getVersion()
+                    + ", current partition state version: " + partitionService.getPartitionStateVersion());
         }
         for (MigrationInfo promotion : promotions) {
             if (logger.isFinestEnabled()) {
                 logger.finest("Submitting FinalizePromotionOperation for promotion: " + promotion + ". Result: " + success);
             }
-            int currentReplicaIndex = promotion.getDestinationCurrentReplicaIndex();
-            FinalizePromotionOperation op = new FinalizePromotionOperation(currentReplicaIndex, success);
+            FinalizePromotionOperation op = new FinalizePromotionOperation(promotion, success);
             op.setPartitionId(promotion.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
             operationService.execute(op);
         }
+        partitionService.getInternalMigrationListener()
+                .onPromotionComplete(MigrationParticipant.DESTINATION, promotions, success);
+        partitionService.getMigrationManager().releasePromotionPermit();
     }
 
     @Override
@@ -159,6 +190,10 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
         return PartitionDataSerializerHook.PROMOTION_COMMIT;
     }
 
+    /**
+     * Checks if all {@link BeforePromotionOperation}s have been executed.
+     * On completion sets the {@link #beforeStateCompleted} to {@code true} and reschedules this {@link PromotionCommitOperation}.
+     */
     private static class BeforePromotionOperationCallback implements Runnable {
         private final PromotionCommitOperation promotionCommitOperation;
         private final AtomicInteger tasks;
@@ -184,14 +219,10 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
         }
     }
 
+    /** Reruns this operation with {@link #beforeStateCompleted} set to {@code true}. */
     private void onBeforePromotionsComplete() {
         beforeStateCompleted = true;
         getNodeEngine().getOperationService().execute(this);
-    }
-
-    @Override
-    public boolean returnsResponse() {
-        return beforeStateCompleted;
     }
 
     @Override
@@ -211,12 +242,6 @@ public class PromotionCommitOperation extends AbstractPartitionOperation impleme
             return ExceptionAction.THROW_EXCEPTION;
         }
         return super.onInvocationException(throwable);
-    }
-
-    @Override
-    public void onExecutionFailure(Throwable e) {
-        // promotion failed, should return failure result
-        beforeStateCompleted = true;
     }
 
     @Override

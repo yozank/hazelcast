@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,10 +38,9 @@ import com.hazelcast.internal.ascii.rest.HttpHeadCommandProcessor;
 import com.hazelcast.internal.ascii.rest.HttpPostCommandProcessor;
 import com.hazelcast.internal.ascii.rest.RestValue;
 import com.hazelcast.logging.ILogger;
-import com.hazelcast.nio.ascii.TextWriteHandler;
+import com.hazelcast.nio.ascii.TextEncoder;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.util.Clock;
-import com.hazelcast.util.EmptyStatement;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.nio.ByteBuffer;
@@ -76,16 +75,18 @@ import static com.hazelcast.internal.ascii.TextCommandConstants.TextCommandType.
 import static com.hazelcast.internal.ascii.TextCommandConstants.TextCommandType.TOUCH;
 import static com.hazelcast.internal.ascii.TextCommandConstants.TextCommandType.UNKNOWN;
 import static com.hazelcast.internal.ascii.TextCommandConstants.TextCommandType.VERSION;
+import static com.hazelcast.util.EmptyStatement.ignore;
 import static com.hazelcast.util.ThreadUtil.createThreadName;
+import static java.lang.Thread.currentThread;
 
+@SuppressWarnings({"checkstyle:methodcount", "checkstyle:classdataabstractioncoupling"})
 public class TextCommandServiceImpl implements TextCommandService {
 
     private static final int TEXT_COMMAND_PROCESSOR_SIZE = 100;
     private static final int MILLIS_TO_SECONDS = 1000;
     private static final long WAIT_TIME = 1000;
-    private final Node node;
+
     private final TextCommandProcessor[] textCommandProcessors = new TextCommandProcessor[TEXT_COMMAND_PROCESSOR_SIZE];
-    private final HazelcastInstance hazelcast;
     private final AtomicLong sets = new AtomicLong();
     private final AtomicLong touches = new AtomicLong();
     private final AtomicLong getHits = new AtomicLong();
@@ -97,41 +98,50 @@ public class TextCommandServiceImpl implements TextCommandService {
     private final AtomicLong decrementHits = new AtomicLong();
     private final AtomicLong decrementMisses = new AtomicLong();
     private final long startTime = Clock.currentTimeMillis();
+
+    private final Node node;
+    private final HazelcastInstance hazelcast;
     private final ILogger logger;
+
     private volatile ResponseThreadRunnable responseThreadRunnable;
     private volatile boolean running = true;
 
     private final Object mutex = new Object();
 
+    @SuppressWarnings("checkstyle:executablestatementcount")
     public TextCommandServiceImpl(Node node) {
         this.node = node;
         this.hazelcast = node.hazelcastInstance;
         this.logger = node.getLogger(this.getClass().getName());
         EntryConverter entryConverter = new EntryConverter(this, node.getLogger(EntryConverter.class));
-        textCommandProcessors[GET.getValue()] = new GetCommandProcessor(this, entryConverter);
-        textCommandProcessors[BULK_GET.getValue()] = new BulkGetCommandProcessor(this, entryConverter);
-        textCommandProcessors[SET.getValue()] = new SetCommandProcessor(this);
-        textCommandProcessors[APPEND.getValue()] = new SetCommandProcessor(this);
-        textCommandProcessors[PREPEND.getValue()] = new SetCommandProcessor(this);
-        textCommandProcessors[ADD.getValue()] = new SetCommandProcessor(this);
-        textCommandProcessors[REPLACE.getValue()] = new SetCommandProcessor(this);
-        textCommandProcessors[GET_END.getValue()] = new NoOpCommandProcessor(this);
-        textCommandProcessors[DELETE.getValue()] = new DeleteCommandProcessor(this);
-        textCommandProcessors[QUIT.getValue()] = new SimpleCommandProcessor(this);
-        textCommandProcessors[STATS.getValue()] = new StatsCommandProcessor(this);
-        textCommandProcessors[UNKNOWN.getValue()] = new ErrorCommandProcessor(this);
-        textCommandProcessors[VERSION.getValue()] = new VersionCommandProcessor(this);
-        textCommandProcessors[TOUCH.getValue()] = new TouchCommandProcessor(this);
-        textCommandProcessors[INCREMENT.getValue()] = new IncrementCommandProcessor(this);
-        textCommandProcessors[DECREMENT.getValue()] = new IncrementCommandProcessor(this);
-        textCommandProcessors[ERROR_CLIENT.getValue()] = new ErrorCommandProcessor(this);
-        textCommandProcessors[ERROR_SERVER.getValue()] = new ErrorCommandProcessor(this);
-        textCommandProcessors[HTTP_GET.getValue()] = new HttpGetCommandProcessor(this);
-        textCommandProcessors[HTTP_POST.getValue()] = new HttpPostCommandProcessor(this);
-        textCommandProcessors[HTTP_PUT.getValue()] = new HttpPostCommandProcessor(this);
-        textCommandProcessors[HTTP_DELETE.getValue()] = new HttpDeleteCommandProcessor(this);
-        textCommandProcessors[HTTP_HEAD.getValue()] = new HttpHeadCommandProcessor(this);
-        textCommandProcessors[NO_OP.getValue()] = new NoOpCommandProcessor(this);
+        register(GET, new GetCommandProcessor(this, entryConverter));
+        register(BULK_GET, new BulkGetCommandProcessor(this, entryConverter));
+        register(SET, new SetCommandProcessor(this));
+        register(APPEND, new SetCommandProcessor(this));
+        register(PREPEND, new SetCommandProcessor(this));
+        register(ADD, new SetCommandProcessor(this));
+        register(REPLACE, new SetCommandProcessor(this));
+        register(GET_END, new NoOpCommandProcessor(this));
+        register(DELETE, new DeleteCommandProcessor(this));
+        register(QUIT, new SimpleCommandProcessor(this));
+        register(STATS, new StatsCommandProcessor(this));
+        register(UNKNOWN, new ErrorCommandProcessor(this));
+        register(VERSION, new VersionCommandProcessor(this));
+        register(TOUCH, new TouchCommandProcessor(this));
+        register(INCREMENT, new IncrementCommandProcessor(this));
+        register(DECREMENT, new IncrementCommandProcessor(this));
+        register(ERROR_CLIENT, new ErrorCommandProcessor(this));
+        register(ERROR_SERVER, new ErrorCommandProcessor(this));
+        register(HTTP_GET, new HttpGetCommandProcessor(this));
+        register(HTTP_POST, new HttpPostCommandProcessor(this));
+        register(HTTP_PUT, new HttpPostCommandProcessor(this));
+        register(HTTP_DELETE, new HttpDeleteCommandProcessor(this));
+        register(HTTP_HEAD, new HttpHeadCommandProcessor(this));
+        register(NO_OP, new NoOpCommandProcessor(this));
+    }
+
+    protected void register(TextCommandConstants.TextCommandType type, TextCommandProcessor processor) {
+        textCommandProcessors[type.getValue()] = processor;
     }
 
     @Override
@@ -294,8 +304,8 @@ public class TextCommandServiceImpl implements TextCommandService {
     @Override
     public void lock(String mapName, String key) throws InterruptedException {
         if (!hazelcast.getMap(mapName).tryLock(key, 1, TimeUnit.MINUTES)) {
-            throw new RuntimeException("Memcache client could not get the lock for map:"
-                    + mapName + " key:" + key + " in 1 minute");
+            throw new RuntimeException("Memcache client could not get the lock for map: "
+                    + mapName + ", key: " + key + " in 1 minute");
         }
     }
 
@@ -325,6 +335,7 @@ public class TextCommandServiceImpl implements TextCommandService {
         try {
             return hazelcast.getQueue(queueName).poll(seconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
+            currentThread().interrupt();
             return null;
         }
     }
@@ -347,6 +358,7 @@ public class TextCommandServiceImpl implements TextCommandService {
         responseThreadRunnable.sendResponse(textCommand);
     }
 
+    @Override
     public void stop() {
         final ResponseThreadRunnable rtr = responseThreadRunnable;
         if (rtr != null) {
@@ -393,14 +405,17 @@ public class TextCommandServiceImpl implements TextCommandService {
                             stopObject.notify();
                         }
                     } else {
-                        TextWriteHandler textWriteHandler = textCommand.getWriteHandler();
+                        TextEncoder textWriteHandler = textCommand.getEncoder();
                         textWriteHandler.enqueue(textCommand);
                     }
                 } catch (InterruptedException e) {
+                    currentThread().interrupt();
                     return;
                 } catch (OutOfMemoryError e) {
                     OutOfMemoryErrorDispatcher.onOutOfMemory(e);
                     throw e;
+                } catch (Throwable t) {
+                    logger.severe("Error while processing Memcache or Rest command.", t);
                 }
             }
         }
@@ -424,7 +439,7 @@ public class TextCommandServiceImpl implements TextCommandService {
                     //noinspection WaitNotInLoop
                     stopObject.wait(WAIT_TIME);
                 } catch (Exception ignored) {
-                    EmptyStatement.ignore(ignored);
+                    ignore(ignored);
                 }
             }
         }

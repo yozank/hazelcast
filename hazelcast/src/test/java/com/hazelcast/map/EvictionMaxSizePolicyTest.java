@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,9 +61,9 @@ import static com.hazelcast.config.MaxSizeConfig.MaxSizePolicy.PER_PARTITION;
 import static com.hazelcast.config.MaxSizeConfig.MaxSizePolicy.USED_HEAP_PERCENTAGE;
 import static com.hazelcast.config.MaxSizeConfig.MaxSizePolicy.USED_HEAP_SIZE;
 import static com.hazelcast.memory.MemoryUnit.MEGABYTES;
+import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -81,6 +81,65 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
     public void testPerNodePolicy_withManyNodes() {
         int nodeCount = 2;
         testPerNodePolicy(nodeCount);
+    }
+
+    @Test
+    public void testPerNodePolicy_afterGracefulShutdown() {
+        int nodeCount = 2;
+        int perNodeMaxSize = 1000;
+
+        // eviction takes place if a partitions size exceeds this number
+        // see EvictionChecker#translatePerNodeSizeToPartitionSize
+        double maxPartitionSize = 1D * nodeCount * perNodeMaxSize / PARTITION_COUNT;
+
+        String mapName = "testPerNodePolicy_afterGracefulShutdown";
+        Config config = createConfig(PER_NODE, perNodeMaxSize, mapName);
+
+        // populate map from one of the nodes
+        Collection<HazelcastInstance> nodes = createNodes(nodeCount, config);
+        for (HazelcastInstance node : nodes) {
+            IMap map = node.getMap(mapName);
+            for (int i = 0; i < 5000; i++) {
+                map.put(i, i);
+            }
+
+            node.shutdown();
+            break;
+        }
+
+        for (HazelcastInstance node : nodes) {
+            if (node.getLifecycleService().isRunning()) {
+                int mapSize = node.getMap(mapName).size();
+                String message = format("map size is %d and it should be smaller "
+                                + "than maxPartitionSize * PARTITION_COUNT which is %.0f",
+                        mapSize, maxPartitionSize * PARTITION_COUNT);
+
+                assertTrue(message, mapSize <= maxPartitionSize * PARTITION_COUNT);
+            }
+        }
+    }
+
+    /**
+     * Eviction starts if a partitions' size exceeds this number:
+     *
+     * double maxPartitionSize = 1D * nodeCount * perNodeMaxSize / PARTITION_COUNT;
+     *
+     * when calculated `maxPartitionSize` is under 1, we should forcibly set it
+     * to 1, otherwise all puts will immediately be removed by eviction.
+     */
+    @Test
+    public void testPerNodePolicy_does_not_cause_unexpected_eviction_when_translated_partition_size_under_one() {
+        String mapName = randomMapName();
+        int maxSize = PARTITION_COUNT / 2;
+        Config config = createConfig(PER_NODE, maxSize, mapName);
+        HazelcastInstance node = createHazelcastInstance(config);
+        IMap map = node.getMap(mapName);
+
+        for (int i = 0; i < PARTITION_COUNT; i++) {
+            String keyForPartition = generateKeyForPartition(node, i);
+            map.put(keyForPartition, i);
+            assertEquals(i, map.get(keyForPartition));
+        }
     }
 
     @Test
@@ -220,7 +279,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
         }
     }
 
-    static public void setTestSizeEstimator(IMap map, final long oneEntryHeapCostInBytes) {
+    public static void setTestSizeEstimator(IMap map, final long oneEntryHeapCostInBytes) {
         final MapProxyImpl mapProxy = (MapProxyImpl) map;
         final MapService mapService = (MapService) mapProxy.getService();
         final MapServiceContext mapServiceContext = mapService.getMapServiceContext();
@@ -299,7 +358,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
 
         MapContainer mapContainer = mapServiceContext.getMapContainer(map.getName());
 
-        MapEvictionPolicy mapEvictionPolicy = mapContainer.getMapConfig().getMapEvictionPolicy();
+        MapEvictionPolicy mapEvictionPolicy = mapContainer.getMapEvictionPolicy();
         EvictionChecker evictionChecker = new EvictionChecker(memoryInfoAccessor, mapServiceContext);
         IPartitionService partitionService = mapServiceContext.getNodeEngine().getPartitionService();
         Evictor evictor = new TestEvictor(mapEvictionPolicy, evictionChecker, partitionService);
@@ -309,7 +368,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
     private static final class TestEvictor extends EvictorImpl {
 
         TestEvictor(MapEvictionPolicy mapEvictionPolicy, EvictionChecker evictionChecker, IPartitionService partitionService) {
-            super(mapEvictionPolicy, evictionChecker, partitionService);
+            super(mapEvictionPolicy, evictionChecker, partitionService, 1);
         }
 
         @Override
@@ -334,7 +393,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
 
     Collection<IMap> createMaps(String mapName, Config config, int nodeCount) {
         final List<IMap> maps = new ArrayList<IMap>();
-        final HazelcastInstance[] nodes = createNodes(nodeCount, config);
+        Collection<HazelcastInstance> nodes = createNodes(nodeCount, config);
         for (HazelcastInstance node : nodes) {
             final IMap map = node.getMap(mapName);
             maps.add(map);
@@ -359,8 +418,10 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
         return config;
     }
 
-    HazelcastInstance[] createNodes(int nodeCount, Config config) {
-        return createHazelcastInstanceFactory(nodeCount).newInstances(config);
+    Collection<HazelcastInstance> createNodes(int nodeCount, Config config) {
+        TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(nodeCount);
+        factory.newInstances(config);
+        return factory.getAllHazelcastInstances();
     }
 
     int getSize(Collection<IMap> maps) {
@@ -388,7 +449,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
             @Override
             public void run() throws Exception {
                 final int mapSize = getSize(maps);
-                final String message = String.format("map size is %d and it should be smaller "
+                final String message = format("map size is %d and it should be smaller "
                                 + "than perNodeMaxSize * nodeCount which is %d",
                         mapSize, perNodeMaxSize * nodeCount);
 
@@ -402,7 +463,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
             @Override
             public void run() throws Exception {
                 final int mapSize = getSize(maps);
-                final String message = String.format("map size is %d and it should be smaller "
+                final String message = format("map size is %d and it should be smaller "
                                 + "than perPartitionMaxSize * PARTITION_COUNT which is %d",
                         mapSize, perPartitionMaxSize * PARTITION_COUNT);
 
@@ -417,7 +478,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
             @Override
             public void run() throws Exception {
                 final long heapCost = getHeapCost(maps);
-                final String message = String.format("heap cost is %d and it should be smaller "
+                final String message = format("heap cost is %d and it should be smaller "
                                 + "than allowed max heap size %d in bytes",
                         heapCost, MEGABYTES.toBytes(maxSizeInMegaBytes));
 
@@ -432,7 +493,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
             public void run() throws Exception {
                 final int size = getSize(maps);
                 final long heapCost = getHeapCost(maps);
-                final String message = String.format("map size is %d, heap cost is %d in "
+                final String message = format("map size is %d, heap cost is %d in "
                                 + "bytes but total memory is %d in bytes",
                         size, heapCost, Runtime.getRuntime().totalMemory());
 
@@ -446,7 +507,7 @@ public class EvictionMaxSizePolicyTest extends HazelcastTestSupport {
             @Override
             public void run() throws Exception {
                 final int size = getSize(maps);
-                final String message = String.format("map size is %d", size);
+                final String message = format("map size is %d", size);
 
                 assertEquals(message, 0, size);
             }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.map.impl.operation;
 
+import com.hazelcast.core.EntryView;
 import com.hazelcast.internal.nearcache.impl.invalidation.Invalidator;
 import com.hazelcast.map.impl.MapContainer;
 import com.hazelcast.map.impl.MapDataSerializerHook;
@@ -25,16 +26,22 @@ import com.hazelcast.map.impl.PartitionContainer;
 import com.hazelcast.map.impl.event.MapEventPublisher;
 import com.hazelcast.map.impl.mapstore.MapDataStore;
 import com.hazelcast.map.impl.nearcache.MapNearCacheManager;
+import com.hazelcast.map.impl.record.Record;
+import com.hazelcast.wan.impl.CallerProvenance;
 import com.hazelcast.map.impl.recordstore.RecordStore;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.spi.ObjectNamespace;
+import com.hazelcast.spi.ServiceNamespaceAware;
 import com.hazelcast.spi.impl.AbstractNamedOperation;
 
 import java.util.List;
 
+import static com.hazelcast.internal.util.ToHeapDataConverter.toHeapData;
+import static com.hazelcast.map.impl.EntryViews.createSimpleEntryView;
 import static com.hazelcast.util.CollectionUtil.isEmpty;
 
-public abstract class MapOperation extends AbstractNamedOperation implements IdentifiedDataSerializable {
+public abstract class MapOperation extends AbstractNamedOperation implements IdentifiedDataSerializable, ServiceNamespaceAware {
 
     protected transient MapService mapService;
     protected transient MapContainer mapContainer;
@@ -43,6 +50,12 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
     protected transient RecordStore recordStore;
 
     protected transient boolean createRecordStoreOnDemand = true;
+
+    /**
+     * Used by wan-replication-service to disable wan-replication event publishing
+     * otherwise in active-active scenarios infinite loop of event forwarding can be seen.
+     */
+    protected boolean disableWanReplicationEvent;
 
     public MapOperation() {
     }
@@ -59,6 +72,10 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
     // for testing only
     public void setMapContainer(MapContainer mapContainer) {
         this.mapContainer = mapContainer;
+    }
+
+    protected final CallerProvenance getCallerProvenance() {
+        return disableWanReplicationEvent ? CallerProvenance.WAN : CallerProvenance.NOT_WAN;
     }
 
     @Override
@@ -86,7 +103,7 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
         return MapService.SERVICE_NAME;
     }
 
-    protected boolean isPostProcessing(RecordStore recordStore) {
+    public boolean isPostProcessing(RecordStore recordStore) {
         MapDataStore mapDataStore = recordStore.getMapDataStore();
         return mapDataStore.isPostProcessingMapStore() || mapServiceContext.hasInterceptor(name);
     }
@@ -111,8 +128,8 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
         }
     }
 
-    // TODO improve here it is possible that client cannot manage to attach listener
-    protected final void invalidateNearCache(Data key) {
+    // TODO: improve here it's possible that client cannot manage to attach listener
+    public final void invalidateNearCache(Data key) {
         if (!mapContainer.hasInvalidationListener() || key == null) {
             return;
         }
@@ -122,17 +139,20 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
     }
 
     /**
-     * This method helps to add clearing near-cache event only from one-partition
-     * which matches partition-id of the map-name.
+     * This method helps to add clearing Near Cache event only from one-partition which matches partitionId of the map name.
      */
     protected final void invalidateAllKeysInNearCaches() {
-        if (!mapContainer.hasInvalidationListener()
-                || getPartitionId() != getNodeEngine().getPartitionService().getPartitionId(name)) {
-            return;
-        }
+        if (mapContainer.hasInvalidationListener()) {
 
-        Invalidator invalidator = getNearCacheInvalidator();
-        invalidator.invalidateAllKeys(name, getCallerUuid());
+            int partitionId = getPartitionId();
+            Invalidator invalidator = getNearCacheInvalidator();
+
+            if (partitionId == getNodeEngine().getPartitionService().getPartitionId(name)) {
+                invalidator.invalidateAllKeys(name, getCallerUuid());
+            }
+
+            invalidator.resetPartitionMetaData(name, getPartitionId());
+        }
     }
 
     private Invalidator getNearCacheInvalidator() {
@@ -164,4 +184,57 @@ public abstract class MapOperation extends AbstractNamedOperation implements Ide
         return MapDataSerializerHook.F_ID;
     }
 
+    @Override
+    public ObjectNamespace getServiceNamespace() {
+        MapContainer container = mapContainer;
+        if (container == null) {
+            MapService service = getService();
+            container = service.getMapServiceContext().getMapContainer(name);
+        }
+        return container.getObjectNamespace();
+    }
+
+    /**
+     * @return {@code true} if this operation can generate WAN event, otherwise return {@code false}
+     * to indicate WAN event generation is not allowed for this operation
+     */
+    protected final boolean canThisOpGenerateWANEvent() {
+        return !disableWanReplicationEvent;
+    }
+
+    protected final void publishWanUpdate(Data dataKey, Object value) {
+        publishWanUpdateInternal(dataKey, value, false);
+    }
+
+    private void publishWanUpdateInternal(Data dataKey, Object value, boolean hasLoadProvenance) {
+        if (!canPublishWANEvent()) {
+            return;
+        }
+
+        Record record = recordStore.getRecord(dataKey);
+        if (record == null) {
+            return;
+        }
+
+        Data dataValue = toHeapData(mapServiceContext.toData(value));
+        EntryView entryView = createSimpleEntryView(toHeapData(dataKey), dataValue, record);
+
+        mapEventPublisher.publishWanUpdate(name, entryView, hasLoadProvenance);
+    }
+
+    protected final void publishLoadAsWanUpdate(Data dataKey, Object value) {
+        publishWanUpdateInternal(dataKey, value, true);
+    }
+
+    protected final void publishWanRemove(Data dataKey) {
+        if (!canPublishWANEvent()) {
+            return;
+        }
+
+        mapEventPublisher.publishWanRemove(name, toHeapData(dataKey));
+    }
+
+    private boolean canPublishWANEvent() {
+        return mapContainer.isWanReplicationEnabled() && canThisOpGenerateWANEvent();
+    }
 }

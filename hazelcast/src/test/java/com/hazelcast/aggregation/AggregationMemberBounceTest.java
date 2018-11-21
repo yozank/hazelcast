@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static com.hazelcast.aggregation.AggregatorsSpecTest.PERSONS_COUNT;
+
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
 public class AggregationMemberBounceTest extends HazelcastTestSupport {
@@ -52,7 +54,7 @@ public class AggregationMemberBounceTest extends HazelcastTestSupport {
         mapName = randomMapName();
         final HazelcastInstance steadyMember = bounceMemberRule.getSteadyMember();
         IMap<Integer, AggregatorsSpecTest.Person> map = steadyMember.getMap(mapName);
-        AggregatorsSpecTest.populateMapWithPersons(map, "");
+        AggregatorsSpecTest.populateMapWithPersons(map, "", PERSONS_COUNT);
     }
 
     @Test

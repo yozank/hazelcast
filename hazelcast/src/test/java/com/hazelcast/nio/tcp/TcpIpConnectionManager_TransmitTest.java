@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ package com.hazelcast.nio.tcp;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
 import com.hazelcast.nio.Packet;
-import com.hazelcast.spi.impl.PacketHandler;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.util.function.Consumer;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -50,9 +50,9 @@ public class TcpIpConnectionManager_TransmitTest extends TcpIpConnection_Abstrac
         super.setup();
         connManagerA.start();
 
-        ioServiceB.packetHandler = new PacketHandler() {
+        ioServiceB.packetConsumer = new Consumer<Packet>() {
             @Override
-            public void handle(Packet packet) throws Exception {
+            public void accept(Packet packet) {
                 packetsB.add(packet);
             }
         };

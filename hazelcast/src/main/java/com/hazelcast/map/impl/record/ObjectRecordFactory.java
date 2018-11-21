@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,8 @@ public class ObjectRecordFactory implements RecordFactory<Object> {
         assert value != null : "value can not be null";
 
         Object objectValue = serializationService.toObject(value);
-        return statisticsEnabled ? new ObjectRecordWithStats(objectValue) : new ObjectRecord(objectValue);
+        Record<Object> record = statisticsEnabled ? new ObjectRecordWithStats(objectValue) : new ObjectRecord(objectValue);
+        return record;
     }
 
     @Override
@@ -47,21 +48,5 @@ public class ObjectRecordFactory implements RecordFactory<Object> {
             v = serializationService.toObject(value);
         }
         record.setValue(v);
-    }
-
-    @Override
-    public boolean isEquals(Object value1, Object value2) {
-        Object v1 = value1 instanceof Data ? serializationService.toObject(value1) : value1;
-        Object v2 = value2 instanceof Data ? serializationService.toObject(value2) : value2;
-        if (v1 == null && v2 == null) {
-            return true;
-        }
-        if (v1 == null) {
-            return false;
-        }
-        if (v2 == null) {
-            return false;
-        }
-        return v1.equals(v2);
     }
 }

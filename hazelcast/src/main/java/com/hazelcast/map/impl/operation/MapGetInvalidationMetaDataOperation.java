@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.map.impl.MapDataSerializerHook;
 import com.hazelcast.map.impl.MapService;
 import com.hazelcast.map.impl.MapServiceContext;
 import com.hazelcast.map.impl.nearcache.MapNearCacheManager;
+import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
@@ -31,6 +32,7 @@ import com.hazelcast.spi.partition.IPartitionService;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +80,7 @@ public class MapGetInvalidationMetaDataOperation extends Operation implements Id
         private Map<String, List<Map.Entry<Integer, Long>>> namePartitionSequenceList;
 
         /**
-         * map of partition id and UUID
+         * map of partition ID and UUID
          */
         private Map<Integer, UUID> partitionUuidList;
 
@@ -146,6 +148,23 @@ public class MapGetInvalidationMetaDataOperation extends Operation implements Id
         }
     }
 
+    private List<Integer> getOwnedPartitions() {
+        IPartitionService partitionService = getNodeEngine().getPartitionService();
+        Map<Address, List<Integer>> memberPartitionsMap = partitionService.getMemberPartitionsMap();
+        List<Integer> ownedPartitions = memberPartitionsMap.get(getNodeEngine().getThisAddress());
+        return ownedPartitions == null ? Collections.<Integer>emptyList() : ownedPartitions;
+    }
+
+    private Map<Integer, UUID> getPartitionUuidList(List<Integer> ownedPartitionIds) {
+        MetaDataGenerator metaDataGenerator = getPartitionMetaDataGenerator();
+        Map<Integer, UUID> partitionUuids = createHashMap(ownedPartitionIds.size());
+        for (Integer partitionId : ownedPartitionIds) {
+            UUID uuid = metaDataGenerator.getOrCreateUuid(partitionId);
+            partitionUuids.put(partitionId, uuid);
+        }
+        return partitionUuids;
+    }
+
     private Map<String, List<Map.Entry<Integer, Long>>> getNamePartitionSequenceList(List<Integer> ownedPartitionIds) {
         MetaDataGenerator metaDataGenerator = getPartitionMetaDataGenerator();
         Map<String, List<Map.Entry<Integer, Long>>> sequences = new HashMap<String, List<Map.Entry<Integer, Long>>>(
@@ -162,22 +181,6 @@ public class MapGetInvalidationMetaDataOperation extends Operation implements Id
             sequences.put(name, mapSequences);
         }
         return sequences;
-    }
-
-    private Map<Integer, UUID> getPartitionUuidList(List<Integer> ownedPartitionIds) {
-        MetaDataGenerator metaDataGenerator = getPartitionMetaDataGenerator();
-
-        Map<Integer, UUID> partitionUuids = createHashMap(ownedPartitionIds.size());
-        for (Integer partitionId : ownedPartitionIds) {
-            UUID uuid = metaDataGenerator.getOrCreateUuid(partitionId);
-            partitionUuids.put(partitionId, uuid);
-        }
-        return partitionUuids;
-    }
-
-    private List<Integer> getOwnedPartitions() {
-        IPartitionService partitionService = getNodeEngine().getPartitionService();
-        return partitionService.getMemberPartitions(getNodeEngine().getThisAddress());
     }
 
     private MetaDataGenerator getPartitionMetaDataGenerator() {

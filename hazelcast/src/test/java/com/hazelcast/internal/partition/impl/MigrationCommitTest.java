@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -143,30 +143,31 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldRollbackMigrationWhenMasterCrashesBeforeCommit() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
+        DelayMigrationStart masterListener = new DelayMigrationStart(migrationStartLatch);
+        config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
 
+        Config config3 = createConfig();
         final TerminateOtherMemberOnMigrationComplete listener3
                 = new TerminateOtherMemberOnMigrationComplete(migrationStartLatch);
         listener3.other = hz1;
-        migrationStartLatch.countDown();
-
-        Config config3 = createConfig();
         config3.addListenerConfig(new ListenerConfig(listener3));
         HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
 
-        assertClusterSizeEventually(2, hz2);
-        assertClusterSizeEventually(2, hz3);
+        assertClusterSizeEventually(3, hz2);
+        assertClusterSize(3, hz1, hz3);
+
+        migrationStartLatch.countDown();
 
         assertTrueEventually(new AssertTask() {
             @Override
@@ -183,33 +184,28 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldRollbackMigrationWhenDestinationCrashesBeforeCommit() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         TerminateOtherMemberOnMigrationComplete masterListener = new TerminateOtherMemberOnMigrationComplete(
                 migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
 
         HazelcastInstance hz3 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz3);
-
-        assertClusterSizeEventually(3, hz1);
-        assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
-
         masterListener.other = hz3;
-        migrationStartLatch.countDown();
 
-        sleepAtLeastSeconds(10);
+        assertClusterSize(3, hz1, hz3);
+        assertClusterSizeEventually(3, hz2);
+
+        migrationStartLatch.countDown();
 
         waitAllForSafeState(hz1, hz2);
 
@@ -225,33 +221,32 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldCommitMigrationWhenMasterCrashesAfterDestinationCommit() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
+        DelayMigrationStart masterListener = new DelayMigrationStart(migrationStartLatch);
+        config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         Config config2 = createConfig();
-        final CollectMigrationTaskOnCommit sourceListener = new CollectMigrationTaskOnCommit();
+        final CollectMigrationTaskOnCommit sourceListener = new CollectMigrationTaskOnCommit(migrationStartLatch);
         config2.addListenerConfig(new ListenerConfig(sourceListener));
         HazelcastInstance hz2 = factory.newHazelcastInstance(config2);
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
 
         Config config3 = createConfig();
-        TerminateOtherMemberOnMigrationCommit destinationListener = new TerminateOtherMemberOnMigrationCommit(
-                migrationStartLatch);
+
+        TerminateOtherMemberOnMigrationCommit destinationListener = new TerminateOtherMemberOnMigrationCommit();
         destinationListener.other = hz1;
         config3.addListenerConfig(new ListenerConfig(destinationListener));
         HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
-        assertNodeStartedEventually(hz3);
 
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -276,17 +271,16 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldCommitMigrationWhenSourceFailsDuringCommit() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         TerminateOtherMemberOnMigrationComplete masterListener = new TerminateOtherMemberOnMigrationComplete(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
@@ -295,13 +289,11 @@ public class MigrationCommitTest extends HazelcastTestSupport {
         InternalMigrationListenerImpl targetListener = new InternalMigrationListenerImpl();
         config3.addListenerConfig(new ListenerConfig(targetListener));
         HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
-        assertNodeStartedEventually(hz3);
 
         masterListener.other = hz2;
 
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -322,17 +314,16 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldRollbackMigrationWhenDestinationCrashesDuringCommit() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         DelayMigrationStartOnMaster masterListener = new DelayMigrationStartOnMaster(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
@@ -342,13 +333,11 @@ public class MigrationCommitTest extends HazelcastTestSupport {
         Config config3 = createConfig();
         config3.addListenerConfig(new ListenerConfig(memberListener));
         HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
-        assertNodeStartedEventually(hz3);
 
         warmUpPartitions(hz1, hz2, hz3);
 
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -368,18 +357,17 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldRetryMigrationIfParticipantPartitionTableVersionFallsBehind() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         final IncrementPartitionTableOnMigrationStart masterListener
                 = new IncrementPartitionTableOnMigrationStart(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
@@ -388,11 +376,9 @@ public class MigrationCommitTest extends HazelcastTestSupport {
         InternalMigrationListenerImpl targetListener = new InternalMigrationListenerImpl();
         config3.addListenerConfig(new ListenerConfig(targetListener));
         HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
-        assertNodeStartedEventually(hz3);
 
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -409,34 +395,27 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldEvictCompletedMigrationsWhenAllMembersAckPublishedPartitionTableAfterSuccessfulMigration() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
-        final CollectMigrationTaskOnCommit masterListener = new CollectMigrationTaskOnCommit();
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
+        final CollectMigrationTaskOnCommit masterListener = new CollectMigrationTaskOnCommit(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) getPartitionService(hz1);
         final MigrationManager migrationManager = partitionService.getMigrationManager();
 
         HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
 
-        Config config3 = createConfig();
-        DelayMigrationStart destinationListener = new DelayMigrationStart(migrationStartLatch);
+        HazelcastInstance hz3 = factory.newHazelcastInstance(createConfig());
 
-        config3.addListenerConfig(new ListenerConfig(destinationListener));
-        HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
-        assertNodeStartedEventually(hz3);
-
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -453,29 +432,26 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     @Test
     public void shouldNotEvictCompletedMigrationsWhenSomeMembersDoNotAckPublishedPartitionTableAfterSuccessfulMigration() {
-        CountDownLatch migrationStartLatch = new CountDownLatch(1);
-        CountDownLatch migrationCommitLatch = new CountDownLatch(1);
         Config config1 = createConfig();
         config1.setLiteMember(true);
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        CountDownLatch migrationStartLatch = new CountDownLatch(1);
         config1.addListenerConfig(new ListenerConfig(new DelayMigrationStart(migrationStartLatch)));
 
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
-        assertNodeStartedEventually(hz1);
 
         Config config2 = createConfig();
+        CountDownLatch migrationCommitLatch = new CountDownLatch(1);
         config2.addListenerConfig(new ListenerConfig(new DelayMigrationCommit(migrationCommitLatch)));
         HazelcastInstance hz2 = factory.newHazelcastInstance(config2);
-        assertNodeStartedEventually(hz2);
 
         warmUpPartitions(hz1, hz2);
         waitAllForSafeState(hz1, hz2);
 
         final HazelcastInstance hz3 = factory.newHazelcastInstance(createConfig());
-        assertNodeStartedEventually(hz3);
 
-        assertClusterSizeEventually(3, hz1);
+        assertClusterSize(3, hz1, hz3);
         assertClusterSizeEventually(3, hz2);
-        assertClusterSizeEventually(3, hz3);
 
         migrationStartLatch.countDown();
 
@@ -611,13 +587,13 @@ public class MigrationCommitTest extends HazelcastTestSupport {
         }
     }
 
-    private static class DelayMigrationStart extends InternalMigrationListener implements HazelcastInstanceAware {
+    public static class DelayMigrationStart extends InternalMigrationListener implements HazelcastInstanceAware {
 
         private final CountDownLatch migrationStartLatch;
 
         private volatile HazelcastInstance instance;
 
-        DelayMigrationStart(CountDownLatch migrationStartLatch) {
+        public DelayMigrationStart(CountDownLatch migrationStartLatch) {
             this.migrationStartLatch = migrationStartLatch;
         }
 
@@ -718,19 +694,8 @@ public class MigrationCommitTest extends HazelcastTestSupport {
     private static class TerminateOtherMemberOnMigrationCommit
             extends InternalMigrationListener implements HazelcastInstanceAware {
 
-        private final CountDownLatch migrationStartLatch;
-
         private volatile HazelcastInstance instance;
         private volatile HazelcastInstance other;
-
-        TerminateOtherMemberOnMigrationCommit(CountDownLatch migrationStartLatch) {
-            this.migrationStartLatch = migrationStartLatch;
-        }
-
-        @Override
-        public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
-            assertOpenEventually(migrationStartLatch);
-        }
 
         @Override
         public void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo) {
@@ -783,13 +748,19 @@ public class MigrationCommitTest extends HazelcastTestSupport {
 
     private static class CollectMigrationTaskOnCommit extends InternalMigrationListener implements HazelcastInstanceAware {
 
+        private final CountDownLatch migrationStartLatch;
         private final AtomicReference<MigrationInfo> migrationInfoRef = new AtomicReference<MigrationInfo>();
 
         private volatile boolean commit;
         private volatile HazelcastInstance instance;
 
+        public CollectMigrationTaskOnCommit(CountDownLatch migrationStartLatch) {
+            this.migrationStartLatch = migrationStartLatch;
+        }
+
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
+            assertOpenEventually(migrationStartLatch);
             if (commit) {
                 System.err.println("Ignoring new migration start: " + migrationInfo + " as participant: " + participant
                         + " since expected migration is already committed");

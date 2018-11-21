@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ package com.hazelcast.core;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.ServiceConfig;
 import com.hazelcast.instance.Node;
-import com.hazelcast.instance.TestUtil;
 import com.hazelcast.spi.InitializingObject;
+import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.RemoteService;
 import com.hazelcast.spi.impl.proxyservice.impl.ProxyServiceImpl;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -193,15 +194,17 @@ public class DistributedObjectTest extends HazelcastTestSupport {
         }
 
         for (int i = 0; i < nodeCount; i++) {
-            Node node = TestUtil.getNode(instances[i]);
-            ProxyServiceImpl proxyService = (ProxyServiceImpl) node.nodeEngine.getProxyService();
+            NodeEngine nodeEngine = getNodeEngineImpl(instances[i]);
+            OperationService operationService = nodeEngine.getOperationService();
+            ProxyServiceImpl proxyService = (ProxyServiceImpl) nodeEngine.getProxyService();
             Operation postJoinOperation = proxyService.getPostJoinOperation();
 
             for (int j = 0; j < nodeCount; j++) {
-                if (i == j) continue;
-
-                Node node2 = TestUtil.getNode(instances[j]);
-                node.nodeEngine.getOperationService().send(postJoinOperation, node2.address);
+                if (i == j) {
+                    continue;
+                }
+                Node node2 = getNode(instances[j]);
+                operationService.send(postJoinOperation, node2.address);
             }
         }
 
@@ -230,9 +233,9 @@ public class DistributedObjectTest extends HazelcastTestSupport {
 
         private final AtomicBoolean init = new AtomicBoolean(false);
         private final String name;
-        private volatile boolean error = false;
+        private volatile boolean error;
 
-        protected TestInitializingObject(final String name) {
+        TestInitializingObject(final String name) {
             this.name = name;
         }
 
@@ -316,6 +319,7 @@ public class DistributedObjectTest extends HazelcastTestSupport {
     }
 
     private static class FailingInitializingObjectService implements RemoteService {
+
         static final String NAME = "FailingInitializingObjectService";
 
         @Override

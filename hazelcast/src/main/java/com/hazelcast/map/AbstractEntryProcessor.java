@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@ package com.hazelcast.map;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.HazelcastInstanceAware;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.SerializableByConvention;
 
 import java.util.Map;
+
+import static com.hazelcast.nio.serialization.SerializableByConvention.Reason.PUBLIC_API;
 
 /**
  * An abstract {@link EntryProcessor} that already has implemented the {@link #getBackupProcessor()}. In a most cases you
@@ -37,7 +39,6 @@ import java.util.Map;
  * @see com.hazelcast.map.EntryProcessor
  * @see com.hazelcast.map.EntryBackupProcessor
  */
-@BinaryInterface
 public abstract class AbstractEntryProcessor<K, V> implements EntryProcessor<K, V> {
 
     private final EntryBackupProcessor<K, V> entryBackupProcessor;
@@ -67,8 +68,14 @@ public abstract class AbstractEntryProcessor<K, V> implements EntryProcessor<K, 
         return entryBackupProcessor;
     }
 
+    @SerializableByConvention(PUBLIC_API)
     private class EntryBackupProcessorImpl implements EntryBackupProcessor<K, V>, HazelcastInstanceAware {
-        // generated for EntryBackupProcessorImpl which doesn't implement HazelcastInstanceAware
+        // to fix https://github.com/hazelcast/hazelcast/issues/10083 we need to add the HazelcastInstanceAware
+        // interface on the EntryBackupProcessorImpl. Unfortunately this changes the generated serialVersionUID
+        // so sending this to a member which doesn't contain the fix would cause a deserialization exception.
+        // That is why we will set the serialVersionUID here to the same generated value for a
+        // EntryBackupProcessorImpl without the implemented interface. The value is calculated by a specification
+        // based on types and fields so it should be the same on all JVM implementations
         static final long serialVersionUID = -5081502753526394129L;
 
         @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,16 +28,21 @@ import java.util.List;
  * Each multi-value attribute is present as both an array and as a collection, for example:
  * limbs_list & limbs_array, so that both extraction in arrays and in collections may be tested.
  */
-public class CollectionDataStructure {
+public final class CollectionDataStructure {
+
+    private CollectionDataStructure() {
+    }
 
     public static class Person implements Serializable {
 
         List<Limb> limbs_list = new ArrayList<Limb>();
-        Limb[] limbs_array = null;
+        Limb[] limbs_array;
 
         @Override
         public boolean equals(Object o) {
-            if (!(o instanceof Person)) return false;
+            if (!(o instanceof Person)) {
+                return false;
+            }
             final Person other = (Person) o;
             return ObjectTestUtils.equals(this.limbs_list, other.limbs_list);
         }
@@ -49,12 +54,15 @@ public class CollectionDataStructure {
     }
 
     public static class Limb implements Serializable {
-        String name;
+
         public Integer power;
+        String name;
 
         @Override
         public boolean equals(Object o) {
-            if (!(o instanceof Limb)) return false;
+            if (!(o instanceof Limb)) {
+                return false;
+            }
             final Limb other = (Limb) o;
             return ObjectTestUtils.equals(this.name, other.name) && ObjectTestUtils.equals(this.power, other.power);
         }

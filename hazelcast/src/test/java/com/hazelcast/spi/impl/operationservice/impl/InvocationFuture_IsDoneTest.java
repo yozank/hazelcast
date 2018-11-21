@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ public class InvocationFuture_IsDoneTest extends HazelcastTestSupport {
     // needed to have an invocation and this is the easiest way how to get one and do not bother with its result
     private static class GetLostPartitionOperation extends DummyOperation {
         {
-            // we need to set the call-id to prevent running the operation on the calling-thread
+            // we need to set the call ID to prevent running the operation on the calling-thread
             setPartitionId(1);
         }
 

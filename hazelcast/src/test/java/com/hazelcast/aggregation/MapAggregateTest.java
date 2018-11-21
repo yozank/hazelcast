@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
+import com.hazelcast.query.PagingPredicate;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -67,6 +68,12 @@ public class MapAggregateTest extends HazelcastTestSupport {
     @SuppressWarnings("RedundantCast")
     public void null_aggregator_and_predicate() {
         getMapWithNodeCount(1).aggregate((Aggregator) null, (Predicate) null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    @SuppressWarnings("RedundantCast")
+    public void pagingPredicate_fails() {
+        getMapWithNodeCount(1).aggregate(new DoubleAverageAggregator(), new PagingPredicate());
     }
 
     @Test

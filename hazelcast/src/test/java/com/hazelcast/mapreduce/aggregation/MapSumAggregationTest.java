@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -33,7 +32,6 @@ import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-@Ignore
 public class MapSumAggregationTest
         extends AbstractAggregationTest {
 
@@ -251,7 +249,7 @@ public class MapSumAggregationTest
             throws Exception {
 
         String mapName = randomMapName();
-        IMap<String, T> map = HAZELCAST_INSTANCE.getMap(mapName);
+        IMap<String, T> map = hazelcastInstance.getMap(mapName);
 
         for (int i = 0; i < values.length; i++) {
             map.put("key-" + i, values[i]);
@@ -265,7 +263,7 @@ public class MapSumAggregationTest
             throws Exception {
 
         String mapName = randomMapName();
-        IMap<String, Value<T>> map = HAZELCAST_INSTANCE.getMap(mapName);
+        IMap<String, Value<T>> map = hazelcastInstance.getMap(mapName);
 
         for (int i = 0; i < values.length; i++) {
             map.put("key-" + i, values[i]);

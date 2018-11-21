@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public class ClassDataProviderTest {
     public void givenProviderModeSetToOFF_whenMapClassContainsClass_thenReturnNull() throws Exception {
         UserCodeDeploymentConfig.ProviderMode providerMode = OFF;
         String className = "className";
-        ClassSource classSource = newMockClassSource(className);
+        ClassSource classSource = newMockClassSource();
         ClassLoader parent = getClass().getClassLoader();
         ClassDataProvider provider = createClassDataProvider(providerMode, className, classSource, parent);
         ClassData classData = provider.getClassDataOrNull(className);
@@ -54,7 +54,7 @@ public class ClassDataProviderTest {
     public void givenProviderModeSetToLOCAL_CLASSES_ONLY_whenMapClassContainsClass_thenReturnNull() throws Exception {
         UserCodeDeploymentConfig.ProviderMode providerMode = LOCAL_CLASSES_ONLY;
         String className = "className";
-        ClassSource classSource = newMockClassSource(className);
+        ClassSource classSource = newMockClassSource();
         ClassLoader parent = getClass().getClassLoader();
         ClassDataProvider provider = createClassDataProvider(providerMode, className, classSource, parent);
         ClassData classData = provider.getClassDataOrNull(className);
@@ -65,22 +65,23 @@ public class ClassDataProviderTest {
     public void givenProviderModeSetToLOCAL_AND_CACHED_CLASSES_whenMapClassContainsClass_thenReturnIt() throws Exception {
         UserCodeDeploymentConfig.ProviderMode providerMode = LOCAL_AND_CACHED_CLASSES;
         String className = "className";
-        ClassSource classSource = newMockClassSource(className);
+        ClassSource classSource = newMockClassSource();
         ClassLoader parent = getClass().getClassLoader();
         ClassDataProvider provider = createClassDataProvider(providerMode, className, classSource, parent);
         ClassData classData = provider.getClassDataOrNull(className);
-        assertNotNull(classData.getClassDefinition());
+        assertNotNull(classData.getInnerClassDefinitions());
     }
 
     private ClassDataProvider createClassDataProvider(UserCodeDeploymentConfig.ProviderMode providerMode,
                                                       String className, ClassSource classSource, ClassLoader parent) {
         ILogger logger = mock(ILogger.class);
         ConcurrentMap<String, ClassSource> classSourceMap = new ConcurrentHashMap<String, ClassSource>();
+        ConcurrentMap<String, ClassSource> clientClassSourceMap = new ConcurrentHashMap<String, ClassSource>();
         classSourceMap.put(className, classSource);
-        return new ClassDataProvider(providerMode, parent, classSourceMap, logger);
+        return new ClassDataProvider(providerMode, parent, classSourceMap, clientClassSourceMap, logger);
     }
 
-    private static ClassSource newMockClassSource(String classname) {
-        return new ClassSource(classname, new byte[0], null, null);
+    private static ClassSource newMockClassSource() {
+        return new ClassSource(null, null);
     }
 }

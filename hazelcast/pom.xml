@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+  ~ Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -26,12 +26,12 @@
     <parent>
         <groupId>com.hazelcast</groupId>
         <artifactId>hazelcast-root</artifactId>
-        <version>3.8.5-SNAPSHOT</version>
+        <version>3.11.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <properties>
-        <!-- needed for checkstyle/findbugs -->
+        <!-- needed for CheckStyle -->
         <main.basedir>${project.parent.basedir}</main.basedir>
 
         <jsp.api.version>2.2.1</jsp.api.version>
@@ -125,7 +125,6 @@
                                 <Import-Package>
                                     !org.junit,
                                     !com.hazelcast.*,
-                                    !com.eclipsesource.json,
                                     sun.misc;resolution:=optional,
                                     javax.cache;resolution:=optional,
                                     javax.cache.*;resolution:=optional,
@@ -153,12 +152,15 @@
                         <index>true</index>
                         <compress>true</compress>
                         <manifest>
-                            <mainClass>com.hazelcast.core.server.StartServer</mainClass>
+                            <mainClass>${hazelcast.serverMainClass}</mainClass>
                             <!--<addClasspath>true</addClasspath>-->
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                             <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                         </manifest>
                         <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+                        <manifestEntries>
+                            <Automatic-Module-Name>com.hazelcast.core</Automatic-Module-Name>
+                        </manifestEntries>
                     </archive>
                     <excludes>
                         <exclude>**/*.html</exclude>
@@ -216,16 +218,9 @@
                             <shadeTestJar>true</shadeTestJar>
                             <artifactSet>
                                 <includes>
-                                    <include>com.eclipsesource.minimal-json:minimal-json</include>
                                     <include>com.hazelcast:hazelcast-client-protocol</include>
                                 </includes>
                             </artifactSet>
-                            <relocations>
-                                <relocation>
-                                    <pattern>com.eclipsesource.json</pattern>
-                                    <shadedPattern>com.hazelcast.com.eclipsesource.json</shadedPattern>
-                                </relocation>
-                            </relocations>
                         </configuration>
                     </execution>
                 </executions>
@@ -295,20 +290,14 @@
             <groupId>javax.cache</groupId>
             <artifactId>cache-tests</artifactId>
             <classifier>tests</classifier>
-            <version>1.0.0</version>
+            <version>${jsr107.tck.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>javax.cache</groupId>
             <artifactId>cache-tests</artifactId>
-            <version>1.0.0</version>
+            <version>${jsr107.tck.version}</version>
             <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <artifactId>test-domain</artifactId>
-                    <groupId>javax.cache</groupId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>log4j</groupId>
@@ -363,13 +352,6 @@
         </dependency>
 
         <dependency>
-            <groupId>com.eclipsesource.minimal-json</groupId>
-            <artifactId>minimal-json</artifactId>
-            <version>0.9.4</version>
-            <scope>compile</scope>
-        </dependency>
-
-        <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast-client-protocol</artifactId>
             <version>${client.protocol.version}</version>
@@ -403,7 +385,7 @@
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.3.1</version>
+            <version>${http.components.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -461,34 +443,11 @@
             <version>${javax.inject.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.reflections</groupId>
-            <artifactId>reflections</artifactId>
-            <version>0.9.10</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-simple</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!-- HyperLogLog testing -->
         <dependency>
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
             <version>2.1.4</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-            <version>${bytebuddy.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

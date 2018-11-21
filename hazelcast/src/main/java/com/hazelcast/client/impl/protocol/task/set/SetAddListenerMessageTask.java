@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.impl.protocol.task.set;
 
-import com.hazelcast.client.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.SetAddListenerCodec;
 import com.hazelcast.client.impl.protocol.task.AbstractCallableMessageTask;
@@ -47,7 +47,6 @@ public class SetAddListenerMessageTask
 
     @Override
     protected Object call() {
-        ClientEndpoint endpoint = getEndpoint();
         Data partitionKey = serializationService.toData(parameters.name);
         ItemListener listener = createItemListener(endpoint, partitionKey);
         EventService eventService = clientEngine.getEventService();

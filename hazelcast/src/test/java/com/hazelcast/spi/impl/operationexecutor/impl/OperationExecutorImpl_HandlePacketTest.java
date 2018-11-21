@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ public class OperationExecutorImpl_HandlePacketTest extends OperationExecutorImp
     public void test_whenNullPacket() {
         initExecutor();
 
-        executor.handle(null);
+        executor.accept(null);
     }
 
     @Test
@@ -52,15 +52,15 @@ public class OperationExecutorImpl_HandlePacketTest extends OperationExecutorImp
         final Packet packet = new Packet(serializationService.toBytes(normalResponse), 0)
                 .setPacketType(Packet.Type.OPERATION)
                 .raiseFlags(FLAG_OP_RESPONSE);
-        executor.handle(packet);
+        executor.accept(packet);
 
         assertTrueEventually(new AssertTask() {
             @Override
             public void run() throws Exception {
-                DummyResponsePacketHandler responsePacketHandler
-                        = (DummyResponsePacketHandler) OperationExecutorImpl_HandlePacketTest.this.responsePacketHandler;
-                responsePacketHandler.packets.contains(packet);
-                responsePacketHandler.responses.contains(normalResponse);
+                DummyResponsePacketConsumer responsePacketConsumer
+                        = (DummyResponsePacketConsumer) OperationExecutorImpl_HandlePacketTest.this.responsePacketConsumer;
+                responsePacketConsumer.packets.contains(packet);
+                responsePacketConsumer.responses.contains(normalResponse);
             }
         });
     }
@@ -72,7 +72,7 @@ public class OperationExecutorImpl_HandlePacketTest extends OperationExecutorImp
         final DummyOperation operation = new DummyOperation(0);
         final Packet packet = new Packet(serializationService.toBytes(operation), operation.getPartitionId())
                 .setPacketType(Packet.Type.OPERATION);
-        executor.handle(packet);
+        executor.accept(packet);
 
         assertTrueEventually(new AssertTask() {
             @Override
@@ -91,7 +91,7 @@ public class OperationExecutorImpl_HandlePacketTest extends OperationExecutorImp
         final DummyOperation operation = new DummyOperation(Operation.GENERIC_PARTITION_ID);
         final Packet packet = new Packet(serializationService.toBytes(operation), operation.getPartitionId())
                 .setPacketType(Packet.Type.OPERATION);
-        executor.handle(packet);
+        executor.accept(packet);
 
         assertTrueEventually(new AssertTask() {
             @Override

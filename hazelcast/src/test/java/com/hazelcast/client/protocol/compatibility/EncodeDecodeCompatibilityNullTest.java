@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,6 @@
 
 package com.hazelcast.client.protocol.compatibility;
 
-import com.hazelcast.cache.impl.CacheEventData;
-import com.hazelcast.cache.impl.CacheEventDataImpl;
-import com.hazelcast.cache.impl.CacheEventType;
 import com.hazelcast.client.impl.MemberImpl;
 import com.hazelcast.client.impl.client.DistributedObjectInfo;
 import com.hazelcast.client.impl.protocol.ClientMessage;
@@ -118,29 +115,30 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ClientAddMembershipListenerCodecHandler extends ClientAddMembershipListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.core.Member
- member ,   int
- eventType   ) {
-                          assertTrue(isEqual(aMember, member));
-                          assertTrue(isEqual(anInt, eventType));
+
+
+                public void  handleMemberEventV10(com.hazelcast.core.Member member, int eventType) {
+                       
+ assertTrue(isEqual(aMember,member));
+ assertTrue(isEqual(anInt,eventType));
+                }
+
+                public void  handleMemberListEventV10(java.util.Collection<com.hazelcast.core.Member> members) {
+                       
+ assertTrue(isEqual(members,members));
+                }
+
+
+
+
+                public void  handleMemberAttributeChangeEventV10(java.lang.String uuid, java.lang.String key, int operationType, java.lang.String value) {
+                       
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(aString,key));
+ assertTrue(isEqual(anInt,operationType));
+ assertTrue(isEqual(null,value));
+                }
         }
-        @Override
-        public void handle(  java.util.Collection<com.hazelcast.core.Member> members   ) {
-                          assertTrue(isEqual(members, members));
-        }
-        @Override
-        public void handle(  java.lang.String
- uuid ,   java.lang.String
- key ,   int
- operationType ,   java.lang.String
- value   ) {
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(aString, key));
-                          assertTrue(isEqual(anInt, operationType));
-                          assertTrue(isEqual(null, value));
-        }
-    }
     ClientAddMembershipListenerCodecHandler handler = new ClientAddMembershipListenerCodecHandler();
     {
         ClientMessage clientMessage = ClientAddMembershipListenerCodec.encodeMemberEvent( aMember ,  anInt   );
@@ -181,9 +179,10 @@ public class EncodeDecodeCompatibilityNullTest {
     ClientGetPartitionsCodec.RequestParameters params = ClientGetPartitionsCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
 }
 {
-    ClientMessage clientMessage = ClientGetPartitionsCodec.encodeResponse(    aPartitionTable   );
+    ClientMessage clientMessage = ClientGetPartitionsCodec.encodeResponse(    aPartitionTable ,    anInt   );
     ClientGetPartitionsCodec.ResponseParameters params = ClientGetPartitionsCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aPartitionTable, params.partitions));
+            assertTrue(isEqual(anInt, params.partitionStateVersion));
 }
 {
     ClientMessage clientMessage = ClientRemoveAllListenersCodec.encodeRequest( );
@@ -205,16 +204,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ClientAddPartitionLostListenerCodecHandler extends ClientAddPartitionLostListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  int
- partitionId ,   int
- lostBackupCount ,   com.hazelcast.nio.Address
- source   ) {
-                          assertTrue(isEqual(anInt, partitionId));
-                          assertTrue(isEqual(anInt, lostBackupCount));
-                          assertTrue(isEqual(null, source));
+
+
+
+                public void  handlePartitionLostEventV10(int partitionId, int lostBackupCount, com.hazelcast.nio.Address source) {
+                       
+ assertTrue(isEqual(anInt,partitionId));
+ assertTrue(isEqual(anInt,lostBackupCount));
+ assertTrue(isEqual(null,source));
+                }
         }
-    }
     ClientAddPartitionLostListenerCodecHandler handler = new ClientAddPartitionLostListenerCodecHandler();
     {
         ClientMessage clientMessage = ClientAddPartitionLostListenerCodec.encodePartitionLostEvent( anInt ,  anInt ,  null   );
@@ -252,16 +251,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ClientAddDistributedObjectListenerCodecHandler extends ClientAddDistributedObjectListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  java.lang.String
- name ,   java.lang.String
- serviceName ,   java.lang.String
- eventType   ) {
-                          assertTrue(isEqual(aString, name));
-                          assertTrue(isEqual(aString, serviceName));
-                          assertTrue(isEqual(aString, eventType));
+
+
+
+                public void  handleDistributedObjectEventV10(java.lang.String name, java.lang.String serviceName, java.lang.String eventType) {
+                       
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(aString,serviceName));
+ assertTrue(isEqual(aString,eventType));
+                }
         }
-    }
     ClientAddDistributedObjectListenerCodecHandler handler = new ClientAddDistributedObjectListenerCodecHandler();
     {
         ClientMessage clientMessage = ClientAddDistributedObjectListenerCodec.encodeDistributedObjectEvent( aString ,  aString ,  aString   );
@@ -285,6 +284,57 @@ public class EncodeDecodeCompatibilityNullTest {
 {
     ClientMessage clientMessage = ClientPingCodec.encodeResponse( );
     ClientPingCodec.ResponseParameters params = ClientPingCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = ClientStatisticsCodec.encodeRequest(    aString   );
+    ClientStatisticsCodec.RequestParameters params = ClientStatisticsCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.stats));
+}
+{
+    ClientMessage clientMessage = ClientStatisticsCodec.encodeResponse( );
+    ClientStatisticsCodec.ResponseParameters params = ClientStatisticsCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = ClientDeployClassesCodec.encodeRequest(    aListOfStringToByteArrEntry   );
+    ClientDeployClassesCodec.RequestParameters params = ClientDeployClassesCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aListOfStringToByteArrEntry, params.classDefinitions));
+}
+{
+    ClientMessage clientMessage = ClientDeployClassesCodec.encodeResponse( );
+    ClientDeployClassesCodec.ResponseParameters params = ClientDeployClassesCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = ClientAddPartitionListenerCodec.encodeRequest( );
+    ClientAddPartitionListenerCodec.RequestParameters params = ClientAddPartitionListenerCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = ClientAddPartitionListenerCodec.encodeResponse( );
+    ClientAddPartitionListenerCodec.ResponseParameters params = ClientAddPartitionListenerCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    class ClientAddPartitionListenerCodecHandler extends ClientAddPartitionListenerCodec.AbstractEventHandler {
+
+
+                public void  handlePartitionsEventV15(java.util.Collection<java.util.Map.Entry<com.hazelcast.nio.Address,java.util.List<java.lang.Integer>>> partitions, int partitionStateVersion) {
+                       
+ assertTrue(isEqual(aPartitionTable,partitions));
+ assertTrue(isEqual(anInt,partitionStateVersion));
+                }
+        }
+    ClientAddPartitionListenerCodecHandler handler = new ClientAddPartitionListenerCodecHandler();
+    {
+        ClientMessage clientMessage = ClientAddPartitionListenerCodec.encodePartitionsEvent( aPartitionTable ,  anInt   );
+        handler.handle(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+     }
+}
+{
+    ClientMessage clientMessage = ClientCreateProxiesCodec.encodeRequest(    aListOfStringToString   );
+    ClientCreateProxiesCodec.RequestParameters params = ClientCreateProxiesCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aListOfStringToString, params.proxies));
+}
+{
+    ClientMessage clientMessage = ClientCreateProxiesCodec.encodeResponse( );
+    ClientCreateProxiesCodec.ResponseParameters params = ClientCreateProxiesCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
 }
 {
     ClientMessage clientMessage = MapPutCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong ,    aLong   );
@@ -564,24 +614,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddEntryListenerToKeyWithPredicateCodecHandler extends MapAddEntryListenerToKeyWithPredicateCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MapAddEntryListenerToKeyWithPredicateCodecHandler handler = new MapAddEntryListenerToKeyWithPredicateCodecHandler();
     {
         ClientMessage clientMessage = MapAddEntryListenerToKeyWithPredicateCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -604,24 +654,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddEntryListenerWithPredicateCodecHandler extends MapAddEntryListenerWithPredicateCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MapAddEntryListenerWithPredicateCodecHandler handler = new MapAddEntryListenerWithPredicateCodecHandler();
     {
         ClientMessage clientMessage = MapAddEntryListenerWithPredicateCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -644,24 +694,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddEntryListenerToKeyCodecHandler extends MapAddEntryListenerToKeyCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MapAddEntryListenerToKeyCodecHandler handler = new MapAddEntryListenerToKeyCodecHandler();
     {
         ClientMessage clientMessage = MapAddEntryListenerToKeyCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -683,24 +733,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddEntryListenerCodecHandler extends MapAddEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MapAddEntryListenerCodecHandler handler = new MapAddEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = MapAddEntryListenerCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -721,25 +771,39 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddNearCacheEntryListenerCodecHandler extends MapAddNearCacheEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   java.lang.String
- sourceUuid ,   java.util.UUID
- partitionUuid ,   long
- sequence   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(aString, sourceUuid));
-                          assertTrue(isEqual(aUUID, partitionUuid));
-                          assertTrue(isEqual(aLong, sequence));
+
+                    @Override
+                    public void  handleIMapInvalidationEventV10(com.hazelcast.nio.serialization.Data key) {
+                           
+ assertTrue(isEqual(null,key));
+                    }
+
+
+
+                public void  handleIMapInvalidationEventV14(com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid, java.util.UUID partitionUuid, long sequence) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(aString,sourceUuid));
+ assertTrue(isEqual(aUUID,partitionUuid));
+ assertTrue(isEqual(aLong,sequence));
+                }
+
+                    @Override
+                    public void  handleIMapBatchInvalidationEventV10(java.util.Collection<com.hazelcast.nio.serialization.Data> keys) {
+                           
+ assertTrue(isEqual(datas,keys));
+                    }
+
+
+
+                public void  handleIMapBatchInvalidationEventV14(java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids, java.util.Collection<java.util.UUID> partitionUuids, java.util.Collection<java.lang.Long> sequences) {
+                       
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(strings,sourceUuids));
+ assertTrue(isEqual(uuids,partitionUuids));
+ assertTrue(isEqual(longs,sequences));
+                }
         }
-        @Override
-        public void handle(  java.util.Collection<com.hazelcast.nio.serialization.Data> keys ,   java.util.Collection<java.lang.String> sourceUuids ,   java.util.Collection<java.util.UUID> partitionUuids ,   java.util.Collection<java.lang.Long> sequences   ) {
-                          assertTrue(isEqual(datas, keys));
-                          assertTrue(isEqual(strings, sourceUuids));
-                          assertTrue(isEqual(uuids, partitionUuids));
-                          assertTrue(isEqual(longs, sequences));
-        }
-    }
     MapAddNearCacheEntryListenerCodecHandler handler = new MapAddNearCacheEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = MapAddNearCacheEntryListenerCodec.encodeIMapInvalidationEvent( null ,  aString ,  aUUID ,  aLong   );
@@ -774,14 +838,14 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddPartitionLostListenerCodecHandler extends MapAddPartitionLostListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  int
- partitionId ,   java.lang.String
- uuid   ) {
-                          assertTrue(isEqual(anInt, partitionId));
-                          assertTrue(isEqual(aString, uuid));
+
+
+                public void  handleMapPartitionLostEventV10(int partitionId, java.lang.String uuid) {
+                       
+ assertTrue(isEqual(anInt,partitionId));
+ assertTrue(isEqual(aString,uuid));
+                }
         }
-    }
     MapAddPartitionLostListenerCodecHandler handler = new MapAddPartitionLostListenerCodecHandler();
     {
         ClientMessage clientMessage = MapAddPartitionLostListenerCodec.encodeMapPartitionLostEvent( anInt ,  aString   );
@@ -807,9 +871,10 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(aLong, params.threadId));
 }
 {
-    ClientMessage clientMessage = MapGetEntryViewCodec.encodeResponse(    null   );
+    ClientMessage clientMessage = MapGetEntryViewCodec.encodeResponse(    null ,    aLong   );
     MapGetEntryViewCodec.ResponseParameters params = MapGetEntryViewCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(null, params.response));
+            assertTrue(isEqual(aLong, params.maxIdle));
 }
 {
     ClientMessage clientMessage = MapEvictCodec.encodeRequest(    aString ,    aData ,    aLong   );
@@ -1211,25 +1276,39 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MapAddNearCacheInvalidationListenerCodecHandler extends MapAddNearCacheInvalidationListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   java.lang.String
- sourceUuid ,   java.util.UUID
- partitionUuid ,   long
- sequence   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(aString, sourceUuid));
-                          assertTrue(isEqual(aUUID, partitionUuid));
-                          assertTrue(isEqual(aLong, sequence));
+
+                    @Override
+                    public void  handleIMapInvalidationEventV10(com.hazelcast.nio.serialization.Data key) {
+                           
+ assertTrue(isEqual(null,key));
+                    }
+
+
+
+                public void  handleIMapInvalidationEventV14(com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid, java.util.UUID partitionUuid, long sequence) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(aString,sourceUuid));
+ assertTrue(isEqual(aUUID,partitionUuid));
+ assertTrue(isEqual(aLong,sequence));
+                }
+
+                    @Override
+                    public void  handleIMapBatchInvalidationEventV10(java.util.Collection<com.hazelcast.nio.serialization.Data> keys) {
+                           
+ assertTrue(isEqual(datas,keys));
+                    }
+
+
+
+                public void  handleIMapBatchInvalidationEventV14(java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids, java.util.Collection<java.util.UUID> partitionUuids, java.util.Collection<java.lang.Long> sequences) {
+                       
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(strings,sourceUuids));
+ assertTrue(isEqual(uuids,partitionUuids));
+ assertTrue(isEqual(longs,sequences));
+                }
         }
-        @Override
-        public void handle(  java.util.Collection<com.hazelcast.nio.serialization.Data> keys ,   java.util.Collection<java.lang.String> sourceUuids ,   java.util.Collection<java.util.UUID> partitionUuids ,   java.util.Collection<java.lang.Long> sequences   ) {
-                          assertTrue(isEqual(datas, keys));
-                          assertTrue(isEqual(strings, sourceUuids));
-                          assertTrue(isEqual(uuids, partitionUuids));
-                          assertTrue(isEqual(longs, sequences));
-        }
-    }
     MapAddNearCacheInvalidationListenerCodecHandler handler = new MapAddNearCacheInvalidationListenerCodecHandler();
     {
         ClientMessage clientMessage = MapAddNearCacheInvalidationListenerCodec.encodeIMapInvalidationEvent( null ,  aString ,  aUUID ,  aLong   );
@@ -1239,6 +1318,122 @@ public class EncodeDecodeCompatibilityNullTest {
         ClientMessage clientMessage = MapAddNearCacheInvalidationListenerCodec.encodeIMapBatchInvalidationEvent( datas ,  strings ,  uuids ,  longs   );
         handler.handle(ClientMessage.createForDecode(clientMessage.buffer(), 0));
      }
+}
+{
+    ClientMessage clientMessage = MapFetchWithQueryCodec.encodeRequest(    aString ,    anInt ,    anInt ,    aData ,    aData   );
+    MapFetchWithQueryCodec.RequestParameters params = MapFetchWithQueryCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.tableIndex));
+            assertTrue(isEqual(anInt, params.batch));
+            assertTrue(isEqual(aData, params.projection));
+            assertTrue(isEqual(aData, params.predicate));
+}
+{
+    ClientMessage clientMessage = MapFetchWithQueryCodec.encodeResponse(    datas ,    anInt   );
+    MapFetchWithQueryCodec.ResponseParameters params = MapFetchWithQueryCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(datas, params.results));
+            assertTrue(isEqual(anInt, params.nextTableIndexToReadFrom));
+}
+{
+    ClientMessage clientMessage = MapEventJournalSubscribeCodec.encodeRequest(    aString   );
+    MapEventJournalSubscribeCodec.RequestParameters params = MapEventJournalSubscribeCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+}
+{
+    ClientMessage clientMessage = MapEventJournalSubscribeCodec.encodeResponse(    aLong ,    aLong   );
+    MapEventJournalSubscribeCodec.ResponseParameters params = MapEventJournalSubscribeCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aLong, params.oldestSequence));
+            assertTrue(isEqual(aLong, params.newestSequence));
+}
+{
+    ClientMessage clientMessage = MapEventJournalReadCodec.encodeRequest(    aString ,    aLong ,    anInt ,    anInt ,    null ,    null   );
+    MapEventJournalReadCodec.RequestParameters params = MapEventJournalReadCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aLong, params.startSequence));
+            assertTrue(isEqual(anInt, params.minSize));
+            assertTrue(isEqual(anInt, params.maxSize));
+            assertTrue(isEqual(null, params.predicate));
+            assertTrue(isEqual(null, params.projection));
+}
+{
+    ClientMessage clientMessage = MapEventJournalReadCodec.encodeResponse(    anInt ,    datas ,    null ,    aLong   );
+    MapEventJournalReadCodec.ResponseParameters params = MapEventJournalReadCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(anInt, params.readCount));
+            assertTrue(isEqual(datas, params.items));
+            assertTrue(isEqual(null, params.itemSeqs));
+            assertTrue(isEqual(aLong, params.nextSeq));
+}
+{
+    ClientMessage clientMessage = MapSetTtlCodec.encodeRequest(    aString ,    aData ,    aLong   );
+    MapSetTtlCodec.RequestParameters params = MapSetTtlCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aLong, params.ttl));
+}
+{
+    ClientMessage clientMessage = MapSetTtlCodec.encodeResponse(    aBoolean   );
+    MapSetTtlCodec.ResponseParameters params = MapSetTtlCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aBoolean, params.response));
+}
+{
+    ClientMessage clientMessage = MapPutWithMaxIdleCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong ,    aLong ,    aLong   );
+    MapPutWithMaxIdleCodec.RequestParameters params = MapPutWithMaxIdleCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aData, params.value));
+            assertTrue(isEqual(aLong, params.threadId));
+            assertTrue(isEqual(aLong, params.ttl));
+            assertTrue(isEqual(aLong, params.maxIdle));
+}
+{
+    ClientMessage clientMessage = MapPutWithMaxIdleCodec.encodeResponse(    null   );
+    MapPutWithMaxIdleCodec.ResponseParameters params = MapPutWithMaxIdleCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(null, params.response));
+}
+{
+    ClientMessage clientMessage = MapPutTransientWithMaxIdleCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong ,    aLong ,    aLong   );
+    MapPutTransientWithMaxIdleCodec.RequestParameters params = MapPutTransientWithMaxIdleCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aData, params.value));
+            assertTrue(isEqual(aLong, params.threadId));
+            assertTrue(isEqual(aLong, params.ttl));
+            assertTrue(isEqual(aLong, params.maxIdle));
+}
+{
+    ClientMessage clientMessage = MapPutTransientWithMaxIdleCodec.encodeResponse(    null   );
+    MapPutTransientWithMaxIdleCodec.ResponseParameters params = MapPutTransientWithMaxIdleCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(null, params.response));
+}
+{
+    ClientMessage clientMessage = MapPutIfAbsentWithMaxIdleCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong ,    aLong ,    aLong   );
+    MapPutIfAbsentWithMaxIdleCodec.RequestParameters params = MapPutIfAbsentWithMaxIdleCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aData, params.value));
+            assertTrue(isEqual(aLong, params.threadId));
+            assertTrue(isEqual(aLong, params.ttl));
+            assertTrue(isEqual(aLong, params.maxIdle));
+}
+{
+    ClientMessage clientMessage = MapPutIfAbsentWithMaxIdleCodec.encodeResponse(    null   );
+    MapPutIfAbsentWithMaxIdleCodec.ResponseParameters params = MapPutIfAbsentWithMaxIdleCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(null, params.response));
+}
+{
+    ClientMessage clientMessage = MapSetWithMaxIdleCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong ,    aLong ,    aLong   );
+    MapSetWithMaxIdleCodec.RequestParameters params = MapSetWithMaxIdleCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aData, params.value));
+            assertTrue(isEqual(aLong, params.threadId));
+            assertTrue(isEqual(aLong, params.ttl));
+            assertTrue(isEqual(aLong, params.maxIdle));
+}
+{
+    ClientMessage clientMessage = MapSetWithMaxIdleCodec.encodeResponse(    null   );
+    MapSetWithMaxIdleCodec.ResponseParameters params = MapSetWithMaxIdleCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(null, params.response));
 }
 {
     ClientMessage clientMessage = MultiMapPutCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong   );
@@ -1389,24 +1584,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MultiMapAddEntryListenerToKeyCodecHandler extends MultiMapAddEntryListenerToKeyCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MultiMapAddEntryListenerToKeyCodecHandler handler = new MultiMapAddEntryListenerToKeyCodecHandler();
     {
         ClientMessage clientMessage = MultiMapAddEntryListenerToKeyCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -1427,24 +1622,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class MultiMapAddEntryListenerCodecHandler extends MultiMapAddEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     MultiMapAddEntryListenerCodecHandler handler = new MultiMapAddEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = MultiMapAddEntryListenerCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -1536,6 +1731,17 @@ public class EncodeDecodeCompatibilityNullTest {
     ClientMessage clientMessage = MultiMapRemoveEntryCodec.encodeResponse(    aBoolean   );
     MultiMapRemoveEntryCodec.ResponseParameters params = MultiMapRemoveEntryCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aBoolean, params.response));
+}
+{
+    ClientMessage clientMessage = MultiMapDeleteCodec.encodeRequest(    aString ,    aData ,    aLong   );
+    MultiMapDeleteCodec.RequestParameters params = MultiMapDeleteCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aData, params.key));
+            assertTrue(isEqual(aLong, params.threadId));
+}
+{
+    ClientMessage clientMessage = MultiMapDeleteCodec.encodeResponse( );
+    MultiMapDeleteCodec.ResponseParameters params = MultiMapDeleteCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
 }
 {
     ClientMessage clientMessage = QueueOfferCodec.encodeRequest(    aString ,    aData ,    aLong   );
@@ -1720,16 +1926,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class QueueAddListenerCodecHandler extends QueueAddListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- item ,   java.lang.String
- uuid ,   int
- eventType   ) {
-                          assertTrue(isEqual(null, item));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, eventType));
+
+
+
+                public void  handleItemEventV10(com.hazelcast.nio.serialization.Data item, java.lang.String uuid, int eventType) {
+                       
+ assertTrue(isEqual(null,item));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,eventType));
+                }
         }
-    }
     QueueAddListenerCodecHandler handler = new QueueAddListenerCodecHandler();
     {
         ClientMessage clientMessage = QueueAddListenerCodec.encodeItemEvent( null ,  aString ,  anInt   );
@@ -1790,16 +1996,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class TopicAddMessageListenerCodecHandler extends TopicAddMessageListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- item ,   long
- publishTime ,   java.lang.String
- uuid   ) {
-                          assertTrue(isEqual(aData, item));
-                          assertTrue(isEqual(aLong, publishTime));
-                          assertTrue(isEqual(aString, uuid));
+
+
+
+                public void  handleTopicEventV10(com.hazelcast.nio.serialization.Data item, long publishTime, java.lang.String uuid) {
+                       
+ assertTrue(isEqual(aData,item));
+ assertTrue(isEqual(aLong,publishTime));
+ assertTrue(isEqual(aString,uuid));
+                }
         }
-    }
     TopicAddMessageListenerCodecHandler handler = new TopicAddMessageListenerCodecHandler();
     {
         ClientMessage clientMessage = TopicAddMessageListenerCodec.encodeTopicEvent( aData ,  aLong ,  aString   );
@@ -1937,16 +2143,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ListAddListenerCodecHandler extends ListAddListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- item ,   java.lang.String
- uuid ,   int
- eventType   ) {
-                          assertTrue(isEqual(null, item));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, eventType));
+
+
+
+                public void  handleItemEventV10(com.hazelcast.nio.serialization.Data item, java.lang.String uuid, int eventType) {
+                       
+ assertTrue(isEqual(null,item));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,eventType));
+                }
         }
-    }
     ListAddListenerCodecHandler handler = new ListAddListenerCodecHandler();
     {
         ClientMessage clientMessage = ListAddListenerCodec.encodeItemEvent( null ,  aString ,  anInt   );
@@ -2206,16 +2412,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class SetAddListenerCodecHandler extends SetAddListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- item ,   java.lang.String
- uuid ,   int
- eventType   ) {
-                          assertTrue(isEqual(null, item));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, eventType));
+
+
+
+                public void  handleItemEventV10(com.hazelcast.nio.serialization.Data item, java.lang.String uuid, int eventType) {
+                       
+ assertTrue(isEqual(null,item));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,eventType));
+                }
         }
-    }
     SetAddListenerCodecHandler handler = new SetAddListenerCodecHandler();
     {
         ClientMessage clientMessage = SetAddListenerCodec.encodeItemEvent( null ,  aString ,  anInt   );
@@ -2828,6 +3034,16 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(aBoolean, params.response));
 }
 {
+    ClientMessage clientMessage = SemaphoreIncreasePermitsCodec.encodeRequest(    aString ,    anInt   );
+    SemaphoreIncreasePermitsCodec.RequestParameters params = SemaphoreIncreasePermitsCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.increase));
+}
+{
+    ClientMessage clientMessage = SemaphoreIncreasePermitsCodec.encodeResponse( );
+    SemaphoreIncreasePermitsCodec.ResponseParameters params = SemaphoreIncreasePermitsCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
     ClientMessage clientMessage = ReplicatedMapPutCodec.encodeRequest(    aString ,    aData ,    aData ,    aLong   );
     ReplicatedMapPutCodec.RequestParameters params = ReplicatedMapPutCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aString, params.name));
@@ -2938,24 +3154,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ReplicatedMapAddEntryListenerToKeyWithPredicateCodecHandler extends ReplicatedMapAddEntryListenerToKeyWithPredicateCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     ReplicatedMapAddEntryListenerToKeyWithPredicateCodecHandler handler = new ReplicatedMapAddEntryListenerToKeyWithPredicateCodecHandler();
     {
         ClientMessage clientMessage = ReplicatedMapAddEntryListenerToKeyWithPredicateCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -2976,24 +3192,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ReplicatedMapAddEntryListenerWithPredicateCodecHandler extends ReplicatedMapAddEntryListenerWithPredicateCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     ReplicatedMapAddEntryListenerWithPredicateCodecHandler handler = new ReplicatedMapAddEntryListenerWithPredicateCodecHandler();
     {
         ClientMessage clientMessage = ReplicatedMapAddEntryListenerWithPredicateCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -3014,24 +3230,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ReplicatedMapAddEntryListenerToKeyCodecHandler extends ReplicatedMapAddEntryListenerToKeyCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     ReplicatedMapAddEntryListenerToKeyCodecHandler handler = new ReplicatedMapAddEntryListenerToKeyCodecHandler();
     {
         ClientMessage clientMessage = ReplicatedMapAddEntryListenerToKeyCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -3051,24 +3267,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ReplicatedMapAddEntryListenerCodecHandler extends ReplicatedMapAddEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     ReplicatedMapAddEntryListenerCodecHandler handler = new ReplicatedMapAddEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = ReplicatedMapAddEntryListenerCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -3130,24 +3346,24 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ReplicatedMapAddNearCacheEntryListenerCodecHandler extends ReplicatedMapAddNearCacheEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.nio.serialization.Data
- key ,   com.hazelcast.nio.serialization.Data
- value ,   com.hazelcast.nio.serialization.Data
- oldValue ,   com.hazelcast.nio.serialization.Data
- mergingValue ,   int
- eventType ,   java.lang.String
- uuid ,   int
- numberOfAffectedEntries   ) {
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, value));
-                          assertTrue(isEqual(null, oldValue));
-                          assertTrue(isEqual(null, mergingValue));
-                          assertTrue(isEqual(anInt, eventType));
-                          assertTrue(isEqual(aString, uuid));
-                          assertTrue(isEqual(anInt, numberOfAffectedEntries));
+
+
+
+
+
+
+
+                public void  handleEntryEventV10(com.hazelcast.nio.serialization.Data key, com.hazelcast.nio.serialization.Data value, com.hazelcast.nio.serialization.Data oldValue, com.hazelcast.nio.serialization.Data mergingValue, int eventType, java.lang.String uuid, int numberOfAffectedEntries) {
+                       
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,value));
+ assertTrue(isEqual(null,oldValue));
+ assertTrue(isEqual(null,mergingValue));
+ assertTrue(isEqual(anInt,eventType));
+ assertTrue(isEqual(aString,uuid));
+ assertTrue(isEqual(anInt,numberOfAffectedEntries));
+                }
         }
-    }
     ReplicatedMapAddNearCacheEntryListenerCodecHandler handler = new ReplicatedMapAddNearCacheEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = ReplicatedMapAddNearCacheEntryListenerCodec.encodeEntryEvent( null ,  null ,  null ,  null ,  anInt ,  aString ,  anInt   );
@@ -3496,6 +3712,19 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(datas, params.response));
 }
 {
+    ClientMessage clientMessage = TransactionalMapContainsValueCodec.encodeRequest(    aString ,    aString ,    aLong ,    aData   );
+    TransactionalMapContainsValueCodec.RequestParameters params = TransactionalMapContainsValueCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aString, params.txnId));
+            assertTrue(isEqual(aLong, params.threadId));
+            assertTrue(isEqual(aData, params.value));
+}
+{
+    ClientMessage clientMessage = TransactionalMapContainsValueCodec.encodeResponse(    aBoolean   );
+    TransactionalMapContainsValueCodec.ResponseParameters params = TransactionalMapContainsValueCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aBoolean, params.response));
+}
+{
     ClientMessage clientMessage = TransactionalMultiMapPutCodec.encodeRequest(    aString ,    aString ,    aLong ,    aData ,    aData   );
     TransactionalMultiMapPutCodec.RequestParameters params = TransactionalMultiMapPutCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aString, params.name));
@@ -3727,15 +3956,16 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class CacheAddEntryListenerCodecHandler extends CacheAddEntryListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  int
- type ,   java.util.Collection<com.hazelcast.cache.impl.CacheEventData> keys ,   int
- completionId   ) {
-                          assertTrue(isEqual(anInt, type));
-                          assertTrue(isEqual(cacheEventDatas, keys));
-                          assertTrue(isEqual(anInt, completionId));
+
+
+
+                public void  handleCacheEventV10(int type, java.util.Collection<com.hazelcast.cache.impl.CacheEventData> keys, int completionId) {
+                       
+ assertTrue(isEqual(anInt,type));
+ assertTrue(isEqual(cacheEventDatas,keys));
+ assertTrue(isEqual(anInt,completionId));
+                }
         }
-    }
     CacheAddEntryListenerCodecHandler handler = new CacheAddEntryListenerCodecHandler();
     {
         ClientMessage clientMessage = CacheAddEntryListenerCodec.encodeCacheEvent( anInt ,  cacheEventDatas ,  anInt   );
@@ -3755,29 +3985,47 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class CacheAddInvalidationListenerCodecHandler extends CacheAddInvalidationListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  java.lang.String
- name ,   com.hazelcast.nio.serialization.Data
- key ,   java.lang.String
- sourceUuid ,   java.util.UUID
- partitionUuid ,   long
- sequence   ) {
-                          assertTrue(isEqual(aString, name));
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, sourceUuid));
-                          assertTrue(isEqual(aUUID, partitionUuid));
-                          assertTrue(isEqual(aLong, sequence));
+
+
+
+                    @Override
+                    public void  handleCacheInvalidationEventV10(java.lang.String name, com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid) {
+                           
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,sourceUuid));
+                    }
+
+
+                public void  handleCacheInvalidationEventV14(java.lang.String name, com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid, java.util.UUID partitionUuid, long sequence) {
+                       
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,sourceUuid));
+ assertTrue(isEqual(aUUID,partitionUuid));
+ assertTrue(isEqual(aLong,sequence));
+                }
+
+
+
+                    @Override
+                    public void  handleCacheBatchInvalidationEventV10(java.lang.String name, java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids) {
+                           
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(null,sourceUuids));
+                    }
+
+
+                public void  handleCacheBatchInvalidationEventV14(java.lang.String name, java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids, java.util.Collection<java.util.UUID> partitionUuids, java.util.Collection<java.lang.Long> sequences) {
+                       
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(null,sourceUuids));
+ assertTrue(isEqual(uuids,partitionUuids));
+ assertTrue(isEqual(longs,sequences));
+                }
         }
-        @Override
-        public void handle(  java.lang.String
- name ,   java.util.Collection<com.hazelcast.nio.serialization.Data> keys ,   java.util.Collection<java.lang.String> sourceUuids ,   java.util.Collection<java.util.UUID> partitionUuids ,   java.util.Collection<java.lang.Long> sequences   ) {
-                          assertTrue(isEqual(aString, name));
-                          assertTrue(isEqual(datas, keys));
-                          assertTrue(isEqual(null, sourceUuids));
-                          assertTrue(isEqual(uuids, partitionUuids));
-                          assertTrue(isEqual(longs, sequences));
-        }
-    }
     CacheAddInvalidationListenerCodecHandler handler = new CacheAddInvalidationListenerCodecHandler();
     {
         ClientMessage clientMessage = CacheAddInvalidationListenerCodec.encodeCacheInvalidationEvent( aString ,  null ,  null ,  aUUID ,  aLong   );
@@ -4075,14 +4323,14 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class CacheAddPartitionLostListenerCodecHandler extends CacheAddPartitionLostListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  int
- partitionId ,   java.lang.String
- uuid   ) {
-                          assertTrue(isEqual(anInt, partitionId));
-                          assertTrue(isEqual(aString, uuid));
+
+
+                public void  handleCachePartitionLostEventV10(int partitionId, java.lang.String uuid) {
+                       
+ assertTrue(isEqual(anInt,partitionId));
+ assertTrue(isEqual(aString,uuid));
+                }
         }
-    }
     CacheAddPartitionLostListenerCodecHandler handler = new CacheAddPartitionLostListenerCodecHandler();
     {
         ClientMessage clientMessage = CacheAddPartitionLostListenerCodec.encodeCachePartitionLostEvent( anInt ,  aString   );
@@ -4139,29 +4387,47 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class CacheAddNearCacheInvalidationListenerCodecHandler extends CacheAddNearCacheInvalidationListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  java.lang.String
- name ,   com.hazelcast.nio.serialization.Data
- key ,   java.lang.String
- sourceUuid ,   java.util.UUID
- partitionUuid ,   long
- sequence   ) {
-                          assertTrue(isEqual(aString, name));
-                          assertTrue(isEqual(null, key));
-                          assertTrue(isEqual(null, sourceUuid));
-                          assertTrue(isEqual(aUUID, partitionUuid));
-                          assertTrue(isEqual(aLong, sequence));
+
+
+
+                    @Override
+                    public void  handleCacheInvalidationEventV10(java.lang.String name, com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid) {
+                           
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,sourceUuid));
+                    }
+
+
+                public void  handleCacheInvalidationEventV14(java.lang.String name, com.hazelcast.nio.serialization.Data key, java.lang.String sourceUuid, java.util.UUID partitionUuid, long sequence) {
+                       
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(null,key));
+ assertTrue(isEqual(null,sourceUuid));
+ assertTrue(isEqual(aUUID,partitionUuid));
+ assertTrue(isEqual(aLong,sequence));
+                }
+
+
+
+                    @Override
+                    public void  handleCacheBatchInvalidationEventV10(java.lang.String name, java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids) {
+                           
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(null,sourceUuids));
+                    }
+
+
+                public void  handleCacheBatchInvalidationEventV14(java.lang.String name, java.util.Collection<com.hazelcast.nio.serialization.Data> keys, java.util.Collection<java.lang.String> sourceUuids, java.util.Collection<java.util.UUID> partitionUuids, java.util.Collection<java.lang.Long> sequences) {
+                       
+ assertTrue(isEqual(aString,name));
+ assertTrue(isEqual(datas,keys));
+ assertTrue(isEqual(null,sourceUuids));
+ assertTrue(isEqual(uuids,partitionUuids));
+ assertTrue(isEqual(longs,sequences));
+                }
         }
-        @Override
-        public void handle(  java.lang.String
- name ,   java.util.Collection<com.hazelcast.nio.serialization.Data> keys ,   java.util.Collection<java.lang.String> sourceUuids ,   java.util.Collection<java.util.UUID> partitionUuids ,   java.util.Collection<java.lang.Long> sequences   ) {
-                          assertTrue(isEqual(aString, name));
-                          assertTrue(isEqual(datas, keys));
-                          assertTrue(isEqual(null, sourceUuids));
-                          assertTrue(isEqual(uuids, partitionUuids));
-                          assertTrue(isEqual(longs, sequences));
-        }
-    }
     CacheAddNearCacheInvalidationListenerCodecHandler handler = new CacheAddNearCacheInvalidationListenerCodecHandler();
     {
         ClientMessage clientMessage = CacheAddNearCacheInvalidationListenerCodec.encodeCacheInvalidationEvent( aString ,  null ,  null ,  aUUID ,  aLong   );
@@ -4192,6 +4458,47 @@ public class EncodeDecodeCompatibilityNullTest {
     ClientMessage clientMessage = CacheAssignAndGetUuidsCodec.encodeResponse(    aPartitionUuidList   );
     CacheAssignAndGetUuidsCodec.ResponseParameters params = CacheAssignAndGetUuidsCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aPartitionUuidList, params.partitionUuidList));
+}
+{
+    ClientMessage clientMessage = CacheEventJournalSubscribeCodec.encodeRequest(    aString   );
+    CacheEventJournalSubscribeCodec.RequestParameters params = CacheEventJournalSubscribeCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+}
+{
+    ClientMessage clientMessage = CacheEventJournalSubscribeCodec.encodeResponse(    aLong ,    aLong   );
+    CacheEventJournalSubscribeCodec.ResponseParameters params = CacheEventJournalSubscribeCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aLong, params.oldestSequence));
+            assertTrue(isEqual(aLong, params.newestSequence));
+}
+{
+    ClientMessage clientMessage = CacheEventJournalReadCodec.encodeRequest(    aString ,    aLong ,    anInt ,    anInt ,    null ,    null   );
+    CacheEventJournalReadCodec.RequestParameters params = CacheEventJournalReadCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aLong, params.startSequence));
+            assertTrue(isEqual(anInt, params.minSize));
+            assertTrue(isEqual(anInt, params.maxSize));
+            assertTrue(isEqual(null, params.predicate));
+            assertTrue(isEqual(null, params.projection));
+}
+{
+    ClientMessage clientMessage = CacheEventJournalReadCodec.encodeResponse(    anInt ,    datas ,    null ,    aLong   );
+    CacheEventJournalReadCodec.ResponseParameters params = CacheEventJournalReadCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(anInt, params.readCount));
+            assertTrue(isEqual(datas, params.items));
+            assertTrue(isEqual(null, params.itemSeqs));
+            assertTrue(isEqual(aLong, params.nextSeq));
+}
+{
+    ClientMessage clientMessage = CacheSetExpiryPolicyCodec.encodeRequest(    aString ,    datas ,    aData   );
+    CacheSetExpiryPolicyCodec.RequestParameters params = CacheSetExpiryPolicyCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(datas, params.keys));
+            assertTrue(isEqual(aData, params.expiryPolicy));
+}
+{
+    ClientMessage clientMessage = CacheSetExpiryPolicyCodec.encodeResponse(    aBoolean   );
+    CacheSetExpiryPolicyCodec.ResponseParameters params = CacheSetExpiryPolicyCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aBoolean, params.response));
 }
 {
     ClientMessage clientMessage = XATransactionClearRemoteCodec.encodeRequest(    anXid   );
@@ -4351,20 +4658,21 @@ public class EncodeDecodeCompatibilityNullTest {
 }
 {
     class ContinuousQueryAddListenerCodecHandler extends ContinuousQueryAddListenerCodec.AbstractEventHandler {
-        @Override
-        public void handle(  com.hazelcast.map.impl.querycache.event.QueryCacheEventData
- data   ) {
-                          assertTrue(isEqual(aQueryCacheEventData, data));
+
+                public void  handleQueryCacheSingleEventV10(com.hazelcast.map.impl.querycache.event.QueryCacheEventData data) {
+                       
+ assertTrue(isEqual(aQueryCacheEventData,data));
+                }
+
+
+
+                public void  handleQueryCacheBatchEventV10(java.util.Collection<com.hazelcast.map.impl.querycache.event.QueryCacheEventData> events, java.lang.String source, int partitionId) {
+                       
+ assertTrue(isEqual(queryCacheEventDatas,events));
+ assertTrue(isEqual(aString,source));
+ assertTrue(isEqual(anInt,partitionId));
+                }
         }
-        @Override
-        public void handle(  java.util.Collection<com.hazelcast.map.impl.querycache.event.QueryCacheEventData> events ,   java.lang.String
- source ,   int
- partitionId   ) {
-                          assertTrue(isEqual(queryCacheEventDatas, events));
-                          assertTrue(isEqual(aString, source));
-                          assertTrue(isEqual(anInt, partitionId));
-        }
-    }
     ContinuousQueryAddListenerCodecHandler handler = new ContinuousQueryAddListenerCodecHandler();
     {
         ClientMessage clientMessage = ContinuousQueryAddListenerCodec.encodeQueryCacheSingleEvent( aQueryCacheEventData   );
@@ -4493,10 +4801,12 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(null, params.filter));
 }
 {
-    ClientMessage clientMessage = RingbufferReadManyCodec.encodeResponse(    anInt ,    datas   );
+    ClientMessage clientMessage = RingbufferReadManyCodec.encodeResponse(    anInt ,    datas ,    null ,    aLong   );
     RingbufferReadManyCodec.ResponseParameters params = RingbufferReadManyCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(anInt, params.readCount));
             assertTrue(isEqual(datas, params.items));
+            assertTrue(isEqual(null, params.itemSeqs));
+            assertTrue(isEqual(aLong, params.nextSeq));
 }
 {
     ClientMessage clientMessage = DurableExecutorShutdownCodec.encodeRequest(    aString   );
@@ -4636,12 +4946,13 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(aString, params.taskName));
 }
 {
-    ClientMessage clientMessage = ScheduledExecutorGetStatsFromPartitionCodec.encodeResponse(    aLong ,    aLong ,    aLong ,    aLong   );
+    ClientMessage clientMessage = ScheduledExecutorGetStatsFromPartitionCodec.encodeResponse(    aLong ,    aLong ,    aLong ,    aLong ,    aLong   );
     ScheduledExecutorGetStatsFromPartitionCodec.ResponseParameters params = ScheduledExecutorGetStatsFromPartitionCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aLong, params.lastIdleTimeNanos));
             assertTrue(isEqual(aLong, params.totalIdleTimeNanos));
             assertTrue(isEqual(aLong, params.totalRuns));
             assertTrue(isEqual(aLong, params.totalRunTimeNanos));
+            assertTrue(isEqual(aLong, params.lastRunDurationNanos));
 }
 {
     ClientMessage clientMessage = ScheduledExecutorGetStatsFromAddressCodec.encodeRequest(    aString ,    aString ,    anAddress   );
@@ -4651,12 +4962,13 @@ public class EncodeDecodeCompatibilityNullTest {
             assertTrue(isEqual(anAddress, params.address));
 }
 {
-    ClientMessage clientMessage = ScheduledExecutorGetStatsFromAddressCodec.encodeResponse(    aLong ,    aLong ,    aLong ,    aLong   );
+    ClientMessage clientMessage = ScheduledExecutorGetStatsFromAddressCodec.encodeResponse(    aLong ,    aLong ,    aLong ,    aLong ,    aLong   );
     ScheduledExecutorGetStatsFromAddressCodec.ResponseParameters params = ScheduledExecutorGetStatsFromAddressCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
             assertTrue(isEqual(aLong, params.lastIdleTimeNanos));
             assertTrue(isEqual(aLong, params.totalIdleTimeNanos));
             assertTrue(isEqual(aLong, params.totalRuns));
             assertTrue(isEqual(aLong, params.totalRunTimeNanos));
+            assertTrue(isEqual(aLong, params.lastRunDurationNanos));
 }
 {
     ClientMessage clientMessage = ScheduledExecutorGetDelayFromPartitionCodec.encodeRequest(    aString ,    aString   );
@@ -4795,6 +5107,420 @@ public class EncodeDecodeCompatibilityNullTest {
 {
     ClientMessage clientMessage = ScheduledExecutorDisposeFromAddressCodec.encodeResponse( );
     ScheduledExecutorDisposeFromAddressCodec.ResponseParameters params = ScheduledExecutorDisposeFromAddressCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMultiMapConfigCodec.encodeRequest(    aString ,    aString ,    null ,    aBoolean ,    anInt ,    anInt ,    aBoolean ,    null ,    aString ,    anInt   );
+    DynamicConfigAddMultiMapConfigCodec.RequestParameters params = DynamicConfigAddMultiMapConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aString, params.collectionType));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(aBoolean, params.binary));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMultiMapConfigCodec.encodeResponse( );
+    DynamicConfigAddMultiMapConfigCodec.ResponseParameters params = DynamicConfigAddMultiMapConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddRingbufferConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    anInt ,    anInt ,    aString ,    null ,    null ,    aString ,    anInt   );
+    DynamicConfigAddRingbufferConfigCodec.RequestParameters params = DynamicConfigAddRingbufferConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.capacity));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(anInt, params.timeToLiveSeconds));
+            assertTrue(isEqual(aString, params.inMemoryFormat));
+            assertTrue(isEqual(null, params.ringbufferStoreConfig));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddRingbufferConfigCodec.encodeResponse( );
+    DynamicConfigAddRingbufferConfigCodec.ResponseParameters params = DynamicConfigAddRingbufferConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCardinalityEstimatorConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    null ,    aString ,    anInt   );
+    DynamicConfigAddCardinalityEstimatorConfigCodec.RequestParameters params = DynamicConfigAddCardinalityEstimatorConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCardinalityEstimatorConfigCodec.encodeResponse( );
+    DynamicConfigAddCardinalityEstimatorConfigCodec.ResponseParameters params = DynamicConfigAddCardinalityEstimatorConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddLockConfigCodec.encodeRequest(    aString ,    null   );
+    DynamicConfigAddLockConfigCodec.RequestParameters params = DynamicConfigAddLockConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddLockConfigCodec.encodeResponse( );
+    DynamicConfigAddLockConfigCodec.ResponseParameters params = DynamicConfigAddLockConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddListConfigCodec.encodeRequest(    aString ,    null ,    anInt ,    anInt ,    anInt ,    aBoolean ,    null ,    aString ,    anInt   );
+    DynamicConfigAddListConfigCodec.RequestParameters params = DynamicConfigAddListConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(anInt, params.maxSize));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddListConfigCodec.encodeResponse( );
+    DynamicConfigAddListConfigCodec.ResponseParameters params = DynamicConfigAddListConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddSetConfigCodec.encodeRequest(    aString ,    null ,    anInt ,    anInt ,    anInt ,    aBoolean ,    null ,    aString ,    anInt   );
+    DynamicConfigAddSetConfigCodec.RequestParameters params = DynamicConfigAddSetConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(anInt, params.maxSize));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddSetConfigCodec.encodeResponse( );
+    DynamicConfigAddSetConfigCodec.ResponseParameters params = DynamicConfigAddSetConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddReplicatedMapConfigCodec.encodeRequest(    aString ,    aString ,    aBoolean ,    aBoolean ,    aString ,    null ,    null ,    anInt   );
+    DynamicConfigAddReplicatedMapConfigCodec.RequestParameters params = DynamicConfigAddReplicatedMapConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aString, params.inMemoryFormat));
+            assertTrue(isEqual(aBoolean, params.asyncFillup));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddReplicatedMapConfigCodec.encodeResponse( );
+    DynamicConfigAddReplicatedMapConfigCodec.ResponseParameters params = DynamicConfigAddReplicatedMapConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddTopicConfigCodec.encodeRequest(    aString ,    aBoolean ,    aBoolean ,    aBoolean ,    null   );
+    DynamicConfigAddTopicConfigCodec.RequestParameters params = DynamicConfigAddTopicConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aBoolean, params.globalOrderingEnabled));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(aBoolean, params.multiThreadingEnabled));
+            assertTrue(isEqual(null, params.listenerConfigs));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddTopicConfigCodec.encodeResponse( );
+    DynamicConfigAddTopicConfigCodec.ResponseParameters params = DynamicConfigAddTopicConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddExecutorConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    aBoolean ,    null   );
+    DynamicConfigAddExecutorConfigCodec.RequestParameters params = DynamicConfigAddExecutorConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.poolSize));
+            assertTrue(isEqual(anInt, params.queueCapacity));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddExecutorConfigCodec.encodeResponse( );
+    DynamicConfigAddExecutorConfigCodec.ResponseParameters params = DynamicConfigAddExecutorConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddDurableExecutorConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    anInt ,    null   );
+    DynamicConfigAddDurableExecutorConfigCodec.RequestParameters params = DynamicConfigAddDurableExecutorConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.poolSize));
+            assertTrue(isEqual(anInt, params.durability));
+            assertTrue(isEqual(anInt, params.capacity));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddDurableExecutorConfigCodec.encodeResponse( );
+    DynamicConfigAddDurableExecutorConfigCodec.ResponseParameters params = DynamicConfigAddDurableExecutorConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddScheduledExecutorConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    anInt ,    null ,    aString ,    anInt   );
+    DynamicConfigAddScheduledExecutorConfigCodec.RequestParameters params = DynamicConfigAddScheduledExecutorConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.poolSize));
+            assertTrue(isEqual(anInt, params.durability));
+            assertTrue(isEqual(anInt, params.capacity));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddScheduledExecutorConfigCodec.encodeResponse( );
+    DynamicConfigAddScheduledExecutorConfigCodec.ResponseParameters params = DynamicConfigAddScheduledExecutorConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddSemaphoreConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    anInt ,    null   );
+    DynamicConfigAddSemaphoreConfigCodec.RequestParameters params = DynamicConfigAddSemaphoreConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.initialPermits));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddSemaphoreConfigCodec.encodeResponse( );
+    DynamicConfigAddSemaphoreConfigCodec.ResponseParameters params = DynamicConfigAddSemaphoreConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddQueueConfigCodec.encodeRequest(    aString ,    null ,    anInt ,    anInt ,    anInt ,    anInt ,    aBoolean ,    null ,    null ,    aString ,    anInt   );
+    DynamicConfigAddQueueConfigCodec.RequestParameters params = DynamicConfigAddQueueConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(anInt, params.maxSize));
+            assertTrue(isEqual(anInt, params.emptyQueueTtl));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(null, params.queueStoreConfig));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddQueueConfigCodec.encodeResponse( );
+    DynamicConfigAddQueueConfigCodec.ResponseParameters params = DynamicConfigAddQueueConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMapConfigCodec.encodeRequest(    aString ,    anInt ,    anInt ,    anInt ,    anInt ,    aString ,    aBoolean ,    aString ,    aString ,    aString ,    null ,    null ,    aBoolean ,    null ,    null ,    aString ,    anInt ,    null ,    null ,    null ,    null ,    null ,    null ,    null ,    null ,    null ,    anInt   );
+    DynamicConfigAddMapConfigCodec.RequestParameters params = DynamicConfigAddMapConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(anInt, params.timeToLiveSeconds));
+            assertTrue(isEqual(anInt, params.maxIdleSeconds));
+            assertTrue(isEqual(aString, params.evictionPolicy));
+            assertTrue(isEqual(aBoolean, params.readBackupData));
+            assertTrue(isEqual(aString, params.cacheDeserializedValues));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(aString, params.inMemoryFormat));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(null, params.partitionLostListenerConfigs));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(null, params.mapEvictionPolicy));
+            assertTrue(isEqual(aString, params.maxSizeConfigMaxSizePolicy));
+            assertTrue(isEqual(anInt, params.maxSizeConfigSize));
+            assertTrue(isEqual(null, params.mapStoreConfig));
+            assertTrue(isEqual(null, params.nearCacheConfig));
+            assertTrue(isEqual(null, params.wanReplicationRef));
+            assertTrue(isEqual(null, params.mapIndexConfigs));
+            assertTrue(isEqual(null, params.mapAttributeConfigs));
+            assertTrue(isEqual(null, params.queryCacheConfigs));
+            assertTrue(isEqual(null, params.partitioningStrategyClassName));
+            assertTrue(isEqual(null, params.partitioningStrategyImplementation));
+            assertTrue(isEqual(null, params.hotRestartConfig));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMapConfigCodec.encodeResponse( );
+    DynamicConfigAddMapConfigCodec.ResponseParameters params = DynamicConfigAddMapConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddReliableTopicConfigCodec.encodeRequest(    aString ,    null ,    anInt ,    aBoolean ,    aString ,    null   );
+    DynamicConfigAddReliableTopicConfigCodec.RequestParameters params = DynamicConfigAddReliableTopicConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.listenerConfigs));
+            assertTrue(isEqual(anInt, params.readBatchSize));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(aString, params.topicOverloadPolicy));
+            assertTrue(isEqual(null, params.executor));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddReliableTopicConfigCodec.encodeResponse( );
+    DynamicConfigAddReliableTopicConfigCodec.ResponseParameters params = DynamicConfigAddReliableTopicConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCacheConfigCodec.encodeRequest(    aString ,    null ,    null ,    aBoolean ,    aBoolean ,    aBoolean ,    aBoolean ,    null ,    null ,    null ,    null ,    anInt ,    anInt ,    aString ,    null ,    null ,    aBoolean ,    null ,    null ,    null ,    null ,    null ,    null ,    null   );
+    DynamicConfigAddCacheConfigCodec.RequestParameters params = DynamicConfigAddCacheConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.keyType));
+            assertTrue(isEqual(null, params.valueType));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(aBoolean, params.managementEnabled));
+            assertTrue(isEqual(aBoolean, params.readThrough));
+            assertTrue(isEqual(aBoolean, params.writeThrough));
+            assertTrue(isEqual(null, params.cacheLoaderFactory));
+            assertTrue(isEqual(null, params.cacheWriterFactory));
+            assertTrue(isEqual(null, params.cacheLoader));
+            assertTrue(isEqual(null, params.cacheWriter));
+            assertTrue(isEqual(anInt, params.backupCount));
+            assertTrue(isEqual(anInt, params.asyncBackupCount));
+            assertTrue(isEqual(aString, params.inMemoryFormat));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(null, params.mergePolicy));
+            assertTrue(isEqual(aBoolean, params.disablePerEntryInvalidationEvents));
+            assertTrue(isEqual(null, params.partitionLostListenerConfigs));
+            assertTrue(isEqual(null, params.expiryPolicyFactoryClassName));
+            assertTrue(isEqual(null, params.timedExpiryPolicyFactoryConfig));
+            assertTrue(isEqual(null, params.cacheEntryListeners));
+            assertTrue(isEqual(null, params.evictionConfig));
+            assertTrue(isEqual(null, params.wanReplicationRef));
+            assertTrue(isEqual(null, params.hotRestartConfig));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCacheConfigCodec.encodeResponse( );
+    DynamicConfigAddCacheConfigCodec.ResponseParameters params = DynamicConfigAddCacheConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddEventJournalConfigCodec.encodeRequest(    null ,    null ,    aBoolean ,    anInt ,    anInt   );
+    DynamicConfigAddEventJournalConfigCodec.RequestParameters params = DynamicConfigAddEventJournalConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(null, params.mapName));
+            assertTrue(isEqual(null, params.cacheName));
+            assertTrue(isEqual(aBoolean, params.enabled));
+            assertTrue(isEqual(anInt, params.capacity));
+            assertTrue(isEqual(anInt, params.timeToLiveSeconds));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddEventJournalConfigCodec.encodeResponse( );
+    DynamicConfigAddEventJournalConfigCodec.ResponseParameters params = DynamicConfigAddEventJournalConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddFlakeIdGeneratorConfigCodec.encodeRequest(    aString ,    anInt ,    aLong ,    aLong ,    aBoolean ,    aLong   );
+    DynamicConfigAddFlakeIdGeneratorConfigCodec.RequestParameters params = DynamicConfigAddFlakeIdGeneratorConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.prefetchCount));
+            assertTrue(isEqual(aLong, params.prefetchValidity));
+            assertTrue(isEqual(aLong, params.idOffset));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(aLong, params.nodeIdOffset));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddFlakeIdGeneratorConfigCodec.encodeResponse( );
+    DynamicConfigAddFlakeIdGeneratorConfigCodec.ResponseParameters params = DynamicConfigAddFlakeIdGeneratorConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddAtomicLongConfigCodec.encodeRequest(    aString ,    null ,    aString ,    anInt   );
+    DynamicConfigAddAtomicLongConfigCodec.RequestParameters params = DynamicConfigAddAtomicLongConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddAtomicLongConfigCodec.encodeResponse( );
+    DynamicConfigAddAtomicLongConfigCodec.ResponseParameters params = DynamicConfigAddAtomicLongConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddAtomicReferenceConfigCodec.encodeRequest(    aString ,    null ,    aString ,    anInt   );
+    DynamicConfigAddAtomicReferenceConfigCodec.RequestParameters params = DynamicConfigAddAtomicReferenceConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.quorumName));
+            assertTrue(isEqual(aString, params.mergePolicy));
+            assertTrue(isEqual(anInt, params.mergeBatchSize));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddAtomicReferenceConfigCodec.encodeResponse( );
+    DynamicConfigAddAtomicReferenceConfigCodec.ResponseParameters params = DynamicConfigAddAtomicReferenceConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCountDownLatchConfigCodec.encodeRequest(    aString ,    null   );
+    DynamicConfigAddCountDownLatchConfigCodec.RequestParameters params = DynamicConfigAddCountDownLatchConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddCountDownLatchConfigCodec.encodeResponse( );
+    DynamicConfigAddCountDownLatchConfigCodec.ResponseParameters params = DynamicConfigAddCountDownLatchConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddPNCounterConfigCodec.encodeRequest(    aString ,    anInt ,    aBoolean ,    null   );
+    DynamicConfigAddPNCounterConfigCodec.RequestParameters params = DynamicConfigAddPNCounterConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.replicaCount));
+            assertTrue(isEqual(aBoolean, params.statisticsEnabled));
+            assertTrue(isEqual(null, params.quorumName));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddPNCounterConfigCodec.encodeResponse( );
+    DynamicConfigAddPNCounterConfigCodec.ResponseParameters params = DynamicConfigAddPNCounterConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMerkleTreeConfigCodec.encodeRequest(    aString ,    aBoolean ,    anInt   );
+    DynamicConfigAddMerkleTreeConfigCodec.RequestParameters params = DynamicConfigAddMerkleTreeConfigCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.mapName));
+            assertTrue(isEqual(aBoolean, params.enabled));
+            assertTrue(isEqual(anInt, params.depth));
+}
+{
+    ClientMessage clientMessage = DynamicConfigAddMerkleTreeConfigCodec.encodeResponse( );
+    DynamicConfigAddMerkleTreeConfigCodec.ResponseParameters params = DynamicConfigAddMerkleTreeConfigCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+}
+{
+    ClientMessage clientMessage = FlakeIdGeneratorNewIdBatchCodec.encodeRequest(    aString ,    anInt   );
+    FlakeIdGeneratorNewIdBatchCodec.RequestParameters params = FlakeIdGeneratorNewIdBatchCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(anInt, params.batchSize));
+}
+{
+    ClientMessage clientMessage = FlakeIdGeneratorNewIdBatchCodec.encodeResponse(    aLong ,    aLong ,    anInt   );
+    FlakeIdGeneratorNewIdBatchCodec.ResponseParameters params = FlakeIdGeneratorNewIdBatchCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aLong, params.base));
+            assertTrue(isEqual(aLong, params.increment));
+            assertTrue(isEqual(anInt, params.batchSize));
+}
+{
+    ClientMessage clientMessage = PNCounterGetCodec.encodeRequest(    aString ,    aListOfStringToLong ,    anAddress   );
+    PNCounterGetCodec.RequestParameters params = PNCounterGetCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aListOfStringToLong, params.replicaTimestamps));
+            assertTrue(isEqual(anAddress, params.targetReplica));
+}
+{
+    ClientMessage clientMessage = PNCounterGetCodec.encodeResponse(    aLong ,    aListOfStringToLong ,    anInt   );
+    PNCounterGetCodec.ResponseParameters params = PNCounterGetCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aLong, params.value));
+            assertTrue(isEqual(aListOfStringToLong, params.replicaTimestamps));
+            assertTrue(isEqual(anInt, params.replicaCount));
+}
+{
+    ClientMessage clientMessage = PNCounterAddCodec.encodeRequest(    aString ,    aLong ,    aBoolean ,    aListOfStringToLong ,    anAddress   );
+    PNCounterAddCodec.RequestParameters params = PNCounterAddCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+            assertTrue(isEqual(aLong, params.delta));
+            assertTrue(isEqual(aBoolean, params.getBeforeUpdate));
+            assertTrue(isEqual(aListOfStringToLong, params.replicaTimestamps));
+            assertTrue(isEqual(anAddress, params.targetReplica));
+}
+{
+    ClientMessage clientMessage = PNCounterAddCodec.encodeResponse(    aLong ,    aListOfStringToLong ,    anInt   );
+    PNCounterAddCodec.ResponseParameters params = PNCounterAddCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aLong, params.value));
+            assertTrue(isEqual(aListOfStringToLong, params.replicaTimestamps));
+            assertTrue(isEqual(anInt, params.replicaCount));
+}
+{
+    ClientMessage clientMessage = PNCounterGetConfiguredReplicaCountCodec.encodeRequest(    aString   );
+    PNCounterGetConfiguredReplicaCountCodec.RequestParameters params = PNCounterGetConfiguredReplicaCountCodec.decodeRequest(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(aString, params.name));
+}
+{
+    ClientMessage clientMessage = PNCounterGetConfiguredReplicaCountCodec.encodeResponse(    anInt   );
+    PNCounterGetConfiguredReplicaCountCodec.ResponseParameters params = PNCounterGetConfiguredReplicaCountCodec.decodeResponse(ClientMessage.createForDecode(clientMessage.buffer(), 0));
+            assertTrue(isEqual(anInt, params.response));
 }
     }
 }

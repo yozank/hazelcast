@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,8 +177,8 @@ public class ClientClusterStateTest {
                             map.putAll(values);
                             Thread.sleep(100);
                         } catch (IllegalStateException e) {
-                           logger.warning("Expected exception for Map putAll during cluster shutdown:", e);
-                           break;
+                            logger.warning("Expected exception for Map putAll during cluster shutdown:", e);
+                            break;
                         } catch (TargetDisconnectedException e) {
                             logger.warning("Expected exception for Map putAll during cluster shutdown:", e);
                             break;

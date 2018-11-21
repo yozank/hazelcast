@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,6 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.core.OperationTimeoutException;
-import com.hazelcast.instance.Node;
-import com.hazelcast.instance.TestUtil;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
@@ -116,10 +114,9 @@ public class OperationServiceImpl_timeoutTest extends HazelcastTestSupport {
         warmUpPartitions(instances);
 
         final HazelcastInstance hz = instances[memberCount - 1];
-        Node node = TestUtil.getNode(hz);
-        NodeEngine nodeEngine = node.nodeEngine;
+        NodeEngine nodeEngine = getNodeEngineImpl(hz);
         OperationService operationService = nodeEngine.getOperationService();
-        int partitionId = (int) (Math.random() * node.getPartitionService().getPartitionCount());
+        int partitionId = (int) (Math.random() * nodeEngine.getPartitionService().getPartitionCount());
 
         InternalCompletableFuture<Object> future = operationService
                 .invokeOnPartition(null, new TimedOutBackupAwareOperation(), partitionId);
@@ -189,26 +186,6 @@ public class OperationServiceImpl_timeoutTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testOperationTimeoutForLongRunningRemoteOperation() throws Exception {
-        int callTimeoutMillis = 3000;
-        Config config = new Config().setProperty(OPERATION_CALL_TIMEOUT_MILLIS.getName(), "" + callTimeoutMillis);
-
-        TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
-        HazelcastInstance hz1 = factory.newHazelcastInstance(config);
-        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
-
-        // invoke on the "remote" member
-        Address remoteAddress = getNode(hz2).getThisAddress();
-        OperationService operationService = getNode(hz1).getNodeEngine().getOperationService();
-        ICompletableFuture<Boolean> future = operationService
-                .invokeOnTarget(null, new SleepingOperation(callTimeoutMillis * 5), remoteAddress);
-
-        // wait more than operation timeout
-        sleepAtLeastMillis(callTimeoutMillis * 3);
-        assertTrue(future.get());
-    }
-
-    @Test
     public void testOperationTimeoutForLongRunningLocalOperation() throws Exception {
         int callTimeoutMillis = 500;
         Config config = new Config();
@@ -228,7 +205,7 @@ public class OperationServiceImpl_timeoutTest extends HazelcastTestSupport {
         assertTrue(future.get());
     }
 
-    private static class SleepingOperation extends Operation {
+    public static class SleepingOperation extends Operation {
         private long sleepTime;
 
         public SleepingOperation() {

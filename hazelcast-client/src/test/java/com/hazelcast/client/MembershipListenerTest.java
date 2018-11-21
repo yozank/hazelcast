@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,19 +47,16 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.mockito.Mockito.mock;
 
-
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class MembershipListenerTest extends HazelcastTestSupport {
 
     private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
 
-
     @After
     public void tearDown() {
         hazelcastFactory.terminateAll();
     }
-
 
     private class MemberShipEventLogger implements MembershipListener {
 
@@ -193,7 +190,6 @@ public class MembershipListenerTest extends HazelcastTestSupport {
         assertFalse(client.getCluster().removeMembershipListener(null));
     }
 
-
     @Test(expected = java.lang.NullPointerException.class)
     public void addNullListener_thenException() throws Exception {
         hazelcastFactory.newHazelcastInstance();
@@ -286,6 +282,4 @@ public class MembershipListenerTest extends HazelcastTestSupport {
         assertInstanceOf(MembershipEvent.class, eventObject);
         assertEquals(MembershipEvent.MEMBER_ADDED, ((MembershipEvent) eventObject).getEventType());
     }
-
-
 }

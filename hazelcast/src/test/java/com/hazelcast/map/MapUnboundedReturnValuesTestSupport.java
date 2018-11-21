@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ import static org.junit.Assert.fail;
 
 abstract class MapUnboundedReturnValuesTestSupport extends HazelcastTestSupport {
 
-    protected static final int CLUSTER_SIZE = 20;
+    static final int TEN_MINUTES_IN_MILLIS = 10 * 60 * 1000;
+    protected static final int CLUSTER_SIZE = 5;
     protected static final int PARTITION_COUNT = 271;
 
     protected static final int SMALL_LIMIT = QueryResultSizeLimiter.MINIMUM_MAX_RESULT_LIMIT;
@@ -169,8 +170,8 @@ abstract class MapUnboundedReturnValuesTestSupport extends HazelcastTestSupport 
         instance = instances[0];
         logger = instance.getLoggingService().getLogger(getClass());
 
-        HazelcastTestSupport.assertClusterSizeEventually(factory.getCount(), instance);
-        HazelcastTestSupport.assertAllInSafeState(asList(instances));
+        assertClusterSizeEventually(factory.getCount(), instance);
+        assertAllInSafeState(asList(instances));
 
         return instance.getMap(name);
     }

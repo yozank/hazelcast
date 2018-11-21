@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,26 +17,23 @@
 package com.hazelcast.test.jitter;
 
 /**
- * Operational Modes for {@link JitterRule}
- *
+ * Operational Modes for {@link JitterRule}.
  */
 public enum Mode {
+
     /**
      * JitterRule is explicitly disabled. No jitter monitoring is performed no matter
      * what test or environment is used.
-     *
      */
     DISABLED,
 
     /**
      * JitterRule is explicitly enabled. Failed test will report environment hiccups (if there were any)
-     *
      */
     ENABLED,
 
     /**
      * JitterRule is enabled when running on Jenkins only.
-     *
      */
     JENKINS
 }

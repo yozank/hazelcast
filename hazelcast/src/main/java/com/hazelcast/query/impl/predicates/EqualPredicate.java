@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.hazelcast.query.impl.predicates;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.query.impl.Index;
 import com.hazelcast.query.impl.IndexImpl;
@@ -34,6 +34,8 @@ import java.util.Set;
  */
 @BinaryInterface
 public class EqualPredicate extends AbstractIndexAwarePredicate implements NegatablePredicate {
+
+    private static final long serialVersionUID = 1L;
 
     protected Comparable value;
 
@@ -88,5 +90,37 @@ public class EqualPredicate extends AbstractIndexAwarePredicate implements Negat
     @Override
     public int getId() {
         return PredicateDataSerializerHook.EQUAL_PREDICATE;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        if (!(o instanceof EqualPredicate)) {
+            return false;
+        }
+
+        EqualPredicate that = (EqualPredicate) o;
+        if (!that.canEqual(this)) {
+            return false;
+        }
+
+        return value != null ? value.equals(that.value) : that.value == null;
+    }
+
+    @Override
+    public boolean canEqual(Object other) {
+        return (other instanceof EqualPredicate);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = super.hashCode();
+        result = 31 * result + (value != null ? value.hashCode() : 0);
+        return result;
     }
 }

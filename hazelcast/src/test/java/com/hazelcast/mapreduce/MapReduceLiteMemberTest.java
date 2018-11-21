@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -41,7 +40,6 @@ import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-@Ignore
 public class MapReduceLiteMemberTest
         extends HazelcastTestSupport {
 
@@ -63,10 +61,8 @@ public class MapReduceLiteMemberTest
         lite = factory.newHazelcastInstance(new Config().setLiteMember(true));
         lite2 = factory.newHazelcastInstance(new Config().setLiteMember(true));
 
-        assertClusterSizeEventually(4, instance);
-        assertClusterSizeEventually(4, instance2);
-        assertClusterSizeEventually(4, lite);
-        assertClusterSizeEventually(4, lite2);
+        assertClusterSize(4, instance, lite2);
+        assertClusterSizeEventually(4, instance2, lite);
     }
 
     @After
@@ -150,8 +146,7 @@ public class MapReduceLiteMemberTest
     public void testMapReduceJobSubmissionWithNoDataNode() {
         instance.shutdown();
         instance2.shutdown();
-        assertClusterSizeEventually(2, lite);
-        assertClusterSizeEventually(2, lite2);
+        assertClusterSizeEventually(2, lite, lite2);
 
         testMapReduceJobSubmissionWithNoDataNode(lite);
     }

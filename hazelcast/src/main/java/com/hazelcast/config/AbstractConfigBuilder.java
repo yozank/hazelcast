@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package com.hazelcast.config;
 
+import com.hazelcast.config.replacer.PropertyReplacer;
+import com.hazelcast.config.replacer.spi.ConfigReplacer;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import org.w3c.dom.Document;
@@ -30,12 +32,16 @@ import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathFactory;
 import java.io.InputStream;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.hazelcast.config.XmlElements.CONFIG_REPLACERS;
 import static com.hazelcast.config.XmlElements.IMPORT;
+import static com.hazelcast.util.StringUtil.isNullOrEmpty;
 import static java.lang.String.format;
 
 /**
@@ -110,7 +116,7 @@ public abstract class AbstractConfigBuilder extends AbstractXmlConfigHelper {
             throw new InvalidConfigurationException("Failed to load resource: " + resource);
         }
         if (!currentlyImportedFiles.add(url.getPath())) {
-            throw new InvalidConfigurationException("Cyclic loading of resource " + url.getPath() + " is detected !");
+            throw new InvalidConfigurationException("Cyclic loading of resource '" + url.getPath() + "' detected!");
         }
         Document doc = parse(url.openStream());
         Element importedRoot = doc.getDocumentElement();
@@ -138,51 +144,106 @@ public abstract class AbstractConfigBuilder extends AbstractXmlConfigHelper {
     protected abstract Properties getProperties();
 
     /**
-     * @return ConfigType of current config class as enum value.
+     * @return ConfigType of current config class as enum value
      */
     @Override
     protected abstract ConfigType getXmlType();
 
-    private void traverseChildrenAndReplaceVariables(Node root) {
+    private void traverseChildrenAndReplaceVariables(Node root) throws Exception {
+        // if no config-replacer is defined, use backward compatible default behavior for missing properties
+        boolean failFast = false;
+
+        List<ConfigReplacer> replacers = new ArrayList<ConfigReplacer>();
+
+        // Always use the Property replacer first.
+        PropertyReplacer propertyReplacer = new PropertyReplacer();
+        propertyReplacer.init(getProperties());
+        replacers.add(propertyReplacer);
+
+        // Add other replacers defined in the XML
+        Node node = (Node) xpath.evaluate(format("/hz:%s/hz:%s", getXmlType().name, CONFIG_REPLACERS.name), root,
+                XPathConstants.NODE);
+        if (node != null) {
+            String failFastAttr = getAttribute(node, "fail-if-value-missing");
+            failFast = isNullOrEmpty(failFastAttr) ? true : Boolean.parseBoolean(failFastAttr);
+            for (Node n : childElements(node)) {
+                String value = cleanNodeName(n);
+                if ("replacer".equals(value)) {
+                    replacers.add(createReplacer(n));
+                }
+            }
+        }
+
+        // Use all the replacers on the XML content
+        for (ConfigReplacer replacer : replacers) {
+            traverseChildrenAndReplaceVariables(root, replacer, failFast);
+        }
+    }
+
+    private ConfigReplacer createReplacer(Node node) throws Exception {
+        String replacerClass = getAttribute(node, "class-name");
+        Properties properties = new Properties();
+        for (Node n : childElements(node)) {
+            String value = cleanNodeName(n);
+            if ("properties".equals(value)) {
+                fillProperties(n, properties);
+            }
+        }
+        ConfigReplacer replacer = (ConfigReplacer) Class.forName(replacerClass).newInstance();
+        replacer.init(properties);
+        return replacer;
+    }
+
+    private void traverseChildrenAndReplaceVariables(Node root, ConfigReplacer replacer, boolean failFast) {
         NamedNodeMap attributes = root.getAttributes();
         if (attributes != null) {
             for (int k = 0; k < attributes.getLength(); k++) {
                 Node attribute = attributes.item(k);
-                replaceVariables(attribute);
+                replaceVariables(attribute, replacer, failFast);
             }
         }
         if (root.getNodeValue() != null) {
-            replaceVariables(root);
+            replaceVariables(root, replacer, failFast);
         }
         final NodeList childNodes = root.getChildNodes();
         for (int k = 0; k < childNodes.getLength(); k++) {
             Node child = childNodes.item(k);
-            traverseChildrenAndReplaceVariables(child);
+            traverseChildrenAndReplaceVariables(child, replacer, failFast);
         }
     }
 
-    private void replaceVariables(Node node) {
+    private void replaceVariables(Node node, ConfigReplacer replacer, boolean failFast) {
         String value = node.getNodeValue();
         StringBuilder sb = new StringBuilder(value);
+        String replacerPrefix = "$" + replacer.getPrefix() + "{";
         int endIndex = -1;
-        int startIndex = sb.indexOf("${");
+        int startIndex = sb.indexOf(replacerPrefix);
         while (startIndex > -1) {
             endIndex = sb.indexOf("}", startIndex);
             if (endIndex == -1) {
-                LOGGER.warning("Bad variable syntax. Could not find a closing curly bracket '}' on node: " + node.getLocalName());
+                LOGGER.warning("Bad variable syntax. Could not find a closing curly bracket '}' for prefix " + replacerPrefix
+                        + " on node: " + node.getLocalName());
                 break;
             }
 
-            String variable = sb.substring(startIndex + 2, endIndex);
-            String variableReplacement = getProperties().getProperty(variable);
+            String variable = sb.substring(startIndex + replacerPrefix.length(), endIndex);
+            String variableReplacement = replacer.getReplacement(variable);
             if (variableReplacement != null) {
                 sb.replace(startIndex, endIndex + 1, variableReplacement);
                 endIndex = startIndex + variableReplacement.length();
             } else {
-                LOGGER.warning("Could not find a value for property  '" + variable + "' on node: " + node.getLocalName());
+                handleMissingVariable(sb.substring(startIndex, endIndex + 1), node.getLocalName(), failFast);
             }
-            startIndex = sb.indexOf("${", endIndex);
+            startIndex = sb.indexOf(replacerPrefix, endIndex);
         }
         node.setNodeValue(sb.toString());
+    }
+
+    private void handleMissingVariable(String variable, String nodeName, boolean failFast) throws ConfigurationException {
+        String message = format("Could not find a replacement for '%s' on node '%s'", variable, nodeName);
+        if (failFast) {
+            throw new ConfigurationException(message);
+        }
+        LOGGER.warning(message);
     }
 }

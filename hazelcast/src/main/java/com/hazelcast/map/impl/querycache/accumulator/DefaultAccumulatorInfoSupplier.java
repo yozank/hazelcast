@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,23 +47,43 @@ public class DefaultAccumulatorInfoSupplier implements AccumulatorInfoSupplier {
     }
 
     @Override
-    public AccumulatorInfo getAccumulatorInfoOrNull(String mapName, String cacheName) {
+    public AccumulatorInfo getAccumulatorInfoOrNull(String mapName, String cacheId) {
         ConcurrentMap<String, AccumulatorInfo> cacheToInfoMap = cacheInfoPerMap.get(mapName);
-        return cacheToInfoMap.get(cacheName);
+        if (cacheToInfoMap == null) {
+            return null;
+        }
+
+        return cacheToInfoMap.get(cacheId);
     }
 
     @Override
-    public void putIfAbsent(String mapName, String cacheName, AccumulatorInfo info) {
+    public void putIfAbsent(String mapName, String cacheId, AccumulatorInfo info) {
         ConcurrentMap<String, AccumulatorInfo> cacheToInfoMap = getOrPutIfAbsent(cacheInfoPerMap, mapName, INFO_CTOR);
-        cacheToInfoMap.putIfAbsent(cacheName, info);
+        cacheToInfoMap.putIfAbsent(cacheId, info);
     }
 
     @Override
-    public void remove(String mapName, String cacheName) {
+    public void remove(String mapName, String cacheId) {
         ConcurrentMap<String, AccumulatorInfo> cacheToInfoMap = cacheInfoPerMap.get(mapName);
         if (cacheToInfoMap == null) {
             return;
         }
-        cacheToInfoMap.remove(cacheName);
+
+        cacheToInfoMap.remove(cacheId);
+    }
+
+    @Override
+    public ConcurrentMap<String, ConcurrentMap<String, AccumulatorInfo>> getAll() {
+        return cacheInfoPerMap;
+    }
+
+    // only for testing
+    public int accumulatorInfoCountOfMap(String mapName) {
+        ConcurrentMap<String, AccumulatorInfo> accumulatorInfo = cacheInfoPerMap.get(mapName);
+        if (accumulatorInfo == null) {
+            return 0;
+        } else {
+            return accumulatorInfo.size();
+        }
     }
 }

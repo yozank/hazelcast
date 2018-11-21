@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.hazelcast.spring.cache;
 
 import com.hazelcast.core.IMap;
@@ -42,11 +58,11 @@ public abstract class AbstractHazelcastCacheReadTimeoutTest extends HazelcastTes
         this.delay100 = cacheManager.getCache("delay100");
 
         //delay > readTimeout, throws exception
-        ((IMap<?, ?>)this.delay150.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(200));
+        ((IMap<?, ?>) this.delay150.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(200));
         //delay < readTimeout, get returns before timeout
-        ((IMap<?, ?>)this.delay50.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(2));
+        ((IMap<?, ?>) this.delay50.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(2));
         //cache block get operations, readTimeout 0.
-        ((IMap<?, ?>)this.delayNo.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(300));
+        ((IMap<?, ?>) this.delayNo.getNativeCache()).addInterceptor(new DelayIMapGetInterceptor(300));
     }
 
     @Test
@@ -66,8 +82,17 @@ public abstract class AbstractHazelcastCacheReadTimeoutTest extends HazelcastTes
     public void testCache_delay50() {
         String key = createRandomKey();
         long start = System.nanoTime();
-        delay50.get(key);
-        long time =  TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        try {
+            delay50.get(key);
+        } catch (OperationTimeoutException e) {
+            //the exception can be thrown when the call is really slower than 50ms
+            //it not that uncommon due non-determinism of JVM
+
+            long deltaMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            assertTrue(deltaMs >= 50);
+            return;
+        }
+        long time = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertTrue(time >= 2L);
     }
 
@@ -76,7 +101,7 @@ public abstract class AbstractHazelcastCacheReadTimeoutTest extends HazelcastTes
         String key = createRandomKey();
         long start = System.nanoTime();
         delayNo.get(key);
-        long time =  TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        long time = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertTrue(time >= 300L);
     }
 
@@ -89,8 +114,17 @@ public abstract class AbstractHazelcastCacheReadTimeoutTest extends HazelcastTes
     public void testBean_delay50() {
         String key = createRandomKey();
         long start = System.nanoTime();
-        dummyTimeoutBean.getDelay50(key);
-        long time =  TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        try {
+            dummyTimeoutBean.getDelay50(key);
+        } catch (OperationTimeoutException e) {
+            //the exception can be thrown when the call is really slower than 50ms
+            //it not that uncommon due non-determinism of JVM
+
+            long deltaMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            assertTrue(deltaMs >= 50);
+            return;
+        }
+        long time = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertTrue(time >= 2L);
     }
 
@@ -99,7 +133,7 @@ public abstract class AbstractHazelcastCacheReadTimeoutTest extends HazelcastTes
         String key = createRandomKey();
         long start = System.nanoTime();
         dummyTimeoutBean.getDelayNo(key);
-        long time =  TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        long time = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
         assertTrue(time >= 300L);
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,33 +16,41 @@
 
 package com.hazelcast.map.impl.querycache.accumulator;
 
+import java.util.concurrent.ConcurrentMap;
+
 /**
- * Supplies {@link AccumulatorInfo} according to name of {@code IMap} and name of {@code QueryCache}.
+ * Supplies {@link AccumulatorInfo} according to name of {@code IMap} and
+ * name of {@code QueryCache}.
  */
 public interface AccumulatorInfoSupplier {
 
     /**
      * Returns {@link AccumulatorInfo} for cache of ma{@code IMap}p.
      *
-     * @param mapName   map name.
-     * @param cacheName cache name.
+     * @param mapName map name.
+     * @param cacheId cache name.
      * @return {@link AccumulatorInfo} for cache of map.
      */
-    AccumulatorInfo getAccumulatorInfoOrNull(String mapName, String cacheName);
+    AccumulatorInfo getAccumulatorInfoOrNull(String mapName, String cacheId);
 
     /**
      * Adds a new {@link AccumulatorInfo} for the query-cache of {@code IMap}.
      *
-     * @param mapName   map name.
-     * @param cacheName cache name.
+     * @param mapName map name.
+     * @param cacheId cache name.
      */
-    void putIfAbsent(String mapName, String cacheName, AccumulatorInfo info);
+    void putIfAbsent(String mapName, String cacheId, AccumulatorInfo info);
 
     /**
      * Removes {@link AccumulatorInfo} from this supplier.
      *
-     * @param mapName   map name.
-     * @param cacheName cache name.
+     * @param mapName map name.
+     * @param cacheId cache name.
      */
-    void remove(String mapName, String cacheName);
+    void remove(String mapName, String cacheId);
+
+    /**
+     * @return all {@link AccumulatorInfo} of all {@code QueryCache} by map name
+     */
+    ConcurrentMap<String, ConcurrentMap<String, AccumulatorInfo>> getAll();
 }

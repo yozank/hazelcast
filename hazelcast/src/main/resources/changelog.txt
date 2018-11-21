@@ -1,6 +1,60 @@
 You can also see the Release Notes document at http://docs.hazelcast.org/docs/release-notes/.
 
-2017.02.17, Release 3.8
+Release 3.11
+
+- Added fine-grained control over WAN replication events by Introducing the new event type LOADED and the class EntryLoadedListener.
+- Introduced a license monitor daemon that warns about license expirations and instructs about the next steps.
+- Enhanced the WAN Synchronization by adding Merkle Trees support.
+- Added ability to set custom TTL for map and cache entries.
+- Added ability to set custom maximum idle timeouts for map entries.
+- Introduced configurable backoff strategy for client reconnections.
+- Introduced map index statistics.
+- Improved JCache's lazy eviction with a periodic cleanup that eventually removes all expired entries and frees up the occupied space.
+- Enhanced network I/O to allow TLS handshake in a block-free manner and to support offloadable tasks, improving the latency and security.
+- Added support for discovery in GCP Compute Engine environment.
+- Deprecated:
+  - The data structure IdGenerator is deprecated. Use Flake ID Generator.
+  - Following system properties are removed: 
+    - hazelcast.master.confirmation.interval.seconds 
+    - hazelcast.max.no.master.confirmation.seconds 
+    - hazelcast.mc.max.visible.instance.count
+
+Release 3.10
+
+- Split-Brain Healing for Hazelcast Data Structures with High-Density (HD) Memory Store.
+- Multiple Users/Roles in a Single Security Mapping.
+- Extended Split-Brain Protection.
+- Shorter Split-Brain Detection Window.
+- Extended Merge Policies.
+- Introduced Flake ID Generator.
+- Deprecated ID Generator.
+- Introduced PN Counter.
+- More consistency on findXConfig methods.
+- Enabled Health Check on F5 BIG-IP LTM.
+- Deprecated:
+  - hazelcast.master.confirmation.interval.seconds
+  - hazelcast.max.no.master.confirmation.seconds
+  - hazelcast.mc.max.visible.instance.count
+
+Release 3.9
+
+- WAN Replication using Discovery SPI.
+- Dynamic Creation of Distributed Objects Configuration.
+- Client Support for User Code Deployment.
+- Client Statistics in Management Center.
+- OpenSSL Integration.
+- Event Journal
+- Fine-Grained Anti-Entropy Mechanism.
+- Offloadable and Readonly entry processors.
+- Gigantic Cache Migration Enhancements: It enables manual control on the partition migrations.
+- Keeping JCache Implementation Updated.
+- Storing Near Cache Keys by Reference.
+- Client Connection Strategy Enhancements: Allows lazy initiation for Hazelcast Clients.
+- Default Group Password and Symmetric Encryption Default Credentials Policy.
+- Hazelcast Consistency Model Documentation.
+
+
+Release 3.8
 
 - Introduced rolling member upgrades for minor releases (Hazelcast IMDG Enterprise).
 - Added the capability of restoring Hot Restart data in a different cluster (Hazelcast IMDG Enterprise).
@@ -9,9 +63,9 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Introduced distributed implementation of Scheduled Executor Service.
 - Introduced User Code Deployment enabling you to load your new classes to Hazelcast IMDG members dynamically without restarting all of them.
 - Introduced fast aggregations and projections for queries.
-- Improved near cache so that it is eventually consistent; possible losses of invalidation events are detected and stale reads are prevented.
+- Improved Near Cache so that it is eventually consistent; possible losses of invalidation events are detected and stale reads are prevented.
 - Added cluster split-brain protection for Queue and Lock.
-- Unified near cache implementation.
+- Unified Near Cache implementation.
 - Introduced a preloader to improve the performance of near caches.
 - Implemented Ringbuffer with persistent datastore.
 - Introduced Hazelcast Striim Hot Cache Adapter.
@@ -24,7 +78,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2016.08.16, Release 3.7
+Release 3.7
 
 - Added the capability of custom eviction policies.
 - Implemented Discovery SPI for Microsoft Azure Services.
@@ -34,7 +88,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Added alignment of WAN Replication Clusters feature providing a mechanism to align or realign distributed objects in the clusters connected through WAN.
 - Introduced fault tolerant executor service.
 - Introduced modularized Hazelcast. Clients, languages and plugins are now modules which have separate GitHub repositories, Maven modules, and release cycles.
-- Enhanced near cache (for JCache) notifications.
+- Enhanced Near Cache (for JCache) notifications.
 - Enhanced migration algorithm.
 - Integrated WAN Replication with Solace.
 - Added Cloud Discovery SPI plugin for Multicast.
@@ -54,7 +108,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2016.01.22, Release 3.6
+Release 3.6
 
 - Introduced High-Density Memory Store feature for Hazelcast Map.
 - Added Discovery Service Provider Interface (Discovery SPI) to discover Hazelcast instances on cloud environments.
@@ -79,7 +133,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2015.06.17, Release 3.5
+Release 3.5
 
 - Back Pressure feature now supports async operations.
 - Added importing feature for Hazelcast (clients) declarative configuration.
@@ -91,7 +145,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Added Hazelcast Enterprise implementation of the WAN Replication.
 - Added sub-listener interfaces for map listener enabling you to listen to map-wide or entry-based events.
 - Implemented scalable map loader enabling you to load the keys incrementally if the number of keys is large.
-- Added near cache feature for Hazelcast JCache implementation.
+- Added Near Cache feature for Hazelcast JCache implementation.
 - Added fail fast feature on invalid configuration.
 - Added Continuous Query Caching feature.
 - Improved eventing system by introducing RingBuffer and Reliable Topic structures.
@@ -101,7 +155,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2014.12.23, Release 3.4
+Release 3.4
 
 - Introduced High-Density Memory Store feature.
 - Added Jetty based web sessions clustering functionality.
@@ -114,7 +168,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Implemented the support for Log4j 2.x.
 - Management Center now informs when the cluster is safe and all backups are up to date.
 
-2014.09.05, Release 3.3
+Release 3.3
 
 - Added heartbeat feature for Java client.
 - Added Tomcat 6 and 7 based web sessions clustering functionality.
@@ -126,7 +180,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2014.03.21, Release 3.2
+Release 3.2
 
 - Introduced a new architecture based on NIO to support more scalable and concurrent client usage.
 - Added MapReduce framework.
@@ -139,7 +193,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Introduced getNearCacheStats().
 - Bug fixes.
 
-2013.10.11, Release 3.1
+Release 3.1
 
 - Added Elastic Memory (Enterprise Edition Only).
 - Added Hazelcast Security framework.
@@ -159,7 +213,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 
 
 
-2013.10.11, Release 3.0.3
+Release 3.0.3
 
 - Added multi-thread execution.
 - Introduced SPI (Service Programming Interface) to develop new partitioned services, data structures.
@@ -178,24 +232,24 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Added a new binary protocol based on portable serialization.
 - Bug fixes.
 
-2013.06.03, Release 2.6
+Release 2.6
 
 - Fixed issues with Spring configuration and merge policies.
 - Hazelcast source archives in Maven central repository now contains the class files.
 - Fixed formatting problems when using SQL predicates with date.
-- Fixed the issues of near cache functionality for Java client.
+- Fixed the issues of Near Cache functionality for Java client.
 - Improved the Memcache client content in the Reference Manual.
 
 
-2013.01.15, Release 2.5
+Release 2.5
 
-- Added near cache support for Java Client.
+- Added Near Cache support for Java Client.
 - Management Center alert system can now receive alerts based on custom filters.
 - Management Center has now better support for Hazelcast cluster running in OSGI environment.
 - Nodes can be easily shutdown or restarted using Management Center interface.
 - Bug fixes.
 
-2012.10.17, Release 2.4
+Release 2.4
 
 - Added Hibernate 2nd level cache local/invalidation mode.
 - Added quick clear feature for maps.
@@ -203,7 +257,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Added ability to restrict outbound ports.
 - Bug fixes.
 
-2012.08.28, Release 2.3
+Release 2.3
 
 - Changed hazelcast.max.operation.timeout unit from seconds to milliseconds.
 - Added hazelcast.max.concurrent.operation.limit property.
@@ -216,7 +270,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - During cluster merge after a network split-brain, merging side will now fire MERGING and MERGED before and after RESTARTING and RESTARTED LifecycleEvents.
 - Bug fixes.
 
-2012.07.23, Release 2.2
+Release 2.2
 
 - Improved redo logs and added maximum call/operation timeout.
 - Improved domain name handling.
@@ -243,7 +297,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Bug fixes.
 
 
-2012.06.04, Release 1.9.4.9
+Release 1.9.4.9
 
 - Added WAN Replication (synchronization of separate active clusters).
 - Added Data Affinity (co-location of related entries) feature.
@@ -293,7 +347,7 @@ You can also see the Release Notes document at http://docs.hazelcast.org/docs/re
 - Added the ability to start the cluster members evenly partitioned. Hence, no migration.
 - Added Java clients for accessing the cluster remotely.
 - Added Distributed Query for maps. Both Criteria API and SQL are supported.
-- Added near cache feature for distributed maps.
+- Added Near Cache feature for distributed maps.
 - Added TTL (time-to-live) property for each individual map entry.
 - Improved the put operation: IMap.put(key,value, ttl, timeunit).
 - Introduced the method IMap.putIfAbsent(key,value, ttl, timeunit).

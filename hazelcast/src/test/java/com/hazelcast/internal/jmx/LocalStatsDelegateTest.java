@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.NightlyTest;
+import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.util.UuidUtil;
 import org.junit.Before;
@@ -38,7 +39,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
-@Category(QuickTest.class)
+@Category({QuickTest.class, ParallelTest.class})
 public class LocalStatsDelegateTest extends HazelcastTestSupport {
 
     private AtomicBoolean done;
@@ -135,10 +136,11 @@ public class LocalStatsDelegateTest extends HazelcastTestSupport {
     }
 
     private class MapStatsThread implements Runnable {
+
         private LocalStatsDelegate localStatsDelegate;
         private AtomicBoolean done;
 
-        private boolean stress = false;
+        private boolean stress;
 
         private int sleepMs;
 

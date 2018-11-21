@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,74 +22,75 @@ import com.hazelcast.scheduledexecutor.impl.ScheduledTaskHandlerImpl;
 import com.hazelcast.spi.annotation.Beta;
 
 /**
- * Resource handler pointing to a {@link IScheduledFuture}.
- * The handler is used to interact with the <code>ScheduledFuture</code> in a {@link IScheduledExecutorService}.
+ * Resource handler pointing to a {@link IScheduledFuture}. The handler is used to interact with the <code>ScheduledFuture</code>
+ * in a {@link IScheduledExecutorService}.
  *
- * To access the handler, see {@link IScheduledFuture#getHandler()}.
- * To re-acquire access to a previously scheduled task, having only the handler at hand,
- * see {@link IScheduledExecutorService#getScheduledFuture(ScheduledTaskHandler)}
+ * <p>To access the handler, see {@link IScheduledFuture#getHandler()}. To re-acquire access to a previously scheduled task,
+ * having only the handler at hand, see {@link IScheduledExecutorService#getScheduledFuture(ScheduledTaskHandler)}
  */
 @Beta
 public abstract class ScheduledTaskHandler
         implements IdentifiedDataSerializable {
 
     /**
-     * Return the address of the member the task is associated with.
-     * Address will be null, if the task was scheduled to particular partition.
+     * Returns the address of the member the task is associated with.
      *
-     * @return The address of the member.
+     * <p>The address will be {@code null}, if the task was scheduled to particular partition.
+     *
+     * @return The address of the member
      */
     public abstract Address getAddress();
 
     /**
-     * Return the partition id the task is associated with.
-     * If the task was scheduled to a particular member, then the partition id will have the value of -1.
+     * Returns the partition ID the task is associated with.
      *
-     * @return The partition id.
+     * <p>If the task was scheduled to a particular member, then the partition ID will have the value of -1.
+     *
+     * @return The partition ID
      */
     public abstract int getPartitionId();
 
     /**
      * Return the name of the ScheduledExecutor this tasks is running on.
      *
-     * @return the name of the scheduler.
+     * @return the name of the scheduler
      */
     public abstract String getSchedulerName();
 
     /**
-     * Return the name of the task.
+     * Returns the name of the task.
      *
-     * @return The task name.
+     * @return the task name
      */
     public abstract String getTaskName();
 
     /**
-     * @return True when the associated task was scheduled on a specific partition.
+     * @return {@code true} when the associated task was scheduled on a specific partition
      */
     public abstract boolean isAssignedToPartition();
 
     /**
-     * @return True when the associated task was scheduled on a specific member in the cluster.
+     * @return {@code true} when the associated task was scheduled on a specific member in the cluster
      */
     public abstract boolean isAssignedToMember();
 
     /**
-     * Return the String represantion of the handler.
-     * Useful for persisting and/or communicating this info. A {@link ScheduledTaskHandler} can be constructed
-     * again from the Urn String using {@link #of(String)}
+     * Returns the String representation of the handler.
      *
-     * @return URN representing the handler in a String format.
+     * <p>Useful for persisting and/or communicating this info. A {@link ScheduledTaskHandler} can be constructed again
+     * from the Urn String using {@link #of(String)}
+     *
+     * @return URN representing the handler in a String format
      */
     public abstract String toUrn();
 
     /**
-     * Reconstruct a {@link ScheduledTaskHandler} from a URN String.
+     * Reconstructs a {@link ScheduledTaskHandler} from a URN String.
      *
-     * @param urn The URN of the handler as retrieved from {@link #toUrn()}.
-     * @return A {@link ScheduledTaskHandler} instance that can be used to access the scheduled task.
+     * @param urn The URN of the handler as retrieved from {@link #toUrn()}
+     * @return A {@link ScheduledTaskHandler} instance that can be used to access the scheduled task
      */
     public static ScheduledTaskHandler of(String urn) {
         return ScheduledTaskHandlerImpl.of(urn);
     }
-
 }

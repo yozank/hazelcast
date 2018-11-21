@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.client.config;
 
 import com.hazelcast.client.LoadBalancer;
 import com.hazelcast.config.ConfigPatternMatcher;
+import com.hazelcast.config.ConfigurationException;
 import com.hazelcast.config.GroupConfig;
 import com.hazelcast.config.ListenerConfig;
 import com.hazelcast.config.NativeMemoryConfig;
@@ -27,17 +28,23 @@ import com.hazelcast.config.SerializationConfig;
 import com.hazelcast.config.SocketInterceptorConfig;
 import com.hazelcast.config.matcher.MatchingPointConfigPatternMatcher;
 import com.hazelcast.core.ManagedContext;
+import com.hazelcast.flakeidgen.FlakeIdGenerator;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.security.Credentials;
 
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import static com.hazelcast.config.NearCacheConfigAccessor.initDefaultMaxSizeForOnHeapMaps;
+import static com.hazelcast.internal.config.ConfigUtils.lookupByPattern;
+import static com.hazelcast.partition.strategy.StringPartitioningStrategy.getBaseName;
 import static com.hazelcast.util.Preconditions.checkFalse;
 
 /**
@@ -90,9 +97,9 @@ public class ClientConfig {
 
     private ConfigPatternMatcher configPatternMatcher = new MatchingPointConfigPatternMatcher();
 
-    private Map<String, NearCacheConfig> nearCacheConfigMap = new ConcurrentHashMap<String, NearCacheConfig>();
+    private final Map<String, NearCacheConfig> nearCacheConfigMap = new ConcurrentHashMap<String, NearCacheConfig>();
 
-    private Map<String, ClientReliableTopicConfig> reliableTopicConfigMap
+    private final Map<String, ClientReliableTopicConfig> reliableTopicConfigMap
             = new ConcurrentHashMap<String, ClientReliableTopicConfig>();
 
     private Map<String, Map<String, QueryCacheConfig>> queryCacheConfigs;
@@ -101,7 +108,7 @@ public class ClientConfig {
 
     private NativeMemoryConfig nativeMemoryConfig = new NativeMemoryConfig();
 
-    private List<ProxyFactoryConfig> proxyFactoryConfigs = new LinkedList<ProxyFactoryConfig>();
+    private final List<ProxyFactoryConfig> proxyFactoryConfigs = new LinkedList<ProxyFactoryConfig>();
 
     private ManagedContext managedContext;
 
@@ -109,11 +116,39 @@ public class ClientConfig {
 
     private String licenseKey;
 
+    private ClientConnectionStrategyConfig connectionStrategyConfig = new ClientConnectionStrategyConfig();
+
+    private ClientUserCodeDeploymentConfig userCodeDeploymentConfig = new ClientUserCodeDeploymentConfig();
+
+    private final Map<String, ClientFlakeIdGeneratorConfig> flakeIdGeneratorConfigMap =
+            new ConcurrentHashMap<String, ClientFlakeIdGeneratorConfig>();
+
+    private ConcurrentMap<String, Object> userContext = new ConcurrentHashMap<String, Object>();
+
+    /**
+     * Sets the pattern matcher which is used to match item names to
+     * configuration objects.
+     * By default the {@link MatchingPointConfigPatternMatcher} is used.
+     *
+     * @param configPatternMatcher the pattern matcher
+     * @throws IllegalArgumentException if the pattern matcher is {@code null}
+     */
     public void setConfigPatternMatcher(ConfigPatternMatcher configPatternMatcher) {
         if (configPatternMatcher == null) {
             throw new IllegalArgumentException("ConfigPatternMatcher is not allowed to be null!");
         }
         this.configPatternMatcher = configPatternMatcher;
+    }
+
+    /**
+     * Returns the pattern matcher which is used to match item names to
+     * configuration objects.
+     * By default the {@link MatchingPointConfigPatternMatcher} is used.
+     *
+     * @return the pattern matcher
+     */
+    public ConfigPatternMatcher getConfigPatternMatcher() {
+        return configPatternMatcher;
     }
 
     /**
@@ -221,7 +256,7 @@ public class ClientConfig {
      * @return the found config. If none is found, a default configured one is returned.
      */
     public ClientReliableTopicConfig getReliableTopicConfig(String name) {
-        ClientReliableTopicConfig reliableTopicConfig = lookupByPattern(reliableTopicConfigMap, name);
+        ClientReliableTopicConfig reliableTopicConfig = lookupByPattern(configPatternMatcher, reliableTopicConfigMap, name);
         if (reliableTopicConfig == null) {
             reliableTopicConfig = new ClientReliableTopicConfig(name);
             addReliableTopicConfig(reliableTopicConfig);
@@ -286,7 +321,7 @@ public class ClientConfig {
      * @see com.hazelcast.config.NearCacheConfig
      */
     public NearCacheConfig getNearCacheConfig(String name) {
-        NearCacheConfig nearCacheConfig = lookupByPattern(nearCacheConfigMap, name);
+        NearCacheConfig nearCacheConfig = lookupByPattern(configPatternMatcher, nearCacheConfigMap, name);
         if (nearCacheConfig == null) {
             nearCacheConfig = nearCacheConfigMap.get("default");
             if (nearCacheConfig != null) {
@@ -316,8 +351,149 @@ public class ClientConfig {
      * @return configured {@link com.hazelcast.client.config.ClientConfig} for chaining
      */
     public ClientConfig setNearCacheConfigMap(Map<String, NearCacheConfig> nearCacheConfigMap) {
-        this.nearCacheConfigMap = nearCacheConfigMap;
+        this.nearCacheConfigMap.clear();
+        this.nearCacheConfigMap.putAll(nearCacheConfigMap);
+        for (Entry<String, NearCacheConfig> entry : this.nearCacheConfigMap.entrySet()) {
+            entry.getValue().setName(entry.getKey());
+        }
         return this;
+    }
+
+    /**
+     * Returns the map of {@link FlakeIdGenerator} configurations,
+     * mapped by config name. The config name may be a pattern with which the
+     * configuration was initially obtained.
+     *
+     * @return the map configurations mapped by config name
+     */
+    public Map<String, ClientFlakeIdGeneratorConfig> getFlakeIdGeneratorConfigMap() {
+        return flakeIdGeneratorConfigMap;
+    }
+
+    /**
+     * Returns a {@link ClientFlakeIdGeneratorConfig} configuration for the given flake ID generator name.
+     * <p>
+     * The name is matched by pattern to the configuration and by stripping the
+     * partition ID qualifier from the given {@code name}.
+     * If there is no config found by the name, it will return the configuration
+     * with the name {@code "default"}.
+     *
+     * @param name name of the flake ID generator config
+     * @return the flake ID generator configuration
+     * @throws ConfigurationException if ambiguous configurations are found
+     * @see com.hazelcast.partition.strategy.StringPartitioningStrategy#getBaseName(java.lang.String)
+     * @see #setConfigPatternMatcher(ConfigPatternMatcher)
+     * @see #getConfigPatternMatcher()
+     */
+    public ClientFlakeIdGeneratorConfig findFlakeIdGeneratorConfig(String name) {
+        String baseName = getBaseName(name);
+        ClientFlakeIdGeneratorConfig config = lookupByPattern(configPatternMatcher, flakeIdGeneratorConfigMap, baseName);
+        if (config != null) {
+            return config;
+        }
+        return getFlakeIdGeneratorConfig("default");
+    }
+
+    /**
+     * Returns the {@link ClientFlakeIdGeneratorConfig} for the given name, creating
+     * one if necessary and adding it to the collection of known configurations.
+     * <p>
+     * The configuration is found by matching the the configuration name
+     * pattern to the provided {@code name} without the partition qualifier
+     * (the part of the name after {@code '@'}).
+     * If no configuration matches, it will create one by cloning the
+     * {@code "default"} configuration and add it to the configuration
+     * collection.
+     * <p>
+     * This method is intended to easily and fluently create and add
+     * configurations more specific than the default configuration without
+     * explicitly adding it by invoking {@link #addFlakeIdGeneratorConfig(ClientFlakeIdGeneratorConfig)}.
+     * <p>
+     * Because it adds new configurations if they are not already present,
+     * this method is intended to be used before this config is used to
+     * create a hazelcast instance. Afterwards, newly added configurations
+     * may be ignored.
+     *
+     * @param name name of the flake ID generator config
+     * @return the cache configuration
+     * @throws ConfigurationException if ambiguous configurations are found
+     * @see com.hazelcast.partition.strategy.StringPartitioningStrategy#getBaseName(java.lang.String)
+     * @see #setConfigPatternMatcher(ConfigPatternMatcher)
+     * @see #getConfigPatternMatcher()
+     */
+    public ClientFlakeIdGeneratorConfig getFlakeIdGeneratorConfig(String name) {
+        String baseName = getBaseName(name);
+        ClientFlakeIdGeneratorConfig config = lookupByPattern(configPatternMatcher, flakeIdGeneratorConfigMap, baseName);
+        if (config != null) {
+            return config;
+        }
+        ClientFlakeIdGeneratorConfig defConfig = flakeIdGeneratorConfigMap.get("default");
+        if (defConfig == null) {
+            defConfig = new ClientFlakeIdGeneratorConfig("default");
+            flakeIdGeneratorConfigMap.put(defConfig.getName(), defConfig);
+        }
+        config = new ClientFlakeIdGeneratorConfig(defConfig);
+        config.setName(name);
+        flakeIdGeneratorConfigMap.put(config.getName(), config);
+        return config;
+    }
+
+    /**
+     * Adds a flake ID generator configuration. The configuration is saved under the config
+     * name, which may be a pattern with which the configuration will be
+     * obtained in the future.
+     *
+     * @param config the flake ID configuration
+     * @return this config instance
+     */
+    public ClientConfig addFlakeIdGeneratorConfig(ClientFlakeIdGeneratorConfig config) {
+        flakeIdGeneratorConfigMap.put(config.getName(), config);
+        return this;
+    }
+
+    /**
+     * Sets the map of {@link FlakeIdGenerator} configurations,
+     * mapped by config name. The config name may be a pattern with which the
+     * configuration will be obtained in the future.
+     *
+     * @param map the FlakeIdGenerator configuration map to set
+     * @return this config instance
+     */
+    public ClientConfig setFlakeIdGeneratorConfigMap(Map<String, ClientFlakeIdGeneratorConfig> map) {
+        flakeIdGeneratorConfigMap.clear();
+        flakeIdGeneratorConfigMap.putAll(map);
+        for (Entry<String, ClientFlakeIdGeneratorConfig> entry : map.entrySet()) {
+            entry.getValue().setName(entry.getKey());
+        }
+        return this;
+    }
+
+    /**
+     * Sets the map of {@link ClientReliableTopicConfig},
+     * mapped by config name. The config name may be a pattern with which the
+     * configuration will be obtained in the future.
+     *
+     * @param map the FlakeIdGenerator configuration map to set
+     * @return this config instance
+     */
+    public ClientConfig setReliableTopicConfigMap(Map<String, ClientReliableTopicConfig> map) {
+        reliableTopicConfigMap.clear();
+        reliableTopicConfigMap.putAll(map);
+        for (Entry<String, ClientReliableTopicConfig> entry : map.entrySet()) {
+            entry.getValue().setName(entry.getKey());
+        }
+        return this;
+    }
+
+    /**
+     * Returns the map of reliable topic configurations,
+     * mapped by config name. The config name may be a pattern with which the
+     * configuration was initially obtained.
+     *
+     * @return the map configurations mapped by config name
+     */
+    public Map<String, ClientReliableTopicConfig> getReliableTopicConfigMap() {
+        return reliableTopicConfigMap;
     }
 
     /**
@@ -630,7 +806,8 @@ public class ClientConfig {
      * @return configured {@link com.hazelcast.client.config.ClientConfig} for chaining
      */
     public ClientConfig setProxyFactoryConfigs(List<ProxyFactoryConfig> proxyFactoryConfigs) {
-        this.proxyFactoryConfigs = proxyFactoryConfigs;
+        this.proxyFactoryConfigs.clear();
+        this.proxyFactoryConfigs.addAll(proxyFactoryConfigs);
         return this;
     }
 
@@ -669,6 +846,9 @@ public class ClientConfig {
         return licenseKey;
     }
 
+    /**
+     * @deprecated As of Hazelcast 3.10.3, enterprise license keys are required only for members, and not for clients
+     */
     public ClientConfig setLicenseKey(final String licenseKey) {
         this.licenseKey = licenseKey;
         return this;
@@ -702,26 +882,96 @@ public class ClientConfig {
         this.queryCacheConfigs = queryCacheConfigs;
     }
 
-    private <T> T lookupByPattern(Map<String, T> configPatterns, String itemName) {
-        T candidate = configPatterns.get(itemName);
-        if (candidate != null) {
-            return candidate;
-        }
-        String configPatternKey = configPatternMatcher.matches(configPatterns.keySet(), itemName);
-        if (configPatternKey != null) {
-            return configPatterns.get(configPatternKey);
-        }
-        if (!"default".equals(itemName) && !itemName.startsWith("hz:")) {
-            LOGGER.finest("No configuration found for " + itemName + ", using default config!");
-        }
-        return null;
-    }
-
     public String getInstanceName() {
         return instanceName;
     }
 
     public void setInstanceName(String instanceName) {
         this.instanceName = instanceName;
+    }
+
+    public ClientConnectionStrategyConfig getConnectionStrategyConfig() {
+        return connectionStrategyConfig;
+    }
+
+    public ClientConfig setConnectionStrategyConfig(ClientConnectionStrategyConfig connectionStrategyConfig) {
+        this.connectionStrategyConfig = connectionStrategyConfig;
+        return this;
+    }
+
+    /**
+     * Get current configuration of User Code Deployment.
+     *
+     * @return User Code Deployment configuration
+     * @since 3.9
+     */
+    public ClientUserCodeDeploymentConfig getUserCodeDeploymentConfig() {
+        return userCodeDeploymentConfig;
+    }
+
+    /**
+     * Set User Code Deployment configuration
+     *
+     * @param userCodeDeploymentConfig
+     * @return configured {@link com.hazelcast.client.config.ClientConfig} for chaining
+     * @since 3.9
+     */
+    public ClientConfig setUserCodeDeploymentConfig(ClientUserCodeDeploymentConfig userCodeDeploymentConfig) {
+        this.userCodeDeploymentConfig = userCodeDeploymentConfig;
+        return this;
+    }
+
+    /**
+     * @param mapName   The name of the map for which the query cache config is to be returned.
+     * @param cacheName The name of the query cache.
+     * @return The query cache config. If the config does not exist, it is created.
+     */
+    public QueryCacheConfig getOrCreateQueryCacheConfig(String mapName, String cacheName) {
+        Map<String, Map<String, QueryCacheConfig>> allQueryCacheConfig = getQueryCacheConfigs();
+
+        Map<String, QueryCacheConfig> queryCacheConfigsForMap =
+                lookupByPattern(configPatternMatcher, allQueryCacheConfig, mapName);
+        if (queryCacheConfigsForMap == null) {
+            queryCacheConfigsForMap = new HashMap<String, QueryCacheConfig>();
+            allQueryCacheConfig.put(mapName, queryCacheConfigsForMap);
+        }
+
+        QueryCacheConfig queryCacheConfig = lookupByPattern(configPatternMatcher, queryCacheConfigsForMap, cacheName);
+        if (queryCacheConfig == null) {
+            queryCacheConfig = new QueryCacheConfig(cacheName);
+            queryCacheConfigsForMap.put(cacheName, queryCacheConfig);
+        }
+
+        return queryCacheConfig;
+    }
+
+    /**
+     * @param mapName   The name of the map for which the query cache config is to be returned.
+     * @param cacheName The name of the query cache.
+     * @return The query cache config. If no such config exist null is returned.
+     */
+    public QueryCacheConfig getOrNullQueryCacheConfig(String mapName, String cacheName) {
+        if (queryCacheConfigs == null) {
+            return null;
+        }
+
+        Map<String, QueryCacheConfig> queryCacheConfigsForMap = lookupByPattern(configPatternMatcher, queryCacheConfigs, mapName);
+        if (queryCacheConfigsForMap == null) {
+            return null;
+        }
+
+        return lookupByPattern(configPatternMatcher, queryCacheConfigsForMap, cacheName);
+    }
+
+    public ClientConfig setUserContext(ConcurrentMap<String, Object> userContext) {
+        if (userContext == null) {
+            throw new IllegalArgumentException("userContext can't be null");
+        }
+        this.userContext = userContext;
+        return this;
+    }
+
+    public ConcurrentMap<String, Object> getUserContext() {
+        return userContext;
     }
 }

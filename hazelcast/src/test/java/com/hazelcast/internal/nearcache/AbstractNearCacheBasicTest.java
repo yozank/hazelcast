@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,27 @@
 
 package com.hazelcast.internal.nearcache;
 
+import com.hazelcast.cache.HazelcastExpiryPolicy;
+import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.config.NearCacheConfig;
+import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.internal.adapter.DataStructureAdapter;
 import com.hazelcast.internal.adapter.DataStructureAdapter.DataStructureMethods;
 import com.hazelcast.internal.adapter.DataStructureAdapterMethod;
 import com.hazelcast.internal.adapter.ICacheCompletionListener;
 import com.hazelcast.internal.adapter.ICacheReplaceEntryProcessor;
 import com.hazelcast.internal.adapter.IMapReplaceEntryProcessor;
+import com.hazelcast.internal.adapter.ReplicatedMapDataStructureAdapter;
+import com.hazelcast.monitor.NearCacheStats;
+import com.hazelcast.monitor.impl.NearCacheStatsImpl;
 import com.hazelcast.query.TruePredicate;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastTestSupport;
+import com.hazelcast.test.annotation.ConfigureParallelRunnerWith;
+import com.hazelcast.test.annotation.HeavilyMultiThreadedTestLimiter;
 import org.junit.Test;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.processor.EntryProcessorResult;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,13 +48,17 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.config.EvictionConfig.MaxSizePolicy.ENTRY_COUNT;
 import static com.hazelcast.config.EvictionPolicy.LRU;
 import static com.hazelcast.config.EvictionPolicy.NONE;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheContent;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheEvictionsEventually;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheInvalidationRequests;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheInvalidations;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheInvalidationsBetween;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheReference;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheSize;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheSizeEventually;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.assertNearCacheStats;
@@ -62,6 +75,7 @@ import static com.hazelcast.internal.nearcache.NearCacheTestUtils.waitUntilLoade
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.Executors.newFixedThreadPool;
+import static java.util.concurrent.TimeUnit.HOURS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -73,6 +87,7 @@ import static org.junit.Assert.assertTrue;
  * @param <NK> key type of the tested Near Cache
  * @param <NV> value type of the tested Near Cache
  */
+@ConfigureParallelRunnerWith(HeavilyMultiThreadedTestLimiter.class)
 @SuppressWarnings("WeakerAccess")
 public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSupport {
 
@@ -82,14 +97,19 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     protected static final int DEFAULT_RECORD_COUNT = 1000;
 
     /**
+     * Number of seconds to expire Near Cache entries via TTL.
+     */
+    protected static final int MAX_TTL_SECONDS = 2;
+
+    /**
+     * Number of seconds to expire idle Near Cache entries.
+     */
+    protected static final int MAX_IDLE_SECONDS = 1;
+
+    /**
      * The default name used for the data structures which have a Near Cache.
      */
     protected static final String DEFAULT_NEAR_CACHE_NAME = "defaultNearCache";
-
-    /**
-     * The partition count to configure in the Hazelcast members.
-     */
-    protected static final String PARTITION_COUNT = "5";
 
     /**
      * Defines all {@link DataStructureMethods} which are using EntryProcessors.
@@ -105,7 +125,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
 
     /**
      * The {@link NearCacheConfig} used by the Near Cache tests.
-     *
+     * <p>
      * Needs to be set by the implementations of this class in their {@link org.junit.Before} methods.
      */
     protected NearCacheConfig nearCacheConfig;
@@ -120,74 +140,35 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
 
     /**
      * Creates the {@link NearCacheTestContext} used by the Near Cache tests.
+     * <p>
+     * The backing {@link DataStructureAdapter} will be populated with {@value DEFAULT_RECORD_COUNT} entries.
      *
      * @param <K> key type of the created {@link DataStructureAdapter}
      * @param <V> value type of the created {@link DataStructureAdapter}
      * @return a {@link NearCacheTestContext} used by the Near Cache tests
      */
-    protected <K, V> NearCacheTestContext<K, V, NK, NV> createContext() {
+    protected final <K, V> NearCacheTestContext<K, V, NK, NV> createContext() {
         return createContext(false);
     }
 
     /**
      * Creates the {@link NearCacheTestContext} used by the Near Cache tests.
      *
-     * @param loaderEnabled determines if a loader should be configured
      * @param <K>           key type of the created {@link DataStructureAdapter}
      * @param <V>           value type of the created {@link DataStructureAdapter}
+     * @param loaderEnabled determines if a loader should be configured
      * @return a {@link NearCacheTestContext} used by the Near Cache tests
      */
     protected abstract <K, V> NearCacheTestContext<K, V, NK, NV> createContext(boolean loaderEnabled);
 
-    protected final void populateDataAdapter(NearCacheTestContext<Integer, String, NK, NV> context) {
-        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
-            context.dataAdapter.put(i, "value-" + i);
-        }
-        assertNearCacheInvalidations(context, DEFAULT_RECORD_COUNT);
-    }
-
-    protected final void populateNearCache(NearCacheTestContext<Integer, String, NK, NV> context) {
-        populateNearCache(context, DataStructureMethods.GET);
-    }
-
-    protected void populateNearCache(NearCacheTestContext<Integer, String, NK, NV> context, DataStructureMethods method) {
-        populateNearCache(context, method, DEFAULT_RECORD_COUNT);
-    }
-
-    private void populateNearCache(NearCacheTestContext<Integer, String, NK, NV> context, DataStructureMethods method, int size) {
-        switch (method) {
-            case GET:
-                for (int i = 0; i < size; i++) {
-                    String value = context.nearCacheAdapter.get(i);
-                    assertEquals("value-" + i, value);
-                }
-                break;
-            case GET_ASYNC:
-                List<Future<String>> futures = new ArrayList<Future<String>>(size);
-                for (int i = 0; i < size; i++) {
-                    futures.add(context.nearCacheAdapter.getAsync(i));
-                }
-                for (int i = 0; i < size; i++) {
-                    String value = getFuture(futures.get(i), "Could not get value for index " + i + " via getAsync()");
-                    assertEquals("value-" + i, value);
-                }
-                break;
-            case GET_ALL:
-                Set<Integer> getAllSet = new HashSet<Integer>(size);
-                for (int i = 0; i < size; i++) {
-                    getAllSet.add(i);
-                }
-                Map<Integer, String> resultMap = context.nearCacheAdapter.getAll(getAllSet);
-                assertEquals(size, resultMap.size());
-                for (int i = 0; i < size; i++) {
-                    String value = resultMap.get(i);
-                    assertEquals("value-" + i, value);
-                }
-                break;
-            default:
-                throw new IllegalArgumentException("Unexpected method: " + method);
-        }
-    }
+    /**
+     * Creates the {@link NearCacheTestContext} with only a Near Cache instance used by the Near Cache tests.
+     *
+     * @param <K> key type of the created {@link com.hazelcast.internal.adapter.DataStructureAdapter}
+     * @param <V> value type of the created {@link com.hazelcast.internal.adapter.DataStructureAdapter}
+     * @return a {@link NearCacheTestContext} with only a client used by the Near Cache tests
+     */
+    protected abstract <K, V> NearCacheTestContext<K, V, NK, NV> createNearCacheContext();
 
     /**
      * Checks that the Near Cache is populated when {@link DataStructureMethods#GET} is used
@@ -220,8 +201,8 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assumeThatMethodIsAvailable(method);
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
-        // populate the data structure
-        populateDataAdapter(context);
+        // assert that the Near Cache is empty
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         assertNearCacheSize(context, 0);
         assertNearCacheStats(context, 0, 0, 0);
 
@@ -236,6 +217,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assertNearCacheStats(context, DEFAULT_RECORD_COUNT, DEFAULT_RECORD_COUNT, DEFAULT_RECORD_COUNT);
 
         assertNearCacheContent(context, DEFAULT_RECORD_COUNT);
+        assertNearCacheReferences(context, DEFAULT_RECORD_COUNT, method);
     }
 
     /**
@@ -247,8 +229,8 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assumeThatMethodIsAvailable(DataStructureMethods.GET_ALL);
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
-        // populate the data structure
-        populateDataAdapter(context);
+        // assert that the Near Cache is empty
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         assertNearCacheSize(context, 0);
         assertNearCacheStats(context, 0, 0, 0);
 
@@ -281,8 +263,8 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assumeThatMethodIsAvailable(DataStructureMethods.GET_ALL);
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
-        // populate the data structure
-        populateDataAdapter(context);
+        // assert that the Near Cache is empty
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         assertNearCacheSize(context, 0);
         assertNearCacheStats(context, 0, 0, 0);
 
@@ -302,12 +284,75 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     }
 
     /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#SET_ASYNC} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenSetAsyncIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.SET_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#SET_ASYNC_WITH_TTL} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenSetAsyncWithTtlIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.SET_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#SET_ASYNC_WITH_EXPIRY_POLICY} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenSetAsyncWithExpiryPolicyIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.SET_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
      * Checks that the Near Cache is populated when {@link DataStructureMethods#PUT} with
      * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
      */
     @Test
     public void whenPutIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
         whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.PUT);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#PUT_ASYNC} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenPutAsyncIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.PUT_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#PUT_ASYNC_WITH_TTL} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenPutAsyncWithTtlIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.PUT_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#PUT_ASYNC_WITH_EXPIRY_POLICY} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenPutAsyncWithExpiryPolicyIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.PUT_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
+     * Checks that the Near Cache is populated when {@link DataStructureMethods#PUT_TRANSIENT} with
+     * {@link com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy#CACHE_ON_UPDATE} is used.
+     */
+    @Test
+    public void whenPutTransientIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
+        whenEntryIsAddedWithCacheOnUpdate_thenNearCacheShouldBePopulated(DataStructureMethods.PUT_TRANSIENT);
     }
 
     /**
@@ -361,6 +406,8 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
         DataStructureAdapter<Integer, String> adapter = context.nearCacheAdapter;
 
+        ExpiryPolicy expiryPolicy = new HazelcastExpiryPolicy(1, 1, 1, HOURS);
+
         Map<Integer, String> putAllMap = new HashMap<Integer, String>(DEFAULT_RECORD_COUNT);
         for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
             String value = "value-" + i;
@@ -368,8 +415,30 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
                 case SET:
                     adapter.set(i, value);
                     break;
+                case SET_ASYNC:
+                    getFuture(adapter.setAsync(i, value), "Could not set value via setAsync()");
+                    break;
+                case SET_ASYNC_WITH_TTL:
+                    getFuture(adapter.setAsync(i, value, 1, HOURS), "Could not set value via setAsync() with TTL");
+                    break;
+                case SET_ASYNC_WITH_EXPIRY_POLICY:
+                    getFuture(adapter.setAsync(i, value, expiryPolicy), "Could not set value via setAsync() with ExpiryPolicy");
+                    break;
                 case PUT:
                     assertNull(adapter.put(i, value));
+                    break;
+                case PUT_ASYNC:
+                    assertNull(getFuture(adapter.putAsync(i, value), "Could not put value via putAsync()"));
+                    break;
+                case PUT_ASYNC_WITH_TTL:
+                    assertNull(getFuture(adapter.putAsync(i, value, 1, HOURS), "Could not put value via putAsync() with TTL"));
+                    break;
+                case PUT_ASYNC_WITH_EXPIRY_POLICY:
+                    ICompletableFuture<String> future = adapter.putAsync(i, value, expiryPolicy);
+                    assertNull(getFuture(future, "Could not put value via putAsync() with ExpiryPolicy"));
+                    break;
+                case PUT_TRANSIENT:
+                    adapter.putTransient(i, value, 1, HOURS);
                     break;
                 case PUT_IF_ABSENT:
                     assertTrue(adapter.putIfAbsent(i, value));
@@ -401,6 +470,28 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assertNearCacheContent(context, DEFAULT_RECORD_COUNT);
     }
 
+    @Test
+    public void whenSetExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_EXPIRY_POLICY_MULTI_KEY);
+    }
+
+
+    @Test
+    public void whenSetExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_EXPIRY_POLICY_MULTI_KEY);
+    }
+
+    @Test
+    public void whenSetExpiryPolicyOnSingleKeyIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_EXPIRY_POLICY);
+    }
+
+
+    @Test
+    public void whenSetExpiryPolicyOnSingleKeyIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_EXPIRY_POLICY);
+    }
+
     /**
      * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET} is used.
      */
@@ -418,6 +509,56 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     }
 
     /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC} is used.
+     */
+    @Test
+    public void whenSetAsyncIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC} is used.
+     */
+    @Test
+    public void whenSetAsyncIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC_WITH_TTL} is used.
+     */
+    @Test
+    public void whenSetAsyncWithTtlIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC_WITH_TTL} is used.
+     */
+    @Test
+    public void whenSetAsyncWithTtlIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC_WITH_EXPIRY_POLICY}
+     * is used.
+     */
+    @Test
+    public void whenSetAsyncWithExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#SET_ASYNC_WITH_EXPIRY_POLICY}
+     * is used.
+     */
+    @Test
+    public void whenSetAsyncWithExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
      * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT} is used.
      */
     @Test
@@ -431,6 +572,84 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     @Test
     public void whenPutIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
         whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.PUT);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC} is used.
+     */
+    @Test
+    public void whenPutAsyncIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.PUT_ASYNC);
+    }
+
+    @Test
+    public void whenSetTTLIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.SET_TTL);
+    }
+
+    @Test
+    public void whenSetTTLIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.SET_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC} is used.
+     */
+    @Test
+    public void whenPutAsyncIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.PUT_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC_WITH_TTL} is used.
+     */
+    @Test
+    public void whenPutAsyncWithTtlIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.PUT_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC_WITH_TTL} is used.
+     */
+    @Test
+    public void whenPutAsyncWithTtlIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.PUT_ASYNC_WITH_TTL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC_WITH_EXPIRY_POLICY}
+     * is used.
+     */
+    @Test
+    public void whenPutAsyncWithExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.PUT_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_ASYNC_WITH_EXPIRY_POLICY}
+     * is used.
+     */
+    @Test
+    public void whenPutAsyncWithExpiryPolicyIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.PUT_ASYNC_WITH_EXPIRY_POLICY);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_TRANSIENT}
+     * is used.
+     */
+    @Test
+    public void whenPutTransientIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.PUT_TRANSIENT);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#PUT_TRANSIENT}
+     * is used.
+     */
+    @Test
+    public void whenPutTransientIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsChanged_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.PUT_TRANSIENT);
     }
 
     /**
@@ -594,11 +813,12 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
         DataStructureAdapter<Integer, String> adapter = useDataAdapter ? context.dataAdapter : context.nearCacheAdapter;
 
-        populateDataAdapter(context);
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         populateNearCache(context);
 
         // this should invalidate the Near Cache
         IMapReplaceEntryProcessor mapEntryProcessor = new IMapReplaceEntryProcessor("value", "newValue");
+        ExpiryPolicy expiryPolicy = new HazelcastExpiryPolicy(1, 1, 1, HOURS);
         Map<Integer, String> invalidationMap = new HashMap<Integer, String>(DEFAULT_RECORD_COUNT);
         for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
             String value = "value-" + i;
@@ -607,8 +827,32 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
                 case SET:
                     adapter.set(i, newValue);
                     break;
+                case SET_ASYNC:
+                    getFuture(adapter.setAsync(i, newValue), "Could not set value via setAsync()");
+                    break;
+                case SET_ASYNC_WITH_TTL:
+                    getFuture(adapter.setAsync(i, newValue, 1, HOURS), "Could not set value via setAsync() with TTL");
+                    break;
+                case SET_ASYNC_WITH_EXPIRY_POLICY:
+                    ICompletableFuture<Void> voidFuture = adapter.setAsync(i, newValue, expiryPolicy);
+                    getFuture(voidFuture, "Could not set value via setAsync() with ExpiryPolicy");
+                    break;
                 case PUT:
                     assertEquals(value, adapter.put(i, newValue));
+                    break;
+                case PUT_ASYNC:
+                    assertEquals(value, getFuture(adapter.putAsync(i, newValue), "Could not put value via putAsync()"));
+                    break;
+                case PUT_ASYNC_WITH_TTL:
+                    ICompletableFuture<String> ttlFuture = adapter.putAsync(i, newValue, 1, HOURS);
+                    assertEquals(value, getFuture(ttlFuture, "Could not put value via putAsync() with TTL"));
+                    break;
+                case PUT_ASYNC_WITH_EXPIRY_POLICY:
+                    ICompletableFuture<String> expiryFuture = adapter.putAsync(i, newValue, expiryPolicy);
+                    assertEquals(value, getFuture(expiryFuture, "Could not put value via putAsync() with ExpiryPolicy"));
+                    break;
+                case PUT_TRANSIENT:
+                    adapter.putTransient(i, newValue, 1, HOURS);
                     break;
                 case REPLACE:
                     assertEquals(value, adapter.replace(i, newValue));
@@ -622,18 +866,26 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
                 case EXECUTE_ON_KEY:
                     assertEquals(newValue, adapter.executeOnKey(i, mapEntryProcessor));
                     break;
+                case SET_EXPIRY_POLICY:
+                    assertTrue(adapter.setExpiryPolicy(i, expiryPolicy));
+                    break;
                 case EXECUTE_ON_KEYS:
                 case PUT_ALL:
                 case INVOKE_ALL:
+                case SET_EXPIRY_POLICY_MULTI_KEY:
                     invalidationMap.put(i, newValue);
                     break;
                 case EXECUTE_ON_ENTRIES:
                 case EXECUTE_ON_ENTRIES_WITH_PREDICATE:
                     break;
+                case SET_TTL:
+                    adapter.setTtl(i, 1, TimeUnit.DAYS);
+                    break;
                 default:
                     throw new IllegalArgumentException("Unexpected method: " + method);
             }
         }
+        String newValuePrefix = "newValue-";
         if (method == DataStructureMethods.EXECUTE_ON_KEYS) {
             Map<Integer, Object> resultMap = adapter.executeOnKeys(invalidationMap.keySet(), mapEntryProcessor);
             assertResultMap(resultMap);
@@ -652,12 +904,19 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
             for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
                 assertEquals("newValue-" + i, resultMap.get(i).get());
             }
+        } else if (method == DataStructureMethods.SET_EXPIRY_POLICY_MULTI_KEY) {
+            adapter.setExpiryPolicy(invalidationMap.keySet(), expiryPolicy);
+            newValuePrefix = "value-";
         }
 
+        assertNearCacheInvalidations(context, DEFAULT_RECORD_COUNT);
         String message = format("Invalidation is not working on %s()", method.getMethodName());
         assertNearCacheSizeEventually(context, 0, message);
+        if (method == DataStructureMethods.SET_TTL || method == DataStructureMethods.SET_EXPIRY_POLICY) {
+            newValuePrefix = "value-";
+        }
         for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
-            assertEquals("newValue-" + i, context.dataAdapter.get(i));
+            assertEquals(newValuePrefix + i, context.dataAdapter.get(i));
         }
     }
 
@@ -717,6 +976,38 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     }
 
     /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#EVICT} is used.
+     */
+    @Test
+    public void whenEvictIsUsed_thenNearCacheIsInvalidated_onNearCacheAdapter() {
+        whenEntryIsLoaded_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.EVICT);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#EVICT} is used.
+     */
+    @Test
+    public void whenEvictIsUsed_thenNearCacheIsInvalidated_onDataAdapter() {
+        whenEntryIsLoaded_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.EVICT);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#EVICT_ALL} is used.
+     */
+    @Test
+    public void whenEvictAllIsUsed_thenNearCacheIsInvalidated_onNearCacheAdapter() {
+        whenEntryIsLoaded_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.EVICT_ALL);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#EVICT_ALL} is used.
+     */
+    @Test
+    public void whenEvictAllIsUsed_thenNearCacheIsInvalidated_onDataAdapter() {
+        whenEntryIsLoaded_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.EVICT_ALL);
+    }
+
+    /**
      * With the {@link NearCacheTestContext#dataAdapter} we have to set {@link NearCacheConfig#setInvalidateOnChange(boolean)}.
      * With the {@link NearCacheTestContext#nearCacheAdapter} Near Cache invalidations are not needed.
      */
@@ -726,10 +1017,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         NearCacheTestContext<Integer, String, NK, NV> context = createContext(true);
         DataStructureAdapter<Integer, String> adapter = useDataAdapter ? context.dataAdapter : context.nearCacheAdapter;
 
-        // wait until the initial load is done
-        waitUntilLoaded(context);
-
-        populateDataAdapter(context);
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         populateNearCache(context);
 
         // this should invalidate the Near Cache
@@ -750,16 +1038,29 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
                 adapter.loadAll(keys, true, listener);
                 listener.await();
                 break;
+            case EVICT:
+                for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
+                    adapter.evict(i);
+                }
+                break;
+            case EVICT_ALL:
+                adapter.evictAll();
+                break;
             default:
                 throw new IllegalArgumentException("Unexpected method: " + method);
         }
 
-        // wait until the loader is finished and validate the updated values
+        // wait until the loader is finished and validate the updated or evicted values
         waitUntilLoaded(context);
         for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
-            assertEquals("newValue-" + i, context.dataAdapter.get(i));
+            if (method == DataStructureMethods.EVICT || method == DataStructureMethods.EVICT_ALL) {
+                assertNull(context.dataAdapter.get(i));
+            } else {
+                assertEquals("newValue-" + i, context.dataAdapter.get(i));
+            }
         }
 
+        assertNearCacheInvalidationsBetween(context, DEFAULT_RECORD_COUNT, DEFAULT_RECORD_COUNT * 2);
         String message = format("Invalidation is not working on %s()", method.getMethodName());
         assertNearCacheSizeEventually(context, 0, message);
     }
@@ -810,6 +1111,38 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     @Test
     public void whenRemoveWithOldValueIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
         whenEntryIsRemoved_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.REMOVE_WITH_OLD_VALUE);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#DELETE} is used.
+     */
+    @Test
+    public void whenDeleteIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsRemoved_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.DELETE);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#DELETE} is used.
+     */
+    @Test
+    public void whenDeleteIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsRemoved_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.DELETE);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#DELETE_ASYNC} is used.
+     */
+    @Test
+    public void whenDeleteAsyncIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        whenEntryIsRemoved_thenNearCacheShouldBeInvalidated(false, DataStructureMethods.DELETE_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache is eventually invalidated when {@link DataStructureMethods#DELETE_ASYNC} is used.
+     */
+    @Test
+    public void whenDeleteAsyncIsUsed_thenNearCacheShouldBeInvalidated_onDataAdapter() {
+        whenEntryIsRemoved_thenNearCacheShouldBeInvalidated(true, DataStructureMethods.DELETE_ASYNC);
     }
 
     /**
@@ -886,7 +1219,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
         DataStructureAdapter<Integer, String> adapter = useDataAdapter ? context.dataAdapter : context.nearCacheAdapter;
 
-        populateDataAdapter(context);
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         populateNearCache(context);
 
         // this should invalidate the Near Cache
@@ -898,13 +1231,19 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
                 String value = "value-" + i;
                 switch (method) {
                     case REMOVE:
-                        adapter.remove(i);
+                        assertEquals(value, adapter.remove(i));
                         break;
                     case REMOVE_WITH_OLD_VALUE:
                         assertTrue(adapter.remove(i, value));
                         break;
                     case REMOVE_ASYNC:
                         assertEquals(value, getFuture(adapter.removeAsync(i), "Could not remove entry via removeAsync()"));
+                        break;
+                    case DELETE:
+                        adapter.delete(i);
+                        break;
+                    case DELETE_ASYNC:
+                        assertTrue(value, getFuture(adapter.deleteAsync(i), "Could not remove entry via deleteAsync()"));
                         break;
                     case REMOVE_ALL_WITH_KEYS:
                         removeKeys.add(i);
@@ -923,6 +1262,14 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
             adapter.clear();
         } else if (method == DataStructureMethods.DESTROY) {
             adapter.destroy();
+        }
+
+        if (method == DataStructureMethods.DESTROY) {
+            // FIXME: there can be more invalidations in a lite member setup
+            assertNearCacheInvalidationsBetween(context, DEFAULT_RECORD_COUNT, DEFAULT_RECORD_COUNT * 2);
+        } else {
+            // there should be an invalidation for each key
+            assertNearCacheInvalidations(context, DEFAULT_RECORD_COUNT);
         }
 
         String message = format("Invalidation is not working on %s()", method.getMethodName());
@@ -954,38 +1301,39 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         nearCacheConfig.setInvalidateOnChange(useDataAdapter);
         final NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
-        // populate data structure
-        context.dataAdapter.put(1, "value-1");
-        context.dataAdapter.put(2, "value-2");
-        context.dataAdapter.put(3, "value-3");
-        assertNearCacheInvalidations(context, 3);
+        populateDataAdapter(context, 3);
+        populateNearCache(context, DataStructureMethods.GET, 3);
 
-        // populate Near Cache
-        context.nearCacheAdapter.get(1);
-        context.nearCacheAdapter.get(2);
-        context.nearCacheAdapter.get(3);
-
+        assertTrue(context.nearCacheAdapter.containsKey(0));
         assertTrue(context.nearCacheAdapter.containsKey(1));
         assertTrue(context.nearCacheAdapter.containsKey(2));
-        assertTrue(context.nearCacheAdapter.containsKey(3));
+        assertFalse(context.nearCacheAdapter.containsKey(3));
         assertFalse(context.nearCacheAdapter.containsKey(4));
-        assertFalse(context.nearCacheAdapter.containsKey(5));
 
         // remove a key which is in the Near Cache
         DataStructureAdapter<Integer, String> adapter = useDataAdapter ? context.dataAdapter : context.nearCacheAdapter;
-        adapter.remove(1);
-        adapter.remove(3);
+        adapter.remove(0);
+        adapter.remove(2);
 
         assertTrueEventually(new AssertTask() {
             @Override
             public void run() {
-                assertFalse(context.nearCacheAdapter.containsKey(1));
-                assertTrue(context.nearCacheAdapter.containsKey(2));
+                assertFalse(context.nearCacheAdapter.containsKey(0));
+                assertTrue(context.nearCacheAdapter.containsKey(1));
+                assertFalse(context.nearCacheAdapter.containsKey(2));
                 assertFalse(context.nearCacheAdapter.containsKey(3));
                 assertFalse(context.nearCacheAdapter.containsKey(4));
-                assertFalse(context.nearCacheAdapter.containsKey(5));
             }
         });
+    }
+
+    @Test
+    public void whenNullKeyIsCached_thenContainsKeyShouldReturnFalse() {
+        NearCacheTestContext<Integer, Integer, NK, NV> context = createContext();
+
+        int absentKey = 1;
+        assertNull("Returned value should be null", context.nearCacheAdapter.get(absentKey));
+        assertFalse("containsKey() should return false", context.nearCacheAdapter.containsKey(absentKey));
     }
 
     /**
@@ -996,16 +1344,12 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         setEvictionConfig(nearCacheConfig, LRU, ENTRY_COUNT, DEFAULT_RECORD_COUNT);
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
+        // populate the backing data structure with an extra entry
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT + 1);
+        populateNearCache(context);
+
         // all Near Cache implementations use the same eviction algorithm, which evicts a single entry
         int expectedEvictions = 1;
-
-        // populate data structure with an extra entry
-        populateDataAdapter(context);
-        context.dataAdapter.put(DEFAULT_RECORD_COUNT, "value-" + DEFAULT_RECORD_COUNT);
-        assertNearCacheInvalidations(context, DEFAULT_RECORD_COUNT + 1);
-
-        // populate Near Caches
-        populateNearCache(context);
 
         // we expect (size + the extra entry - the expectedEvictions) entries in the Near Cache
         long expectedOwnedEntryCount = DEFAULT_RECORD_COUNT + 1 - expectedEvictions;
@@ -1019,9 +1363,54 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         assertNearCacheStats(context, expectedOwnedEntryCount, expectedHits, expectedMisses, expectedEvictions, 0);
     }
 
+    @Test
+    public void testNearCacheExpiration_withTTL() {
+        nearCacheConfig.setTimeToLiveSeconds(MAX_TTL_SECONDS);
+
+        testNearCacheExpiration(MAX_TTL_SECONDS);
+    }
+
+    @Test
+    public void testNearCacheExpiration_withMaxIdle() {
+        nearCacheConfig.setMaxIdleSeconds(MAX_IDLE_SECONDS);
+
+        testNearCacheExpiration(MAX_IDLE_SECONDS);
+    }
+
+    @SuppressWarnings("UnnecessaryLocalVariable")
+    private void testNearCacheExpiration(int expireSeconds) {
+        final NearCacheTestContext<Integer, String, NK, NV> context = createContext();
+
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
+        populateNearCache(context);
+
+        // we allow a difference of -1 here, since the NearCacheStats are not updated atomically,
+        // so one entry could already be removed from the owned entry count, but not added to the
+        // expirations yet (we also copy the stats, so there are no on-fly changes during the assert)
+        NearCacheStats stats = new NearCacheStatsImpl(context.stats);
+        assertTrue(format("All entries (beside one) should be in the Near Cache or expired from the Near Cache (%s)", stats),
+                stats.getOwnedEntryCount() + stats.getExpirations() >= DEFAULT_RECORD_COUNT - 1
+                        && stats.getOwnedEntryCount() + stats.getExpirations() <= DEFAULT_RECORD_COUNT);
+
+        sleepSeconds(expireSeconds + 1);
+
+        assertTrueEventually(new AssertTask() {
+            public void run() {
+                // the get() call triggers the Near Cache eviction/expiration process,
+                // but we need to call this on every assert, since the Near Cache has a cooldown for TTL cleanups
+                context.nearCacheAdapter.get(0);
+
+                assertNearCacheSize(context, 1, "Expected the Near Cache to contain just the trigger entry");
+                assertEquals("Expected no Near Cache evictions", 0, context.stats.getEvictions());
+                assertTrue(format("Expected at least %d entries to be expired from the Near Cache", DEFAULT_RECORD_COUNT),
+                        context.stats.getExpirations() >= DEFAULT_RECORD_COUNT);
+            }
+        });
+    }
+
     /**
      * Checks that the memory costs are calculated correctly.
-     *
+     * <p>
      * This variant uses a single-threaded approach to fill the Near Cache with data.
      */
     @Test
@@ -1031,7 +1420,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
 
     /**
      * Checks that the memory costs are calculated correctly.
-     *
+     * <p>
      * This variant uses a multi-threaded approach to fill the Near Cache with data.
      */
     @Test
@@ -1041,8 +1430,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
 
     private void testNearCacheMemoryCostCalculation(int threadCount) {
         final NearCacheTestContext<Integer, String, NK, NV> context = createContext();
-
-        populateDataAdapter(context);
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
 
         final CountDownLatch countDownLatch = new CountDownLatch(threadCount);
         Runnable task = new Runnable() {
@@ -1073,19 +1461,46 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     }
 
     /**
-     * Checks that the Near Cache never returns its internal {@link NearCache#CACHED_AS_NULL} to the public API.
+     * Checks that the Near Cache never returns its internal {@link NearCache#CACHED_AS_NULL} to the user
+     * when {@link DataStructureMethods#GET} is used.
      */
     @Test
-    public void whenEmptyDataStructure_thenPopulatedNearCacheShouldReturnNull_neverCACHED_AS_NULL() {
+    public void whenGetIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache() {
+        whenGetIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache(DataStructureMethods.GET);
+    }
+
+    /**
+     * Checks that the Near Cache never returns its internal {@link NearCache#CACHED_AS_NULL} to the user
+     * when {@link DataStructureMethods#GET_ASYNC} is used.
+     */
+    @Test
+    public void whenGetAsyncIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache() {
+        whenGetIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache(DataStructureMethods.GET_ASYNC);
+    }
+
+    /**
+     * Checks that the Near Cache never returns its internal {@link NearCache#CACHED_AS_NULL} to the user
+     * when {@link DataStructureMethods#GET_ALL} is used.
+     */
+    @Test
+    public void whenGetAllIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache() {
+        whenGetIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache(DataStructureMethods.GET_ALL);
+    }
+
+    /**
+     * Checks that the Near Cache never returns its internal {@link NearCache#CACHED_AS_NULL} to the user.
+     */
+    private void whenGetIsUsedOnEmptyDataStructure_thenAlwaysReturnNullFromNearCache(DataStructureMethods method) {
+        assumeThatMethodIsAvailable(method);
         NearCacheTestContext<Integer, String, NK, NV> context = createContext();
 
-        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
-            // populate Near Cache
-            assertNull("Expected null from original data structure for key " + i, context.nearCacheAdapter.get(i));
-            // fetch value from Near Cache
-            assertNull("Expected null from near cached data structure for key " + i, context.nearCacheAdapter.get(i));
+        // populate Near Cache and check for null values
+        populateNearCache(context, method, DEFAULT_RECORD_COUNT, null);
+        // fetch value from Near Cache and check for null values
+        populateNearCache(context, method, DEFAULT_RECORD_COUNT, null);
 
-            // fetch internal value directly from Near Cache
+        // fetch internal value directly from Near Cache
+        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
             NV value = getValueFromNearCache(context, getNearCacheKey(context, i));
             if (value != null) {
                 // the internal value should either be `null` or `CACHED_AS_NULL`
@@ -1125,7 +1540,7 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
         DataStructureAdapter<Integer, String> adapter = useDataAdapter ? context.dataAdapter : context.nearCacheAdapter;
         boolean isNearCacheDirectlyUpdated = isCacheOnUpdate(nearCacheConfig) && !useDataAdapter;
 
-        populateDataAdapter(context);
+        populateDataAdapter(context, DEFAULT_RECORD_COUNT);
         populateNearCache(context);
 
         // assert that the old value is present
@@ -1151,14 +1566,208 @@ public abstract class AbstractNearCacheBasicTest<NK, NV> extends HazelcastTestSu
     }
 
     @Test
-    public void test_containsKey_returns_false_when_called_for_null_cached_key() {
-        NearCacheTestContext<Integer, Integer, NK, NV> context = createContext();
+    public void whenSetTTLIsCalled_thenAnotherNearCacheContextShouldBeInvalidated() {
+        assumeThatMethodIsAvailable(DataStructureMethods.SET_TTL);
+        nearCacheConfig.setInvalidateOnChange(true);
+        NearCacheTestContext<Integer, String, NK, NV> firstContext = createContext();
+        NearCacheTestContext<Integer, String, NK, NV> secondContext = createNearCacheContext();
 
-        int absentKey = 1;
-        Integer value = context.nearCacheAdapter.get(absentKey);
-        boolean containsKey = context.nearCacheAdapter.containsKey(absentKey);
+        populateDataAdapter(firstContext, DEFAULT_RECORD_COUNT);
 
-        assertNull("returned value should be null", value);
-        assertFalse("containsKey should return false", containsKey);
+        populateNearCache(secondContext);
+
+        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
+            firstContext.nearCacheAdapter.setTtl(i, 0, TimeUnit.DAYS);
+        }
+
+        assertNearCacheSizeEventually(secondContext, 0);
+    }
+
+    @Test
+    public void whenValueIsUpdated_thenAnotherNearCacheContextShouldBeInvalidated() {
+        nearCacheConfig.setInvalidateOnChange(true);
+        NearCacheTestContext<Integer, String, NK, NV> firstContext = createContext();
+        NearCacheTestContext<Integer, String, NK, NV> secondContext = createNearCacheContext();
+
+        // populate the data adapter in the first context
+        populateDataAdapter(firstContext, DEFAULT_RECORD_COUNT);
+
+        // populate Near Cache in the second context
+        populateNearCache(secondContext);
+
+        // update values in the first context
+        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
+            firstContext.nearCacheAdapter.put(i, "newValue-" + i);
+        }
+
+        // wait until the second context is invalidated
+        assertNearCacheSizeEventually(secondContext, 0);
+
+        // populate the second context again with the updated values
+        populateNearCache(secondContext, DataStructureMethods.GET, DEFAULT_RECORD_COUNT, "newValue-");
+    }
+
+    @Test
+    public void whenValueIsRemoved_thenAnotherNearCacheContextCannotGetValueAgain() {
+        nearCacheConfig.setInvalidateOnChange(true);
+        NearCacheTestContext<Integer, String, NK, NV> firstContext = createContext();
+        NearCacheTestContext<Integer, String, NK, NV> secondContext = createNearCacheContext();
+
+        // populate the data adapter in the first context
+        populateDataAdapter(firstContext, DEFAULT_RECORD_COUNT);
+
+        // populate Near Cache in the second context
+        populateNearCache(secondContext);
+
+        // remove values from the first context
+        for (int i = 0; i < DEFAULT_RECORD_COUNT; i++) {
+            firstContext.nearCacheAdapter.remove(i);
+        }
+
+        // wait until the second context is invalidated
+        assertNearCacheSizeEventually(secondContext, 0);
+
+        // populate the second context again with the updated values
+        populateNearCache(secondContext, DataStructureMethods.GET, DEFAULT_RECORD_COUNT, null);
+    }
+
+    @Test
+    public void whenDataStructureIsCleared_thenAnotherNearCacheContextCannotGetValuesAgain() {
+        assumeThatMethodIsAvailable(DataStructureMethods.CLEAR);
+        nearCacheConfig.setInvalidateOnChange(true);
+        NearCacheTestContext<Integer, String, NK, NV> firstContext = createContext();
+        NearCacheTestContext<Integer, String, NK, NV> secondContext = createNearCacheContext();
+
+        // populate the data adapter in the first context
+        populateDataAdapter(firstContext, DEFAULT_RECORD_COUNT);
+
+        // populate Near Cache in the second context
+        populateNearCache(secondContext);
+
+        // call clear() from the first context
+        firstContext.nearCacheAdapter.clear();
+
+        // wait until the second context is invalidated
+        assertNearCacheSizeEventually(secondContext, 0);
+
+        // populate the second context again with the updated values
+        populateNearCache(secondContext, DataStructureMethods.GET, DEFAULT_RECORD_COUNT, null);
+    }
+
+    protected void populateDataAdapter(NearCacheTestContext<Integer, String, ?, ?> context, int size) {
+        if (size < 1) {
+            return;
+        }
+        for (int i = 0; i < size; i++) {
+            context.dataAdapter.put(i, "value-" + i);
+        }
+        if (context.dataAdapter instanceof ReplicatedMapDataStructureAdapter) {
+            // FIXME: there are two extra invalidations in the ReplicatedMap
+            assertNearCacheInvalidationRequests(context, size + 2);
+        } else {
+            assertNearCacheInvalidationRequests(context, size);
+        }
+    }
+
+    protected void populateNearCache(NearCacheTestContext<Integer, String, ?, ?> context) {
+        populateNearCache(context, DataStructureMethods.GET);
+    }
+
+    protected void populateNearCache(NearCacheTestContext<Integer, String, ?, ?> context, DataStructureMethods method) {
+        populateNearCache(context, method, DEFAULT_RECORD_COUNT, "value-");
+    }
+
+    protected void populateNearCache(NearCacheTestContext<Integer, String, ?, ?> context, DataStructureMethods method,
+                                          int size) {
+        populateNearCache(context, method, size, "value-");
+    }
+
+    protected void populateNearCache(NearCacheTestContext<Integer, String, ?, ?> context, DataStructureMethods method,
+                                          int size, String valuePrefix) {
+        switch (method) {
+            case GET:
+                for (int i = 0; i < size; i++) {
+                    Object value = context.nearCacheAdapter.get(i);
+                    if (valuePrefix == null) {
+                        assertNull(value);
+                    } else {
+                        assertEquals(valuePrefix + i, value);
+                    }
+                }
+                break;
+            case GET_ASYNC:
+                List<Future<String>> futures = new ArrayList<Future<String>>(size);
+                for (int i = 0; i < size; i++) {
+                    futures.add(context.nearCacheAdapter.getAsync(i));
+                }
+                for (int i = 0; i < size; i++) {
+                    Object value = getFuture(futures.get(i), "Could not get value for index " + i + " via getAsync()");
+                    if (valuePrefix == null) {
+                        assertNull(value);
+                    } else {
+                        assertEquals(valuePrefix + i, value);
+                    }
+                }
+                break;
+            case GET_ALL:
+                Set<Integer> getAllSet = new HashSet<Integer>(size);
+                for (int i = 0; i < size; i++) {
+                    getAllSet.add(i);
+                }
+                Map<Integer, String> resultMap = context.nearCacheAdapter.getAll(getAllSet);
+                int resultSize = resultMap.size();
+                if (valuePrefix == null) {
+                    if (context.nearCacheAdapter instanceof ReplicatedMapDataStructureAdapter) {
+                        assertEquals(size, resultSize);
+                        for (int i = 0; i < size; i++) {
+                            assertNull(resultMap.get(i));
+                        }
+                    } else {
+                        assertTrue("result map from getAll() should be empty, but was " + resultSize, resultMap.isEmpty());
+                    }
+                } else {
+                    assertEquals(size, resultSize);
+                    for (int i = 0; i < size; i++) {
+                        Object value = resultMap.get(i);
+                        assertEquals(valuePrefix + i, value);
+                    }
+                }
+                break;
+            default:
+                throw new IllegalArgumentException("Unexpected method: " + method);
+        }
+    }
+
+    private static void assertNearCacheReferences(NearCacheTestContext<Integer, String, ?, ?> context, int size,
+                                                  DataStructureMethods method) {
+        if (context.nearCacheConfig.getInMemoryFormat() != InMemoryFormat.OBJECT) {
+            return;
+        }
+        switch (method) {
+            case GET:
+                for (int i = 0; i < size; i++) {
+                    Object value = context.nearCacheAdapter.get(i);
+                    assertNearCacheReference(context, i, value);
+                }
+                break;
+            case GET_ASYNC:
+                for (int i = 0; i < size; i++) {
+                    Object value = getFuture(context.nearCacheAdapter.getAsync(i), "");
+                    assertNearCacheReference(context, i, value);
+                }
+                break;
+            case GET_ALL:
+                Set<Integer> getAllSet = new HashSet<Integer>(size);
+                for (int i = 0; i < size; i++) {
+                    getAllSet.add(i);
+                }
+                Map<Integer, String> resultMap = context.nearCacheAdapter.getAll(getAllSet);
+                for (Map.Entry<Integer, String> entry : resultMap.entrySet()) {
+                    assertNearCacheReference(context, entry.getKey(), entry.getValue());
+                }
+                break;
+            default:
+                throw new IllegalArgumentException("Unexpected method: " + method);
+        }
     }
 }

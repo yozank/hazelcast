@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.client.map;
 
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.MapConfig;
@@ -57,7 +58,7 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
         hazelcastFactory.terminateAll();
     }
 
-    @Test(timeout = 60000)
+    @Test
     public void testGetMap_issue_3031() throws Exception {
         final int itemCount = 1000;
         final String mapName = randomMapName();
@@ -79,7 +80,7 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
 
         breakMe.set(true);
 
-        final HazelcastInstance client = hazelcastFactory.newHazelcastClient();
+        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
         client.getMap(mapName);
     }
 
@@ -91,7 +92,7 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
         hazelcastFactory.newHazelcastInstance(config);
         hazelcastFactory.newHazelcastInstance(config);
 
-        final HazelcastInstance client = hazelcastFactory.newHazelcastClient();
+        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
         final IMap<Object, Object> map = client.getMap(mapName);
         populateMap(map, 1000);
         map.evictAll();
@@ -103,11 +104,11 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
     }
 
     @Test
-    public void givenSpecificKeysWereReloaded_whenLoadAllIsCalled_thenAllEntriesAreLoadedFromTheStore()  {
+    public void givenSpecificKeysWereReloaded_whenLoadAllIsCalled_thenAllEntriesAreLoadedFromTheStore() {
         String name = randomString();
         int keysInMapStore = 10000;
 
-        Config config = new Config();
+        Config config = getConfig();
         MapConfig mapConfig = config.getMapConfig(name);
         MapStoreConfig mapStoreConfig = new MapStoreConfig();
         mapStoreConfig.setEnabled(true);
@@ -116,7 +117,7 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
         mapConfig.setMapStoreConfig(mapStoreConfig);
         hazelcastFactory.newHazelcastInstance(config);
 
-        HazelcastInstance client = hazelcastFactory.newHazelcastClient();
+        HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
         IMap<Integer, Integer> map = client.getMap(name);
 
         //load specific keys
@@ -137,13 +138,17 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
         hazelcastFactory.newHazelcastInstance(config);
         hazelcastFactory.newHazelcastInstance(config);
         hazelcastFactory.newHazelcastInstance(config);
-        final HazelcastInstance client = hazelcastFactory.newHazelcastClient();
+        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
         final IMap<Object, Object> map = client.getMap(mapName);
         populateMap(map, 1000);
         map.evictAll();
         map.loadAll(true);
 
         assertEquals(1000, map.size());
+    }
+
+    protected ClientConfig getClientConfig() {
+        return new ClientConfig();
     }
 
     private Config createNewConfig(String mapName) {
@@ -174,17 +179,8 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
         }
     }
 
-    private static void closeResources(HazelcastInstance... instances) {
-        if (instances == null) {
-            return;
-        }
-        for (HazelcastInstance instance : instances) {
-            instance.shutdown();
-        }
-    }
-
-
     private static class SimpleStore implements MapStore {
+
         private ConcurrentMap store = new ConcurrentHashMap();
 
         @Override
@@ -200,17 +196,14 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
                 final Object value = entry.getValue();
                 store(key, value);
             }
-
         }
 
         @Override
         public void delete(Object key) {
-
         }
 
         @Override
         public void deleteAll(Collection keys) {
-
         }
 
         @Override
@@ -261,5 +254,4 @@ public class ClientMapLoadAllTest extends AbstractMapStoreTest {
             return false;
         }
     }
-
 }

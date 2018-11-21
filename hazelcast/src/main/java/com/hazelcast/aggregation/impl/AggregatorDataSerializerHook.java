@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,8 +47,11 @@ public final class AggregatorDataSerializerHook implements DataSerializerHook {
     public static final int MAX = 14;
     public static final int MIN = 15;
     public static final int NUMBER_AVG = 16;
+    public static final int MAX_BY = 17;
+    public static final int MIN_BY = 18;
 
-    private static final int LEN = NUMBER_AVG + 1;
+
+    private static final int LEN = MIN_BY + 1;
 
     @Override
     public int getFactoryId() {
@@ -142,6 +145,16 @@ public final class AggregatorDataSerializerHook implements DataSerializerHook {
         constructors[NUMBER_AVG] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return new NumberAverageAggregator();
+            }
+        };
+        constructors[MAX_BY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MaxByAggregator();
+            }
+        };
+        constructors[MIN_BY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MinByAggregator();
             }
         };
 

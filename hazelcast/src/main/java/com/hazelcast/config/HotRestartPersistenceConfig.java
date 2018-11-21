@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import static com.hazelcast.util.Preconditions.checkPositive;
 
 /**
  * Configures the Hot Restart stores.
- * <p/>
+ * <p>
  * Hot restart stores are used to hold copy of in-memory data in
  * disk to be able to restart very fast without needing to load
  * data from a central storage.
- * <p/>
+ * <p>
  * HotRestartConfig configures whether hot restart is enabled,
  * where disk data will be stored, should data be persisted
  * sync or async etc.
@@ -200,5 +200,49 @@ public class HotRestartPersistenceConfig {
         checkPositive(dataLoadTimeoutSeconds, "Load timeout should be positive!");
         this.dataLoadTimeoutSeconds = dataLoadTimeoutSeconds;
         return this;
+    }
+
+    @Override
+    @SuppressWarnings("checkstyle:npathcomplexity")
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof HotRestartPersistenceConfig)) {
+            return false;
+        }
+
+        HotRestartPersistenceConfig that = (HotRestartPersistenceConfig) o;
+        if (enabled != that.enabled) {
+            return false;
+        }
+        if (parallelism != that.parallelism) {
+            return false;
+        }
+        if (validationTimeoutSeconds != that.validationTimeoutSeconds) {
+            return false;
+        }
+        if (dataLoadTimeoutSeconds != that.dataLoadTimeoutSeconds) {
+            return false;
+        }
+        if (baseDir != null ? !baseDir.equals(that.baseDir) : that.baseDir != null) {
+            return false;
+        }
+        if (backupDir != null ? !backupDir.equals(that.backupDir) : that.backupDir != null) {
+            return false;
+        }
+        return clusterDataRecoveryPolicy == that.clusterDataRecoveryPolicy;
+    }
+
+    @Override
+    public final int hashCode() {
+        int result = (enabled ? 1 : 0);
+        result = 31 * result + (baseDir != null ? baseDir.hashCode() : 0);
+        result = 31 * result + (backupDir != null ? backupDir.hashCode() : 0);
+        result = 31 * result + parallelism;
+        result = 31 * result + validationTimeoutSeconds;
+        result = 31 * result + dataLoadTimeoutSeconds;
+        result = 31 * result + (clusterDataRecoveryPolicy != null ? clusterDataRecoveryPolicy.hashCode() : 0);
+        return result;
     }
 }

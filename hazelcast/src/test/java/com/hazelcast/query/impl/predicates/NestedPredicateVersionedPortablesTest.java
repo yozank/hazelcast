@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
                     case 2:
                         return new Limb();
                     default:
-                        throw new IllegalStateException("Wrong class Id");
+                        throw new IllegalStateException("Wrong class ID");
                 }
             }
         });
@@ -85,7 +85,7 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
     }
 
     @Test
-    public void singleAttributeQuery_versionedProtables_predicates() throws Exception {
+    public void singleAttributeQuery_versionedProtables_predicates() {
         // GIVEN
         map.put(1, new NestedPredicateVersionedPortablesTest.Body("body1", new NestedPredicateVersionedPortablesTest.Limb("hand")));
         map.put(2, new NestedPredicateVersionedPortablesTest.Body("body2", new NestedPredicateVersionedPortablesTest.Limb("leg")));
@@ -97,12 +97,12 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
 
         // THEN
         assertEquals(1, values.size());
-        assertEquals("body1", values.toArray(new NestedPredicateVersionedPortablesTest.Body[values.size()])[0].getName());
+        assertEquals("body1", values.toArray(new Body[0])[0].getName());
 
     }
 
     @Test
-    public void nestedAttributeQuery_distributedSql() throws Exception {
+    public void nestedAttributeQuery_distributedSql() {
         // GIVEN
         map.put(1, new NestedPredicateVersionedPortablesTest.Body("body1", new NestedPredicateVersionedPortablesTest.Limb("hand")));
         map.put(2, new NestedPredicateVersionedPortablesTest.Body("body2", new NestedPredicateVersionedPortablesTest.Limb("leg")));
@@ -112,7 +112,7 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
 
         // THEN
         assertEquals(1, values.size());
-        assertEquals("body2", values.toArray(new NestedPredicateVersionedPortablesTest.Body[values.size()])[0].getName());
+        assertEquals("body2", values.toArray(new Body[0])[0].getName());
     }
 
 
@@ -126,7 +126,8 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
             this.limb = limb;
         }
 
-        Body() {}
+        Body() {
+        }
 
         String getName() {
             return name;
@@ -146,7 +147,6 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
             }
 
             Body body = (Body) o;
-
             if (name != null ? !name.equals(body.name) : body.name != null) {
                 return false;
             }
@@ -163,10 +163,10 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
 
         @Override
         public String toString() {
-            return "Body{" +
-                    "name='" + name + '\'' +
-                    ", limb=" + limb +
-                    '}';
+            return "Body{"
+                    + "name='" + name + '\''
+                    + ", limb=" + limb
+                    + '}';
         }
 
         @Override
@@ -205,7 +205,8 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
             this.name = name;
         }
 
-        Limb() {}
+        Limb() {
+        }
 
         String getName() {
             return name;
@@ -221,7 +222,6 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
             }
 
             Limb limb = (Limb) o;
-
             return !(name != null ? !name.equals(limb.name) : limb.name != null);
         }
 
@@ -232,9 +232,9 @@ public class NestedPredicateVersionedPortablesTest extends HazelcastTestSupport 
 
         @Override
         public String toString() {
-            return "Limb{" +
-                    "name='" + name + '\'' +
-                    '}';
+            return "Limb{"
+                    + "name='" + name + '\''
+                    + '}';
         }
 
         @Override

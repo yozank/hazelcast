@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@
 package com.hazelcast.client.map;
 
 import com.hazelcast.client.test.TestHazelcastFactory;
-import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.map.MapLiteMemberTest;
 import com.hazelcast.test.HazelcastParallelClassRunner;
+import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
@@ -30,11 +30,9 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import static com.hazelcast.test.HazelcastTestSupport.randomMapName;
-
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-public class ClientMapQueryLiteMemberTest {
+public class ClientMapQueryLiteMemberTest extends HazelcastTestSupport {
 
     private TestHazelcastFactory factory;
 
@@ -43,8 +41,8 @@ public class ClientMapQueryLiteMemberTest {
     @Before
     public void setUp() {
         factory = new TestHazelcastFactory();
-        factory.newHazelcastInstance();
-        factory.newHazelcastInstance(new Config().setLiteMember(true));
+        factory.newHazelcastInstance(getConfig());
+        factory.newHazelcastInstance(getConfig().setLiteMember(true));
         HazelcastInstance client = factory.newHazelcastClient();
         map = client.getMap(randomMapName());
     }

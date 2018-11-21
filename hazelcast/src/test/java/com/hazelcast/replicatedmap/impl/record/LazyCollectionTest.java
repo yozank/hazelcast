@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,55 +30,57 @@ import static org.mockito.Mockito.mock;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
+@SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
 public class LazyCollectionTest {
 
-    LazyCollection collection;
+    private LazyCollection<Object, Object> collection;
 
     @Before
-    public void setUp() throws Exception {
-        ValuesIteratorFactory iteratorFactory = mock(ValuesIteratorFactory.class);
-        InternalReplicatedMapStorage storage = mock(InternalReplicatedMapStorage.class);
-        collection = new LazyCollection(iteratorFactory, storage);
+    @SuppressWarnings("unchecked")
+    public void setUp() {
+        ValuesIteratorFactory<Object, Object> iteratorFactory = mock(ValuesIteratorFactory.class);
+        InternalReplicatedMapStorage<Object, Object> storage = mock(InternalReplicatedMapStorage.class);
+        collection = new LazyCollection<Object, Object>(iteratorFactory, storage);
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void test_add_throws_exception() throws Exception {
-        collection.add(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void test_add_all_throws_exception() throws Exception {
-        collection.addAll(Collections.EMPTY_LIST);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void test_remove_throws_exception() throws Exception {
-        collection.remove(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void test_removeAll_throws_exception() throws Exception {
-        collection.removeAll(Collections.EMPTY_LIST);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void test_contains_throws_exception() throws Exception {
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    public void testContains_throwsException() {
         collection.contains(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void test_contains_all_throws_exception() throws Exception {
+    public void testContainsAll_throwsException() {
         collection.containsAll(Collections.EMPTY_LIST);
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void test_retain_all_throws_exception() throws Exception {
+    public void testAdd_throwsException() {
+        collection.add(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testAddAll_throwsException() {
+        collection.addAll(Collections.EMPTY_LIST);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testRemove_throwsException() {
+        collection.remove(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testRemoveAll_throwsException() {
+        collection.removeAll(Collections.EMPTY_LIST);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testRetainAll_throwsException() {
         collection.retainAll(Collections.EMPTY_LIST);
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void test_clear_throws_exception() throws Exception {
+    public void testClear_throwsException() {
         collection.clear();
     }
-
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ package com.hazelcast.query.impl;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
 import com.hazelcast.query.IndexAwarePredicate;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.query.impl.predicates.PredicateDataSerializerHook;
@@ -36,10 +36,13 @@ import static com.hazelcast.internal.serialization.impl.FactoryIdHelper.PREDICAT
  */
 @BinaryInterface
 public class FalsePredicate<K, V> implements IdentifiedDataSerializable, Predicate<K, V>, IndexAwarePredicate<K, V> {
+
     /**
      * An instance of the FalsePredicate.
      */
     public static final FalsePredicate INSTANCE = new FalsePredicate();
+
+    private static final long serialVersionUID = 1L;
 
      @Override
     public boolean apply(Map.Entry<K, V> mapEntry) {
@@ -77,5 +80,18 @@ public class FalsePredicate<K, V> implements IdentifiedDataSerializable, Predica
     @Override
     public int getId() {
         return PredicateDataSerializerHook.FALSE_PREDICATE;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || !(o instanceof FalsePredicate)) {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }

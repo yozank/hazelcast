@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ package com.hazelcast.config;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.nio.serialization.DataSerializable;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -111,8 +111,8 @@ public class MaxSizeConfig implements DataSerializable, Serializable {
     /**
      * Gets immutable version of this configuration.
      *
-     * @return Immutable version of this configuration.
-     * @deprecated this method will be removed in 4.0; it is meant for internal usage only.
+     * @return immutable version of this configuration
+     * @deprecated this method will be removed in 4.0; it is meant for internal usage only
      */
     public MaxSizeConfigReadOnly getAsReadOnly() {
         if (readOnly == null) {
@@ -182,5 +182,28 @@ public class MaxSizeConfig implements DataSerializable, Serializable {
                 + '\''
                 + ", size=" + size
                 + '}';
+    }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof MaxSizeConfig)) {
+            return false;
+        }
+
+        MaxSizeConfig that = (MaxSizeConfig) o;
+        if (size != that.size) {
+            return false;
+        }
+        return maxSizePolicy == that.maxSizePolicy;
+    }
+
+    @Override
+    public final int hashCode() {
+        int result = maxSizePolicy != null ? maxSizePolicy.hashCode() : 0;
+        result = 31 * result + size;
+        return result;
     }
 }

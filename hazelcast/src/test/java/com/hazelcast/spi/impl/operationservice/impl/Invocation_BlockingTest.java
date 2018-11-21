@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -302,16 +302,16 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
 
         // first we are going to lock
         int otherThreadId = 1;
-        opService.createInvocationBuilder
-                (null, new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId, -1, -1), partitionId)
+        LockOperation otherOp = new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId, -1, -1);
+        opService.createInvocationBuilder(null, otherOp, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke()
                 .join();
 
         // then we are going to send the invocation and share the future by many threads
         int thisThreadId = 2;
-        final InternalCompletableFuture<Object> future = opService.createInvocationBuilder
-                (null, new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), thisThreadId, -1, -1), partitionId)
+        LockOperation thisOp = new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), thisThreadId, -1, -1);
+        final InternalCompletableFuture<Object> future = opService.createInvocationBuilder(null, thisOp, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke();
         // now we are going to do a get on the future by a whole bunch of threads
@@ -330,8 +330,8 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
         sleepMillis(callTimeout * 5);
 
         // unlocking the lock
-        opService.createInvocationBuilder
-                (null, new UnlockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId), partitionId)
+        UnlockOperation op = new UnlockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId);
+        opService.createInvocationBuilder(null, op, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke()
                 .join();
@@ -365,16 +365,16 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
 
         // first we are going to lock
         int otherThreadId = 1;
-        opService.createInvocationBuilder
-                (null, new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId, -1, -1), partitionId)
+        LockOperation otherOp = new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId, -1, -1);
+        opService.createInvocationBuilder(null, otherOp, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke()
                 .join();
 
         // then we are going to send another lock request by a different thread; so it can't complete
         int thisThreadId = 2;
-        final InternalCompletableFuture<Object> future = opService.createInvocationBuilder
-                (null, new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), thisThreadId, -1, -1), partitionId)
+        LockOperation thisOp = new LockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), thisThreadId, -1, -1);
+        final InternalCompletableFuture<Object> future = opService.createInvocationBuilder(null, thisOp, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke();
 
@@ -404,8 +404,8 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
         sleepMillis(callTimeout * 5);
 
         // unlocking the lock
-        opService.createInvocationBuilder
-                (null, new UnlockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId), partitionId)
+        UnlockOperation op = new UnlockOperation(new InternalLockNamespace(key), nodeEngine.toData(key), otherThreadId);
+        opService.createInvocationBuilder(null, op, partitionId)
                 .setCallTimeout(callTimeout)
                 .invoke()
                 .join();
@@ -446,7 +446,7 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
 
     @Test
     public void sync_testWaitingIndefinitely() throws InterruptedException {
-        final Config config = new Config().setProperty(OPERATION_CALL_TIMEOUT_MILLIS.getName(), "3000");
+        final Config config = new Config().setProperty(OPERATION_CALL_TIMEOUT_MILLIS.getName(), "6000");
 
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
         final HazelcastInstance[] instances = factory.newInstances(config);
@@ -463,7 +463,7 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
         new Thread() {
             public void run() {
                 try {
-                    // because max timeout=3000 we get timeout exception which we should not
+                    // because max timeout=6000 we get timeout exception which we should not
                     instances[1].getLock(name).lock();
                     latch.countDown();
                 } catch (Exception ignored) {
@@ -472,7 +472,7 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
             }
         }.start();
 
-        // wait for enough time which is greater than max-timeout (3000)
+        // wait for enough time which is greater than max-timeout (6000)
         sleepSeconds(10);
         lock.unlock();
 
@@ -481,7 +481,7 @@ public class Invocation_BlockingTest extends HazelcastTestSupport {
 
     @Test
     public void sync_testWaitingInfinitelyForTryLock() throws InterruptedException {
-        final Config config = new Config().setProperty(OPERATION_CALL_TIMEOUT_MILLIS.getName(), "3000");
+        final Config config = new Config().setProperty(OPERATION_CALL_TIMEOUT_MILLIS.getName(), "6000");
         final HazelcastInstance hz = createHazelcastInstance(config);
         final CountDownLatch latch = new CountDownLatch(1);
 

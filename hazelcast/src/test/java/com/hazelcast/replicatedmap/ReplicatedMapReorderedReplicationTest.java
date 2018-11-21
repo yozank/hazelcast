@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
     private Field field;
 
     @After
-    public void tearDown() throws IllegalAccessException {
+    public void tearDown() throws Exception {
         // if updateFactory() has been executed, field & replicatedMapDataSerializableFactory are populated
         if (replicatedMapDataSerializableFactory != null && field != null) {
             // restore original value of ReplicatedMapDataSerializerHook.FACTORY
@@ -69,8 +69,7 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
     }
 
     @Test
-    public void testNonConvergingReplicatedMaps()
-            throws Exception {
+    public void testNonConvergingReplicatedMaps() throws Exception {
         final int nodeCount = 4;
         final int keyCount = 10000;
         final int threadCount = 2;
@@ -119,8 +118,7 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run()
-                    throws Exception {
+            public void run() throws Exception {
                 long version = stores[0].getVersion();
 
                 for (ReplicatedRecordStore store : stores) {
@@ -145,13 +143,13 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
 
         PutOperation putOperation = new PutOperation(mapName, dataKey, dataValue);
         InternalCompletableFuture<Object> future = nodeEngine.getOperationService()
-                                                             .invokeOnPartition(ReplicatedMapService.SERVICE_NAME, putOperation,
-                                                                     partitionId);
+                .invokeOnPartition(ReplicatedMapService.SERVICE_NAME, putOperation,
+                        partitionId);
         VersionResponsePair result = (VersionResponsePair) future.join();
         return nodeEngine.toObject(result.getResponse());
     }
 
-    private void updateFactory() throws NoSuchFieldException, IllegalAccessException {
+    private void updateFactory() throws Exception {
         field = ReplicatedMapDataSerializerHook.class.getDeclaredField("FACTORY");
 
         // remove final modifier from field
@@ -163,14 +161,13 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
         final DataSerializableFactory factory = (DataSerializableFactory) field.get(null);
         replicatedMapDataSerializableFactory = factory;
         field.set(null, new TestReplicatedMapDataSerializerFactory(factory));
-
     }
 
     private static class TestReplicatedMapDataSerializerFactory implements DataSerializableFactory {
 
         private final DataSerializableFactory factory;
 
-        public TestReplicatedMapDataSerializerFactory(DataSerializableFactory factory) {
+        TestReplicatedMapDataSerializerFactory(DataSerializableFactory factory) {
             this.factory = factory;
         }
 
@@ -179,25 +176,20 @@ public class ReplicatedMapReorderedReplicationTest extends HazelcastTestSupport 
             if (typeId == ReplicatedMapDataSerializerHook.REPLICATE_UPDATE) {
                 return new RetriedReplicateUpdateOperation();
             }
-
             return factory.create(typeId);
         }
-
     }
 
     private static class RetriedReplicateUpdateOperation extends ReplicateUpdateOperation {
 
-        private static final Random random = new Random();
+        private final Random random = new Random();
 
         @Override
         public void run() throws Exception {
             if (random.nextInt(10) < 2) {
                 throw new RetryableHazelcastException();
             }
-
             super.run();
         }
-
     }
-
 }

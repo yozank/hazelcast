@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,30 +23,31 @@ import static com.hazelcast.test.jitter.JitterRule.LONG_HICCUP_THRESHOLD;
 import static java.lang.Math.max;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-public class Slot {
+class Slot {
+
     private final long startInterval;
 
     private volatile long accumulatedHiccupsNanos;
     private volatile long maxPauseNanos;
-    private volatile  int pausesOverThreshold;
+    private volatile int pausesOverThreshold;
 
-    public Slot(long startInterval) {
+    Slot(long startInterval) {
         this.startInterval = startInterval;
     }
 
-    public long getStartIntervalMillis() {
+    long getStartIntervalMillis() {
         return startInterval;
     }
 
-    public long getMaxPauseNanos() {
+    long getMaxPauseNanos() {
         return maxPauseNanos;
     }
 
-    public long getAccumulatedHiccupsNanos() {
+    long getAccumulatedHiccupsNanos() {
         return accumulatedHiccupsNanos;
     }
 
-    public void recordHiccup(long hiccupNanos) {
+    void recordHiccup(long hiccupNanos) {
         accumulatedHiccupsNanos += hiccupNanos;
         maxPauseNanos = max(maxPauseNanos, hiccupNanos);
         if (hiccupNanos > LONG_HICCUP_THRESHOLD) {
@@ -54,7 +55,7 @@ public class Slot {
         }
     }
 
-    public String toHumanFriendly(DateFormat dateFormat) {
+    String toHumanFriendly(DateFormat dateFormat) {
         return dateFormat.format(new Date(startInterval))
                 + ", accumulated pauses: " + NANOSECONDS.toMillis(accumulatedHiccupsNanos) + " ms"
                 + ", max pause: " + NANOSECONDS.toMillis(maxPauseNanos) + " ms"

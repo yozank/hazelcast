@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,15 +55,26 @@ public abstract class AbstractAggregator<I, E, R> extends Aggregator<I, R> {
 
     @Override
     public final void accumulate(I entry) {
+
         E extractedValue = extract(entry);
         if (extractedValue instanceof MultiResult) {
+            boolean nullEmptyTargetSkipped = false;
             @SuppressWarnings("unchecked")
-            List<E> results = ((MultiResult<E>) extractedValue).getResults();
-            for (E o : results) {
-                accumulateExtracted(o);
+            MultiResult<E> multiResult = (MultiResult<E>) extractedValue;
+            List<E> results = multiResult.getResults();
+            for (int i = 0; i < results.size(); i++) {
+                E result = results.get(i);
+                if (result == null && multiResult.isNullEmptyTarget() && !nullEmptyTargetSkipped) {
+                    // if a null or empty target is reached there will be a single null added to the multi-result.
+                    // in aggregators we do not care about this null so we have to skip it.
+                    // if there are more nulls in the multi-result, they have been added as values.
+                    nullEmptyTargetSkipped = true;
+                    continue;
+                }
+                accumulateExtracted(entry, results.get(i));
             }
         } else {
-            accumulateExtracted(extractedValue);
+            accumulateExtracted(entry, extractedValue);
         }
     }
 
@@ -86,10 +97,10 @@ public abstract class AbstractAggregator<I, E, R> extends Aggregator<I, R> {
      * Accumulates a single extracted value.
      * This method may be called multiple times per accumulated entry if the attributePath contains [any] operator.
      *
+     * @param entry The entry containing the value.
      * @param value If attributePath is not null the methods accumulates the value extracted from the attributePath.
      *              If attributePath is null and the input object is a Map.Entry the method accumulates Map.Entry.getValue().
-     *              Otherwise the method accumulates the input value as-is.
      */
-    protected abstract void accumulateExtracted(E value);
+    protected abstract void accumulateExtracted(I entry, E value);
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public class OperationThreadTest extends OperationExecutorImpl_AbstractTest {
 
         final int oldCount = OutOfMemoryErrorDispatcher.getOutOfMemoryErrorCount();
 
-        executor.handle(packet);
+        executor.accept(packet);
 
         assertTrueEventually(new AssertTask() {
             @Override
@@ -136,7 +136,7 @@ public class OperationThreadTest extends OperationExecutorImpl_AbstractTest {
         } else if (task instanceof PartitionSpecificRunnable) {
             executor.execute((PartitionSpecificRunnable) task);
         } else if (task instanceof Packet) {
-            executor.handle((Packet) task);
+            executor.accept((Packet) task);
         } else {
             fail("invalid task!");
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,13 @@ package com.hazelcast.internal.serialization.impl;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.hazelcast.internal.serialization.DataSerializerHook;
+import com.hazelcast.map.impl.wan.WanMapEntryView;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.nio.serialization.DataSerializable;
 import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.SerializableByConvention;
+import com.hazelcast.query.impl.SkipIndexPredicate;
 import com.hazelcast.spi.AbstractLocalOperation;
 import com.hazelcast.spi.annotation.PrivateApi;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -33,26 +36,46 @@ import org.junit.runner.RunWith;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
+import java.security.Permission;
+import java.security.PermissionCollection;
+import java.util.Collections;
+import java.util.EventObject;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
 import static com.hazelcast.test.ReflectionsHelper.REFLECTIONS;
+import static com.hazelcast.test.ReflectionsHelper.filterNonConcreteClasses;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Tests for classes which are used as Data in the client protocol
+ * Tests to verify serializable classes conventions are observed. Each conventions test scans the classpath (excluding
+ * test classes) and tests <b>concrete</b> classes which implement (directly or transitively) {@code Serializable} or
+ * {@code DataSerializable} interface, then verifies that it's either annotated with {@link BinaryInterface},
+ * is excluded from conventions tests by being annotated with {@link SerializableByConvention} or
+ * they also implement {@code IdentifiedDataSerializable}.
+ * Additionally, tests whether IDS instanced obtained from DS factories
+ * have the same ID as the one reported by their `getId` method and that F_ID/ID combinations are unique.
  */
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class})
 public class DataSerializableConventionsTest {
+
+    // subclasses of classes in the white list are not taken into account for
+    // conventions tests. Reasons:
+    // - they inherit Serializable from a parent class and cannot implement
+    // IdentifiedDataSerializable due to unavailability of default constructor.
+    // - they purposefully break conventions to fix a known issue
+    private final Set<Class> classWhiteList;
+
+    public DataSerializableConventionsTest() {
+        classWhiteList = Collections.unmodifiableSet(getWhitelistedClasses());
+    }
 
     /**
      * Verifies that any class which is {@link DataSerializable} and is not annotated with {@link BinaryInterface}
@@ -67,21 +90,16 @@ public class DataSerializableConventionsTest {
         dataSerializableClasses.removeAll(allIdDataSerializableClasses);
         // also remove IdentifiedDataSerializable itself
         dataSerializableClasses.remove(IdentifiedDataSerializable.class);
+        // do not check abstract classes & interfaces
+        filterNonConcreteClasses(dataSerializableClasses);
 
-        // locate all classes annotated with BinaryInterface (and their subclasses) and remove those as well
-        Set<?> allAnnotatedClasses = REFLECTIONS.getTypesAnnotatedWith(BinaryInterface.class, false);
+        // locate all classes annotated with BinaryInterface and remove those as well
+        Set<?> allAnnotatedClasses = REFLECTIONS.getTypesAnnotatedWith(BinaryInterface.class, true);
         dataSerializableClasses.removeAll(allAnnotatedClasses);
 
-        // filter out public classes from public packages (i.e. not "impl" nor "internal" and not annotated with @PrivateApi)
-        Set<Class> publicClasses = new HashSet<Class>();
-        for (Object o : dataSerializableClasses) {
-            Class klass = (Class) o;
-            // if in public packages and not @PrivateApi ==> exclude from checks
-            if (isPublicClass(klass)) {
-                publicClasses.add(klass);
-            }
-        }
-        dataSerializableClasses.removeAll(publicClasses);
+        // exclude @SerializableByConvention classes
+        Set<?> serializableByConventions = REFLECTIONS.getTypesAnnotatedWith(SerializableByConvention.class, true);
+        dataSerializableClasses.removeAll(serializableByConventions);
 
         if (dataSerializableClasses.size() > 0) {
             SortedSet<String> nonCompliantClassNames = new TreeSet<String>();
@@ -109,40 +127,33 @@ public class DataSerializableConventionsTest {
                 = REFLECTIONS.getSubTypesOf(IdentifiedDataSerializable.class);
 
         serializableClasses.removeAll(allIdDataSerializableClasses);
+        // do not check abstract classes & interfaces
+        filterNonConcreteClasses(serializableClasses);
 
-        // locate all classes annotated with BinaryInterface (and their subclasses) and remove those as well
-        Set<?> allAnnotatedClasses = REFLECTIONS.getTypesAnnotatedWith(BinaryInterface.class, false);
+        // locate all classes annotated with BinaryInterface and remove those as well
+        Set<?> allAnnotatedClasses = REFLECTIONS.getTypesAnnotatedWith(BinaryInterface.class, true);
         serializableClasses.removeAll(allAnnotatedClasses);
 
-        // filter out public classes from public packages (i.e. not "impl" nor "internal" and not annotated with @PrivateApi)
-        Set<Class> publicClasses = new HashSet<Class>();
-        for (Object o : serializableClasses) {
-            Class klass = (Class) o;
-            // if in public packages and not @PrivateApi ==> exclude from checks
-            if (isPublicClass(klass)) {
-                publicClasses.add(klass);
-            }
-            else {
-                // if not a public class but inherits Serializable from a public class, also exclude
-                if (inheritsClassFromPublicClass(klass, Serializable.class)) {
-                    publicClasses.add(klass);
-                }
-            }
-        }
-        serializableClasses.removeAll(publicClasses);
+        // exclude @SerializableByConvention classes
+        Set<?> serializableByConventions = REFLECTIONS.getTypesAnnotatedWith(SerializableByConvention.class, true);
+        serializableClasses.removeAll(serializableByConventions);
 
         if (serializableClasses.size() > 0) {
             SortedSet<String> nonCompliantClassNames = new TreeSet<String>();
             for (Object o : serializableClasses) {
-                nonCompliantClassNames.add(o.toString());
+                if (!inheritsFromWhiteListedClass((Class) o)) {
+                    nonCompliantClassNames.add(o.toString());
+                }
             }
-            System.out.println("The following classes are Serializable and should be IdentifiedDataSerializable:");
-            // failure - output non-compliant classes to standard output and fail the test
-            for (String s : nonCompliantClassNames) {
-                System.out.println(s);
+            if (!nonCompliantClassNames.isEmpty()) {
+                System.out.println("The following classes are Serializable and should be IdentifiedDataSerializable:");
+                // failure - output non-compliant classes to standard output and fail the test
+                for (String s : nonCompliantClassNames) {
+                    System.out.println(s);
+                }
+                fail("There are " + nonCompliantClassNames.size() + " classes which are Serializable, not @BinaryInterface-"
+                        + "annotated and are not IdentifiedDataSerializable.");
             }
-            fail("There are " + serializableClasses.size() + " classes which are Serializable, not @BinaryInterface-"
-                    + "annotated and are not IdentifiedDataSerializable.");
         }
     }
 
@@ -161,7 +172,7 @@ public class DataSerializableConventionsTest {
         Set<Class<? extends IdentifiedDataSerializable>> identifiedDataSerializables = getIDSConcreteClasses();
         for (Class<? extends IdentifiedDataSerializable> klass : identifiedDataSerializables) {
             // exclude classes which are known to be meant for local use only
-            if (!AbstractLocalOperation.class.isAssignableFrom(klass)) {
+            if (!AbstractLocalOperation.class.isAssignableFrom(klass) && !isReadOnlyConfig(klass)) {
                 // wrap all of this in try-catch, as it is legitimate for some classes to throw UnsupportedOperationException
                 try {
                     Constructor<? extends IdentifiedDataSerializable> ctor = klass.getDeclaredConstructor();
@@ -227,6 +238,9 @@ public class DataSerializableConventionsTest {
             if (AbstractLocalOperation.class.isAssignableFrom(klass)) {
                 continue;
             }
+            if (isReadOnlyConfig(klass)) {
+                continue;
+            }
             // wrap all of this in try-catch, as it is legitimate for some classes to throw UnsupportedOperationException
             try {
                 Constructor<? extends IdentifiedDataSerializable> ctor = klass.getDeclaredConstructor();
@@ -236,19 +250,24 @@ public class DataSerializableConventionsTest {
                 int typeId = instance.getId();
 
                 if (!factories.containsKey(factoryId)) {
-                    fail("Factory with ID " + factoryId + " declared in " + klass + " not found. Is such a factory ID "
-                            + "registered?");
+                    fail("Factory with ID " + factoryId + " declared in " + klass + " not found."
+                            + " Is such a factory ID registered?");
                 }
 
                 IdentifiedDataSerializable instanceFromFactory = factories.get(factoryId).create(typeId);
                 assertNotNull("Factory with ID " + factoryId + " returned null for type with ID " + typeId, instanceFromFactory);
-                assertTrue("Factory with ID " + factoryId + " instantiated an object of " + instanceFromFactory.getClass() +
-                                " while expected type was " + instance.getClass(),
+                assertTrue("Factory with ID " + factoryId + " instantiated an object of " + instanceFromFactory.getClass()
+                                + " while expected type was " + instance.getClass(),
                         instanceFromFactory.getClass().equals(instance.getClass()));
             } catch (UnsupportedOperationException ignored) {
                 // expected from local operation classes not meant for serialization
             }
         }
+    }
+
+    private boolean isReadOnlyConfig(Class<? extends IdentifiedDataSerializable> klass) {
+        String className = klass.getName();
+        return className.endsWith("ReadOnly") && className.contains("Config");
     }
 
     /**
@@ -260,20 +279,12 @@ public class DataSerializableConventionsTest {
     private Set<Class<? extends IdentifiedDataSerializable>> getIDSConcreteClasses() {
         Set<Class<? extends IdentifiedDataSerializable>> identifiedDataSerializables
                 = REFLECTIONS.getSubTypesOf(IdentifiedDataSerializable.class);
-        Iterator<Class<? extends IdentifiedDataSerializable>> iterator = identifiedDataSerializables.iterator();
-        while (iterator.hasNext()) {
-            Class<? extends IdentifiedDataSerializable> klass = iterator.next();
-            if (klass.isInterface() || Modifier.isAbstract(klass.getModifiers())) {
-                iterator.remove();
-            }
-        }
+        filterNonConcreteClasses(identifiedDataSerializables);
+        identifiedDataSerializables.removeAll(classWhiteList);
         return identifiedDataSerializables;
     }
 
     /**
-     *
-     * @param klass
-     * @param inheritedClass
      * @return {@code true} when klass has a superclass that implements or is itself of type {@code inheritedClass}
      */
     private boolean inheritsClassFromPublicClass(Class klass, Class inheritedClass) {
@@ -288,15 +299,15 @@ public class DataSerializableConventionsTest {
                 }
             }
         }
-        
+
         // use hierarchyIteratingClass to iterate up the klass hierarchy
         Class hierarchyIteratingClass = klass;
         while (hierarchyIteratingClass.getSuperclass() != null) {
             if (hierarchyIteratingClass.getSuperclass().equals(inheritedClass)) {
                 return true;
             }
-            if (inheritedClass.isAssignableFrom(hierarchyIteratingClass.getSuperclass()) &&
-                    isPublicClass(hierarchyIteratingClass.getSuperclass())) {
+            if (inheritedClass.isAssignableFrom(hierarchyIteratingClass.getSuperclass())
+                    && isPublicClass(hierarchyIteratingClass.getSuperclass())) {
                 return true;
             }
             hierarchyIteratingClass = hierarchyIteratingClass.getSuperclass();
@@ -307,5 +318,28 @@ public class DataSerializableConventionsTest {
     private boolean isPublicClass(Class klass) {
         return !klass.getName().contains(".impl.") && !klass.getName().contains(".internal.")
                 && klass.getAnnotation(PrivateApi.class) == null;
+    }
+
+    private boolean inheritsFromWhiteListedClass(Class klass) {
+        for (Class superclass : classWhiteList) {
+            if (superclass.isAssignableFrom(klass)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the set of classes excluded from the conventions tests.
+     */
+    protected Set<Class> getWhitelistedClasses() {
+        Set<Class> whiteList = new HashSet<Class>();
+        whiteList.add(EventObject.class);
+        whiteList.add(Throwable.class);
+        whiteList.add(Permission.class);
+        whiteList.add(PermissionCollection.class);
+        whiteList.add(WanMapEntryView.class);
+        whiteList.add(SkipIndexPredicate.class);
+        return whiteList;
     }
 }

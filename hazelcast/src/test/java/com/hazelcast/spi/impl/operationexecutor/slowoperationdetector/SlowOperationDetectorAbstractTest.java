@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 
 package com.hazelcast.spi.impl.operationexecutor.slowoperationdetector;
 
-import com.eclipsesource.json.JsonArray;
-import com.eclipsesource.json.JsonObject;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.internal.management.TimedMemberStateFactory;
+import com.hazelcast.internal.json.JsonArray;
+import com.hazelcast.internal.json.JsonObject;
 import com.hazelcast.map.EntryBackupProcessor;
 import com.hazelcast.map.EntryProcessor;
 import com.hazelcast.spi.Operation;
@@ -30,7 +30,6 @@ import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastTestSupport;
-import com.hazelcast.util.EmptyStatement;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -200,9 +199,9 @@ abstract class SlowOperationDetectorAbstractTest extends HazelcastTestSupport {
 
     static class SlowEntryProcessor extends CountDownLatchHolder implements EntryProcessor<String, String> {
 
-        static int GLOBAL_INSTANCE_COUNTER;
+        static int globalInstanceCounter;
 
-        final int instance = ++GLOBAL_INSTANCE_COUNTER;
+        final int instance = ++globalInstanceCounter;
         final int sleepSeconds;
 
         SlowEntryProcessor(int sleepSeconds) {
@@ -256,7 +255,7 @@ abstract class SlowOperationDetectorAbstractTest extends HazelcastTestSupport {
         }
     }
 
-    static abstract class JoinableOperation extends Operation {
+    abstract static class JoinableOperation extends Operation {
 
         private final CountDownLatch completedLatch = new CountDownLatch(1);
 
@@ -268,12 +267,12 @@ abstract class SlowOperationDetectorAbstractTest extends HazelcastTestSupport {
             try {
                 completedLatch.await();
             } catch (InterruptedException e) {
-                EmptyStatement.ignore(e);
+                ignore(e);
             }
         }
     }
 
-    static abstract class CountDownLatchHolder {
+    abstract static class CountDownLatchHolder {
 
         private final CountDownLatch latch = new CountDownLatch(1);
 
@@ -285,7 +284,7 @@ abstract class SlowOperationDetectorAbstractTest extends HazelcastTestSupport {
             try {
                 latch.await();
             } catch (InterruptedException e) {
-                EmptyStatement.ignore(e);
+                ignore(e);
             }
         }
     }

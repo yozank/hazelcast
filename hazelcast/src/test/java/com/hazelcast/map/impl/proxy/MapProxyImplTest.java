@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import static com.hazelcast.config.MapStoreConfig.InitialLoadMode.LAZY;
 import static org.junit.Assert.assertEquals;
 
 /**
- * Test creation of map proxy
+ * Tests the creation of a map proxy.
  */
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -90,9 +90,9 @@ public class MapProxyImplTest extends HazelcastTestSupport {
     private Config getConfigWithMapStore(String mapName, InitialLoadMode loadMode) {
         Config config = new Config();
         config.getMapConfig(mapName)
-              .getMapStoreConfig().setClassName("com.hazelcast.config.helpers.DummyMapStore")
-              .setInitialLoadMode(loadMode)
-              .setEnabled(true);
+                .getMapStoreConfig().setClassName("com.hazelcast.config.helpers.DummyMapStore")
+                .setInitialLoadMode(loadMode)
+                .setEnabled(true);
         return config;
     }
 }

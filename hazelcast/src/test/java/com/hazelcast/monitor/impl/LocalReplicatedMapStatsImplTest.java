@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.monitor.impl;
 
-import com.eclipsesource.json.JsonObject;
+import com.hazelcast.internal.json.JsonObject;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -65,6 +65,7 @@ public class LocalReplicatedMapStatsImplTest {
         localReplicatedMapStats.incrementReceivedEvents();
 
         localReplicatedMapStats.setHeapCost(7461762);
+        localReplicatedMapStats.setMerkleTreesCost(6548888);
     }
 
     @Test
@@ -95,6 +96,7 @@ public class LocalReplicatedMapStatsImplTest {
         assertEquals(2, localReplicatedMapStats.getEventOperationCount());
 
         assertEquals(0, localReplicatedMapStats.getHeapCost());
+        assertEquals(0, localReplicatedMapStats.getMerkleTreesCost());
         assertNotNull(localReplicatedMapStats.toString());
     }
 
@@ -130,6 +132,7 @@ public class LocalReplicatedMapStatsImplTest {
         assertEquals(2, deserialized.getEventOperationCount());
 
         assertEquals(0, deserialized.getHeapCost());
+        assertEquals(0, deserialized.getMerkleTreesCost());
         assertNotNull(deserialized.toString());
     }
 

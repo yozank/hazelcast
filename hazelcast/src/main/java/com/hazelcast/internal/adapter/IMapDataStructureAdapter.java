@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,16 @@ import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.query.TruePredicate;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CompletionListener;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+@SuppressWarnings("checkstyle:methodcount")
 public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V> {
 
     private final IMap<K, V> map;
@@ -59,8 +62,45 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     }
 
     @Override
+    public ICompletableFuture<Void> setAsync(K key, V value) {
+        return map.setAsync(key, value);
+    }
+
+    @Override
+    public ICompletableFuture<Void> setAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        return map.setAsync(key, value, ttl, timeunit);
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
     public V put(K key, V value) {
         return map.put(key, value);
+    }
+
+    @Override
+    public ICompletableFuture<V> putAsync(K key, V value) {
+        return map.putAsync(key, value);
+    }
+
+    @Override
+    public ICompletableFuture<V> putAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        return map.putAsync(key, value, ttl, timeunit);
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    public void putTransient(K key, V value, long ttl, TimeUnit timeunit) {
+        map.putTransient(key, value, ttl, timeunit);
     }
 
     @Override
@@ -75,6 +115,11 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     }
 
     @Override
+    public void setTtl(K key, long duration, TimeUnit timeUnit) {
+        map.setTtl(key, duration, timeUnit);
+    }
+
+    @Override
     public V replace(K key, V newValue) {
         return map.replace(key, newValue);
     }
@@ -85,8 +130,8 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     }
 
     @Override
-    public void remove(K key) {
-        map.remove(key);
+    public V remove(K key) {
+        return map.remove(key);
     }
 
     @Override
@@ -97,6 +142,22 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     @Override
     public ICompletableFuture<V> removeAsync(K key) {
         return map.removeAsync(key);
+    }
+
+    @Override
+    public void delete(K key) {
+        map.delete(key);
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Boolean> deleteAsync(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    public boolean evict(K key) {
+        return map.evict(key);
     }
 
     @Override
@@ -169,6 +230,11 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     }
 
     @Override
+    public void evictAll() {
+        map.evictAll();
+    }
+
+    @Override
     @MethodNotAvailable
     public <T> Map<K, EntryProcessorResult<T>> invokeAll(Set<? extends K> keys, EntryProcessor<K, V, T> entryProcessor,
                                                          Object... arguments) {
@@ -181,8 +247,26 @@ public class IMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V
     }
 
     @Override
+    @MethodNotAvailable
+    public void close() {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
     public void destroy() {
         map.destroy();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void setExpiryPolicy(Set<K> keys, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public boolean setExpiryPolicy(K key, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
     }
 
     @Override

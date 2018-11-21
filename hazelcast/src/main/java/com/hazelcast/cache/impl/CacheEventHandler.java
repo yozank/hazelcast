@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.cache.impl;
 
+import com.hazelcast.cache.CacheEventType;
 import com.hazelcast.internal.nearcache.impl.invalidation.BatchInvalidator;
 import com.hazelcast.internal.nearcache.impl.invalidation.Invalidator;
 import com.hazelcast.internal.nearcache.impl.invalidation.MetaDataGenerator;
@@ -103,16 +104,16 @@ public class CacheEventHandler {
                 break;
             default:
                 throw new IllegalArgumentException(
-                        "Event Type not defined to create an eventData during publish : " + eventType.name());
+                        "Event Type not defined to create an eventData during publish: " + eventType.name());
         }
         eventService.publishEvent(SERVICE_NAME, candidates,
                 eventData, cacheEventContext.getOrderKey());
     }
 
-    void publishEvent(String cacheName, CacheEventSet eventSet, int orderKey) {
+    void publishEvent(String cacheNameWithPrefix, CacheEventSet eventSet, int orderKey) {
         final EventService eventService = nodeEngine.getEventService();
         final Collection<EventRegistration> candidates =
-                eventService.getRegistrations(SERVICE_NAME, cacheName);
+                eventService.getRegistrations(SERVICE_NAME, cacheNameWithPrefix);
         if (candidates.isEmpty()) {
             return;
         }
@@ -127,7 +128,11 @@ public class CacheEventHandler {
         }
     }
 
-    void destroy(String name, String sourceUuid) {
+    public void resetPartitionMetaData(String name, int partitionId) {
+        invalidator.resetPartitionMetaData(name, partitionId);
+    }
+
+    public void destroy(String name, String sourceUuid) {
         invalidator.destroy(name, sourceUuid);
     }
 

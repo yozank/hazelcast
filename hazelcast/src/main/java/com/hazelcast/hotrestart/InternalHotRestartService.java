@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.internal.management.dto.ClusterHotRestartStatusDTO;
 import com.hazelcast.nio.Address;
 
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Internal service for interacting with hot restart related functionalities (e.g. force and partial start)
@@ -48,15 +49,15 @@ public interface InternalHotRestartService {
      * If returns true, it means that the given member is not allowed to join to the cluster.
      *
      * @param memberAddress address of the member to check
-     * @param memberUuid    uuid of the member to check
+     * @param memberUuid    UUID of the member to check
      * @return true if the member has been excluded on cluster start.
      */
     boolean isMemberExcluded(Address memberAddress, String memberUuid);
 
     /**
-     * Returns uuids of the members that have been excluded during the cluster start.
+     * Returns UUIDs of the members that have been excluded during the cluster start.
      *
-     * @return uuids of the members that have been excluded during the cluster start
+     * @return UUIDs of the members that have been excluded during the cluster start
      */
     Set<String> getExcludedMemberUuids();
 
@@ -68,10 +69,10 @@ public interface InternalHotRestartService {
     void notifyExcludedMember(Address memberAddress);
 
     /**
-     * Handles the uuid set of excluded members only if this member is also excluded, and triggers the member force start process.
+     * Handles the UUID set of excluded members only if this member is also excluded, and triggers the member force start process.
      *
      * @param sender              the member that has sent the excluded members set
-     * @param excludedMemberUuids uuids of the members that have been excluded during the cluster start
+     * @param excludedMemberUuids UUIDs of the members that have been excluded during the cluster start
      */
     void handleExcludedMemberUuids(Address sender, Set<String> excludedMemberUuids);
 
@@ -82,8 +83,17 @@ public interface InternalHotRestartService {
     ClusterHotRestartStatusDTO getCurrentClusterHotRestartStatus();
 
     /**
-     * Resets local hot restart data and gets a new uuid, if the local node hasn't completed the start process and
+     * Resets local hot restart data and gets a new UUID, if the local node hasn't completed the start process and
      * it is excluded in cluster start.
      */
     void resetHotRestartData();
+
+    /**
+     * Waits until partition replicas (primaries and backups) get in sync.
+     *
+     * @param timeout timeout
+     * @param unit time unit
+     * @throws IllegalStateException when timeout happens or a member leaves the cluster while waiting
+     */
+    void waitPartitionReplicaSyncOnCluster(long timeout, TimeUnit unit);
 }

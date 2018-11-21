@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,20 @@ package com.hazelcast.internal.adapter;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
+import com.hazelcast.core.IMap;
 import com.hazelcast.core.TransactionalMap;
 import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.transaction.TransactionContext;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CompletionListener;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @SuppressWarnings("checkstyle:methodcount")
 public class TransactionalMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V> {
@@ -69,8 +72,26 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     @Override
     public void set(K key, V value) {
         begin();
-        transactionalMap.put(key, value);
+        transactionalMap.set(key, value);
         commit();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
     }
 
     @Override
@@ -79,6 +100,30 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
         V oldValue = transactionalMap.put(key, value);
         commit();
         return oldValue;
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void putTransient(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
     }
 
     @Override
@@ -92,6 +137,12 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     @Override
     @MethodNotAvailable
     public ICompletableFuture<Boolean> putIfAbsentAsync(K key, V value) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void setTtl(K key, long duration, TimeUnit timeUnit) {
         throw new MethodNotAvailableException();
     }
 
@@ -112,10 +163,11 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     }
 
     @Override
-    public void remove(K key) {
+    public V remove(K key) {
         begin();
-        transactionalMap.remove(key);
+        V oldValue = transactionalMap.remove(key);
         commit();
+        return oldValue;
     }
 
     @Override
@@ -129,6 +181,25 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     @Override
     @MethodNotAvailable
     public ICompletableFuture<V> removeAsync(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    public void delete(K key) {
+        begin();
+        transactionalMap.delete(key);
+        commit();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Boolean> deleteAsync(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public boolean evict(K key) {
         throw new MethodNotAvailableException();
     }
 
@@ -188,6 +259,12 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
 
     @Override
     @MethodNotAvailable
+    public void evictAll() {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
     public <T> Map<K, EntryProcessorResult<T>> invokeAll(Set<? extends K> keys, EntryProcessor<K, V, T> entryProcessor,
                                                          Object... arguments) {
         throw new MethodNotAvailableException();
@@ -200,10 +277,28 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     }
 
     @Override
+    @MethodNotAvailable
+    public void close() {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
     public void destroy() {
         begin();
         transactionalMap.destroy();
         commit();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void setExpiryPolicy(Set<K> keys, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public boolean setExpiryPolicy(K key, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
     }
 
     @Override
@@ -236,6 +331,10 @@ public class TransactionalMapDataStructureAdapter<K, V> implements DataStructure
     @MethodNotAvailable
     public void loadAll(Set<? extends K> keys, boolean replaceExistingValues, CompletionListener completionListener) {
         throw new MethodNotAvailableException();
+    }
+
+    public IMap<K, V> getMap() {
+        return hazelcastInstance.getMap(name);
     }
 
     private void begin() {

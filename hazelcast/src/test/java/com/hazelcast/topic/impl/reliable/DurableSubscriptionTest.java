@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ public class DurableSubscriptionTest extends HazelcastTestSupport {
     public void beginFromStart() {
     }
 
-    public class DurableMessageListener<V> implements ReliableMessageListener<V> {
+    public static class DurableMessageListener<V> implements ReliableMessageListener<V> {
 
         public final List<V> objects = new CopyOnWriteArrayList<V>();
         public final List<Long> sequences = new CopyOnWriteArrayList<Long>();

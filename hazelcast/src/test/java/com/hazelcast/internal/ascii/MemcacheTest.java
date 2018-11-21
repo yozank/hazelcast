@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -192,7 +192,7 @@ public class MemcacheTest extends HazelcastTestSupport {
     @Test
     public void testSetGetDelete_WithCustomIMap() throws Exception {
         String mapName = randomMapName();
-        testSetGetDelete_WithIMap(MemcacheCommandProcessor.MAP_NAME_PRECEDER + mapName, mapName + ":");
+        testSetGetDelete_WithIMap(MemcacheCommandProcessor.MAP_NAME_PREFIX + mapName, mapName + ":");
     }
 
     private void testSetGetDelete_WithIMap(String mapName, String prefix) throws Exception {
@@ -220,7 +220,7 @@ public class MemcacheTest extends HazelcastTestSupport {
     public void testDeleteAll_withIMapPrefix() throws Exception {
         String mapName = randomMapName();
         String prefix = mapName + ":";
-        IMap<String, Object> map = instance.getMap(MemcacheCommandProcessor.MAP_NAME_PRECEDER + mapName);
+        IMap<String, Object> map = instance.getMap(MemcacheCommandProcessor.MAP_NAME_PREFIX + mapName);
 
         for (int i = 0; i < 100; i++) {
             map.put(String.valueOf(i), i);
@@ -316,11 +316,11 @@ public class MemcacheTest extends HazelcastTestSupport {
         final String key = "key";
         client.set(key, 3, "value").get();
         assertTrueEventually(new AssertTask() {
-                @Override
-                public void run() throws Exception {
-                    assertEquals(null, client.get(key));
-                }
-            });
+            @Override
+            public void run() throws Exception {
+                assertNull(client.get(key));
+            }
+        });
     }
 
     @Test
@@ -357,8 +357,9 @@ public class MemcacheTest extends HazelcastTestSupport {
         }
     }
 
+    @SuppressWarnings("checkstyle:parameternumber")
     private void checkStats(int sets, int gets, int getHits, int getMisses, int deleteHits, int deleteMisses,
-            int incHits, int incMisses, int decHits, int decMisses) {
+                            int incHits, int incMisses, int decHits, int decMisses) {
         InetSocketAddress address = instance.getCluster().getLocalMember().getSocketAddress();
         Map<String, String> stats = client.getStats().get(address);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
 
     @Before
     public void setup() {
-        nodeConfig = new Config();
+        nodeConfig = getConfig();
         MapConfig mapConfig = new MapConfig();
         MapStoreConfig mapStoreConfig = new MapStoreConfig();
         mapStoreConfig.setEnabled(true);
@@ -136,7 +136,7 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
     public void mapSize_After_MapStore_OperationQueue_OverFlow() throws Exception {
         int maxCapacity = 1000;
 
-        Config config = new Config();
+        Config config = getConfig();
         config.setProperty(GroupProperty.MAP_WRITE_BEHIND_QUEUE_CAPACITY.getName(), String.valueOf(maxCapacity));
 
         MapConfig mapConfig = new MapConfig();
@@ -183,7 +183,7 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
     public void mapStore_OperationQueue_AtMaxCapacity() {
         int maxCapacity = 1000;
 
-        Config config = new Config();
+        Config config = getConfig();
         config.setProperty(GroupProperty.MAP_WRITE_BEHIND_QUEUE_CAPACITY.getName(), String.valueOf(maxCapacity));
 
         MapConfig mapConfig = new MapConfig();
@@ -220,7 +220,7 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
 
     @Test
     public void destroyMap_configuredWithMapStore() {
-        Config config = new Config();
+        Config config = getConfig();
         MapConfig mapConfig = new MapConfig();
         MapStoreConfig mapStoreConfig = new MapStoreConfig();
 
@@ -365,40 +365,40 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testIssue3023_testWithSubStringMapNames() throws Exception {
+    public void testIssue3023_testWithSubStringMapNames() {
         String mapNameWithStore = "MapStore*";
         String mapNameWithStoreAndSize = "MapStoreMaxSize*";
 
-        String xml = "<hazelcast xsi:schemaLocation=\"http://www.hazelcast.com/schema/config\n" +
-                "                             http://www.hazelcast.com/schema/config/hazelcast-config-3.8.xsd\"\n" +
-                "                             xmlns=\"http://www.hazelcast.com/schema/config\"\n" +
-                "                             xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n" +
-                "\n" +
-                "    <map name=\"" + mapNameWithStore + "\">\n" +
-                "        <map-store enabled=\"true\">\n" +
-                "            <class-name>com.will.cause.problem.if.used</class-name>\n" +
-                "            <write-delay-seconds>5</write-delay-seconds>\n" +
-                "        </map-store>\n" +
-                "    </map>\n" +
-                "\n" +
-                "    <map name=\"" + mapNameWithStoreAndSize + "\">\n" +
-                "        <in-memory-format>BINARY</in-memory-format>\n" +
-                "        <backup-count>1</backup-count>\n" +
-                "        <async-backup-count>0</async-backup-count>\n" +
-                "        <max-idle-seconds>0</max-idle-seconds>\n" +
-                "        <eviction-policy>LRU</eviction-policy>\n" +
-                "        <max-size policy=\"PER_NODE\">10</max-size>\n" +
-                "        <eviction-percentage>50</eviction-percentage>\n" +
-                "\n" +
-                "        <merge-policy>com.hazelcast.map.merge.PassThroughMergePolicy</merge-policy>\n" +
-                "\n" +
-                "        <map-store enabled=\"true\">\n" +
-                "            <class-name>com.hazelcast.client.map.helpers.AMapStore</class-name>\n" +
-                "            <write-delay-seconds>5</write-delay-seconds>\n" +
-                "        </map-store>\n" +
-                "    </map>\n" +
-                "\n" +
-                "</hazelcast>";
+        String xml = "<hazelcast xsi:schemaLocation=\"http://www.hazelcast.com/schema/config\n"
+                + "                             http://www.hazelcast.com/schema/config/hazelcast-config-3.11.xsd\"\n"
+                + "                             xmlns=\"http://www.hazelcast.com/schema/config\"\n"
+                + "                             xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n"
+                + "\n"
+                + "    <map name=\"" + mapNameWithStore + "\">\n"
+                + "        <map-store enabled=\"true\">\n"
+                + "            <class-name>com.will.cause.problem.if.used</class-name>\n"
+                + "            <write-delay-seconds>5</write-delay-seconds>\n"
+                + "        </map-store>\n"
+                + "    </map>\n"
+                + "\n"
+                + "    <map name=\"" + mapNameWithStoreAndSize + "\">\n"
+                + "        <in-memory-format>BINARY</in-memory-format>\n"
+                + "        <backup-count>1</backup-count>\n"
+                + "        <async-backup-count>0</async-backup-count>\n"
+                + "        <max-idle-seconds>0</max-idle-seconds>\n"
+                + "        <eviction-policy>LRU</eviction-policy>\n"
+                + "        <max-size policy=\"PER_NODE\">10</max-size>\n"
+                + "        <eviction-percentage>50</eviction-percentage>\n"
+                + "\n"
+                + "        <merge-policy>com.hazelcast.map.merge.PassThroughMergePolicy</merge-policy>\n"
+                + "\n"
+                + "        <map-store enabled=\"true\">\n"
+                + "            <class-name>com.hazelcast.client.map.helpers.AMapStore</class-name>\n"
+                + "            <write-delay-seconds>5</write-delay-seconds>\n"
+                + "        </map-store>\n"
+                + "    </map>\n"
+                + "\n"
+                + "</hazelcast>";
 
         Config config = buildConfig(xml);
         HazelcastInstance hz = hazelcastFactory.newHazelcastInstance(config);
@@ -414,7 +414,7 @@ public class ClientMapStoreTest extends HazelcastTestSupport {
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 assertEquals(1, store.store.get(1));
             }
         });

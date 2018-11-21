@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import static org.powermock.api.mockito.PowerMockito.when;
 @Category({QuickTest.class, ParallelTest.class})
 public class ObjectDataInputStreamNonFinalMethodsTest {
 
-    final static byte[] INIT_DATA = new byte[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    static final byte[] INIT_DATA = new byte[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
     private InternalSerializationService mockSerializationService;
     private ObjectDataInputStream in;

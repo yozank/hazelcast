@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@
 
 package com.hazelcast.test;
 
+import com.hazelcast.test.compatibility.SamplingSerializationService;
+
+@SuppressWarnings("WeakerAccess")
 public final class TestEnvironment {
 
     public static final String HAZELCAST_TEST_USE_NETWORK = "hazelcast.test.use.network";
+    public static final String EXECUTE_COMPATIBILITY_TESTS = "hazelcast.test.compatibility";
     /**
      * If defined, should indicate a filename prefix to an existing directory where files will be created to dump
      * samples of objects which were serialized/deserialized during test suite execution. Two files per JVM are
@@ -26,7 +30,8 @@ public final class TestEnvironment {
      * followed by a random UUID to avoid clashes.
      * For example {@code -Dhazelcast.test.sample.serialized.objects=/home/hz/tmp/objects-} will create files
      * {@code /home/hz/tmp/objects-UUID.index} and {@code /home/hz/tmp/objects-UUID.samples}.
-     * @see com.hazelcast.test.compatibility.SamplingSerializationService
+     *
+     * @see SamplingSerializationService
      */
     public static final String SAMPLE_SERIALIZED_OBJECTS = "hazelcast.test.sample.serialized.objects";
 
@@ -35,6 +40,13 @@ public final class TestEnvironment {
 
     public static boolean isMockNetwork() {
         return !Boolean.getBoolean(HAZELCAST_TEST_USE_NETWORK);
+    }
+
+    /**
+     * @return {@code true} when compatibility tests are to be executed on a mixed version cluster
+     */
+    public static boolean isRunningCompatibilityTest() {
+        return Boolean.getBoolean(EXECUTE_COMPATIBILITY_TESTS);
     }
 
     public static boolean isRecordingSerializedClassNames() {

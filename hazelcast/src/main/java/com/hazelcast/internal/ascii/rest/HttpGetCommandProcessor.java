@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.nio.ConnectionManager;
+import com.hazelcast.util.StringUtil;
 
 import static com.hazelcast.internal.ascii.TextCommandConstants.MIME_TEXT_PLAIN;
 import static com.hazelcast.internal.ascii.rest.HttpCommand.CONTENT_TYPE_BINARY;
@@ -33,6 +34,12 @@ import static com.hazelcast.util.StringUtil.stringToBytes;
 public class HttpGetCommandProcessor extends HttpCommandProcessor<HttpGetCommand> {
 
     public static final String QUEUE_SIZE_COMMAND = "size";
+
+    private static final String HEALTH_PATH_PARAM_NODE_STATE = "/node-state";
+    private static final String HEALTH_PATH_PARAM_CLUSTER_STATE = "/cluster-state";
+    private static final String HEALTH_PATH_PARAM_CLUSTER_SAFE = "/cluster-safe";
+    private static final String HEALTH_PATH_PARAM_MIGRATION_QUEUE_SIZE = "/migration-queue-size";
+    private static final String HEALTH_PATH_PARAM_CLUSTER_SIZE = "/cluster-size";
 
     public HttpGetCommandProcessor(TextCommandService textCommandService) {
         super(textCommandService);
@@ -48,7 +55,7 @@ public class HttpGetCommandProcessor extends HttpCommandProcessor<HttpGetCommand
         } else if (uri.startsWith(URI_CLUSTER)) {
             handleCluster(command);
         } else if (uri.startsWith(URI_HEALTH_URL)) {
-            handleHealthcheck(command);
+            handleHealthcheck(command, uri);
         } else if (uri.startsWith(URI_CLUSTER_VERSION_URL)) {
             handleGetClusterVersion(command);
         } else {
@@ -57,7 +64,7 @@ public class HttpGetCommandProcessor extends HttpCommandProcessor<HttpGetCommand
         textCommandService.sendResponse(command);
     }
 
-    private void handleHealthcheck(HttpGetCommand command) {
+    private void handleHealthcheck(HttpGetCommand command, String uri) {
         Node node = textCommandService.getNode();
         NodeState nodeState = node.getState();
 
@@ -70,13 +77,40 @@ public class HttpGetCommandProcessor extends HttpCommandProcessor<HttpGetCommand
         boolean clusterSafe = memberStateSafe && !partitionService.hasOnGoingMigration();
         long migrationQueueSize = partitionService.getMigrationQueueSize();
 
-        StringBuilder res = new StringBuilder();
-        res.append("Hazelcast::NodeState=").append(nodeState).append("\n");
-        res.append("Hazelcast::ClusterState=").append(clusterState).append("\n");
-        res.append("Hazelcast::ClusterSafe=").append(Boolean.toString(clusterSafe).toUpperCase()).append("\n");
-        res.append("Hazelcast::MigrationQueueSize=").append(migrationQueueSize).append("\n");
-        res.append("Hazelcast::ClusterSize=").append(clusterSize).append("\n");
-        command.setResponse(MIME_TEXT_PLAIN, stringToBytes(res.toString()));
+        String healthParameter = uri.substring(URI_HEALTH_URL.length());
+        if (healthParameter.equals(HEALTH_PATH_PARAM_NODE_STATE)) {
+            if (NodeState.SHUT_DOWN.equals(nodeState)) {
+                command.setResponse(HttpCommand.RES_503);
+            } else {
+                command.setResponse(null, stringToBytes(nodeState.toString()));
+            }
+        } else if (healthParameter.equals(HEALTH_PATH_PARAM_CLUSTER_STATE)) {
+            command.setResponse(null, stringToBytes(clusterState.toString()));
+        } else if (healthParameter.equals(HEALTH_PATH_PARAM_CLUSTER_SAFE)) {
+            if (clusterSafe) {
+                command.send200();
+            } else {
+                command.setResponse(HttpCommand.RES_503);
+            }
+        } else if (healthParameter.equals(HEALTH_PATH_PARAM_MIGRATION_QUEUE_SIZE)) {
+            command.setResponse(null, stringToBytes(Long.toString(migrationQueueSize)));
+        } else if (healthParameter.equals(HEALTH_PATH_PARAM_CLUSTER_SIZE)) {
+            command.setResponse(null, stringToBytes(Integer.toString(clusterSize)));
+        } else if (healthParameter.isEmpty()) {
+            StringBuilder res = new StringBuilder();
+            res.append("Hazelcast::NodeState=").append(nodeState).append("\n");
+            res.append("Hazelcast::ClusterState=").append(clusterState).append("\n");
+            res.append("Hazelcast::ClusterSafe=").append(booleanToString(clusterSafe)).append("\n");
+            res.append("Hazelcast::MigrationQueueSize=").append(migrationQueueSize).append("\n");
+            res.append("Hazelcast::ClusterSize=").append(clusterSize).append("\n");
+            command.setResponse(MIME_TEXT_PLAIN, stringToBytes(res.toString()));
+        } else {
+            command.send400();
+        }
+    }
+
+    private static String booleanToString(boolean b) {
+        return Boolean.toString(b).toUpperCase(StringUtil.LOCALE_INTERNAL);
     }
 
     private void handleGetClusterVersion(HttpGetCommand command) {
@@ -88,9 +122,18 @@ public class HttpGetCommandProcessor extends HttpCommandProcessor<HttpGetCommand
         command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
     }
 
+    /**
+     * Sets the HTTP response to a string containing basic cluster information:
+     * <ul>
+     *     <li>Member list</li>
+     *     <li>Client connection count</li>
+     *     <li>Connection count</li>
+     * </ul>
+     * @param command the HTTP request
+     */
     private void handleCluster(HttpGetCommand command) {
         Node node = textCommandService.getNode();
-        StringBuilder res = new StringBuilder(node.getClusterService().membersString());
+        StringBuilder res = new StringBuilder(node.getClusterService().getMemberListString());
         res.append("\n");
         ConnectionManager connectionManager = node.getConnectionManager();
         res.append("ConnectionCount: ").append(connectionManager.getCurrentClientConnections());

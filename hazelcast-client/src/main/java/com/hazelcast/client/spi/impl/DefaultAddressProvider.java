@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ package com.hazelcast.client.spi.impl;
 import com.hazelcast.client.config.ClientNetworkConfig;
 import com.hazelcast.client.connection.AddressProvider;
 import com.hazelcast.client.util.AddressHelper;
+import com.hazelcast.nio.Address;
 
-import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
@@ -33,19 +33,24 @@ import java.util.List;
 public class DefaultAddressProvider implements AddressProvider {
 
     private ClientNetworkConfig networkConfig;
+    private boolean noOtherAddressProviderExist;
 
-    public DefaultAddressProvider(ClientNetworkConfig networkConfig) {
+    public DefaultAddressProvider(ClientNetworkConfig networkConfig, boolean noOtherAddressProviderExist) {
         this.networkConfig = networkConfig;
+        this.noOtherAddressProviderExist = noOtherAddressProviderExist;
     }
 
     @Override
-    public Collection<InetSocketAddress> loadAddresses() {
+    public Collection<Address> loadAddresses() {
         final List<String> addresses = networkConfig.getAddresses();
-        final List<InetSocketAddress> socketAddresses = new LinkedList<InetSocketAddress>();
+        if (addresses.isEmpty() && noOtherAddressProviderExist) {
+            addresses.add("127.0.0.1");
+        }
+        final List<Address> possibleAddresses = new LinkedList<Address>();
 
         for (String address : addresses) {
-            socketAddresses.addAll(AddressHelper.getSocketAddresses(address));
+            possibleAddresses.addAll(AddressHelper.getSocketAddresses(address));
         }
-        return socketAddresses;
+        return possibleAddresses;
     }
 }

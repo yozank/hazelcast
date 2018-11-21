@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,8 +60,8 @@ public class ReliableTopicProxy<E> extends AbstractDistributedObject<ReliableTop
 
     final Ringbuffer<ReliableTopicMessage> ringbuffer;
     final Executor executor;
-    final ConcurrentMap<String, ReliableMessageListenerRunner> runnersMap
-            = new ConcurrentHashMap<String, ReliableMessageListenerRunner>();
+    final ConcurrentMap<String, MessageRunner<E>> runnersMap
+            = new ConcurrentHashMap<String, MessageRunner<E>>();
 
     /**
      * Local statistics for this reliable topic, including
@@ -218,7 +218,9 @@ public class ReliableTopicProxy<E> extends AbstractDistributedObject<ReliableTop
             reliableMessageListener = new ReliableMessageListenerAdapter<E>(listener);
         }
 
-        ReliableMessageListenerRunner<E> runner = new ReliableMessageListenerRunner<E>(id, reliableMessageListener, this);
+        MessageRunner<E> runner = new ReliableMessageRunner<E>(id, reliableMessageListener,
+                nodeEngine.getSerializationService(), executor, nodeEngine.getLogger(this.getClass()),
+                nodeEngine.getClusterService(), this);
         runnersMap.put(id, runner);
         runner.next();
         return id;
@@ -228,7 +230,7 @@ public class ReliableTopicProxy<E> extends AbstractDistributedObject<ReliableTop
     public boolean removeMessageListener(String registrationId) {
         checkNotNull(registrationId, "registrationId can't be null");
 
-        ReliableMessageListenerRunner runner = runnersMap.get(registrationId);
+        MessageRunner runner = runnersMap.get(registrationId);
         if (runner == null) {
             return false;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.partition.impl;
 
+import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.partition.InternalPartition;
@@ -65,6 +66,7 @@ public class PartitionReplicaStateChecker_triggerAndWaitForReplicaSyncTest exten
     public void setUp() {
         ILogger logger = getLogger(PartitionReplicaStateChecker_triggerAndWaitForReplicaSyncTest.class);
         ClusterServiceImpl clusterService = mock(ClusterServiceImpl.class);
+        when(clusterService.getClusterState()).thenReturn(ClusterState.ACTIVE);
 
         node = mock(Node.class);
         when(node.getLogger(any(Class.class))).thenReturn(logger);
@@ -127,7 +129,7 @@ public class PartitionReplicaStateChecker_triggerAndWaitForReplicaSyncTest exten
     @Test
     public void whenHasOngoingMigration_withMigrationOnMaster_thenWaitForOngoingMigrations() {
         when(node.getMasterAddress()).thenReturn(null);
-        when(node.joined()).thenReturn(true);
+        when(node.getClusterService().isJoined()).thenReturn(true);
 
         assertEquals(MIGRATION_ON_MASTER, replicaStateChecker.getPartitionServiceState());
         assertFalse(replicaStateChecker.triggerAndWaitForReplicaSync(10, TimeUnit.MILLISECONDS, 5));

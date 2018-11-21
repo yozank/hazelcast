@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package com.hazelcast.monitor.impl;
 
-import com.eclipsesource.json.JsonObject;
+import com.hazelcast.internal.metrics.Probe;
+import com.hazelcast.internal.json.JsonObject;
 import com.hazelcast.monitor.NearCacheStats;
-import com.hazelcast.util.Clock;
 
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
@@ -44,26 +44,47 @@ public class NearCacheStatsImpl implements NearCacheStats {
             newUpdater(NearCacheStatsImpl.class, "evictions");
     private static final AtomicLongFieldUpdater<NearCacheStatsImpl> EXPIRATIONS =
             newUpdater(NearCacheStatsImpl.class, "expirations");
+    private static final AtomicLongFieldUpdater<NearCacheStatsImpl> INVALIDATIONS =
+            newUpdater(NearCacheStatsImpl.class, "invalidations");
+    private static final AtomicLongFieldUpdater<NearCacheStatsImpl> INVALIDATION_REQUESTS =
+            newUpdater(NearCacheStatsImpl.class, "invalidationRequests");
     private static final AtomicLongFieldUpdater<NearCacheStatsImpl> PERSISTENCE_COUNT =
             newUpdater(NearCacheStatsImpl.class, "persistenceCount");
 
+    @Probe
     private volatile long creationTime;
+    @Probe
     private volatile long ownedEntryCount;
+    @Probe
     private volatile long ownedEntryMemoryCost;
+    @Probe
     private volatile long hits;
+    @Probe
     private volatile long misses;
+    @Probe
     private volatile long evictions;
+    @Probe
     private volatile long expirations;
 
+    @Probe
+    private volatile long invalidations;
+    @Probe
+    private volatile long invalidationRequests;
+
+    @Probe
     private volatile long persistenceCount;
+    @Probe
     private volatile long lastPersistenceTime;
+    @Probe
     private volatile long lastPersistenceDuration;
+    @Probe
     private volatile long lastPersistenceWrittenBytes;
+    @Probe
     private volatile long lastPersistenceKeyCount;
     private volatile String lastPersistenceFailure = "";
 
     public NearCacheStatsImpl() {
-        this.creationTime = Clock.currentTimeMillis();
+        this.creationTime = getNowInMillis();
     }
 
     public NearCacheStatsImpl(NearCacheStats nearCacheStats) {
@@ -75,6 +96,8 @@ public class NearCacheStatsImpl implements NearCacheStats {
         misses = stats.misses;
         evictions = stats.evictions;
         expirations = stats.expirations;
+        invalidations = stats.invalidations;
+        invalidationRequests = stats.invalidationRequests;
 
         persistenceCount = stats.persistenceCount;
         lastPersistenceTime = stats.lastPersistenceTime;
@@ -183,13 +206,38 @@ public class NearCacheStatsImpl implements NearCacheStats {
     }
 
     @Override
+    public long getInvalidations() {
+        return invalidations;
+    }
+
+    public void incrementInvalidations() {
+        INVALIDATIONS.incrementAndGet(this);
+    }
+
+    public void incrementInvalidations(long delta) {
+        INVALIDATIONS.addAndGet(this, delta);
+    }
+
+    public long getInvalidationRequests() {
+        return invalidationRequests;
+    }
+
+    public void incrementInvalidationRequests() {
+        INVALIDATION_REQUESTS.incrementAndGet(this);
+    }
+
+    public void resetInvalidationEvents() {
+        INVALIDATION_REQUESTS.set(this, 0);
+    }
+
+    @Override
     public long getPersistenceCount() {
         return persistenceCount;
     }
 
     public void addPersistence(long duration, int writtenBytes, int keyCount) {
         PERSISTENCE_COUNT.incrementAndGet(this);
-        lastPersistenceTime = Clock.currentTimeMillis();
+        lastPersistenceTime = getNowInMillis();
         lastPersistenceDuration = duration;
         lastPersistenceWrittenBytes = writtenBytes;
         lastPersistenceKeyCount = keyCount;
@@ -198,11 +246,15 @@ public class NearCacheStatsImpl implements NearCacheStats {
 
     public void addPersistenceFailure(Throwable t) {
         PERSISTENCE_COUNT.incrementAndGet(this);
-        lastPersistenceTime = Clock.currentTimeMillis();
+        lastPersistenceTime = getNowInMillis();
         lastPersistenceDuration = 0;
         lastPersistenceWrittenBytes = 0;
         lastPersistenceKeyCount = 0;
         lastPersistenceFailure = t.getClass().getSimpleName() + ": " + t.getMessage();
+    }
+
+    private static long getNowInMillis() {
+        return System.currentTimeMillis();
     }
 
     @Override
@@ -240,6 +292,8 @@ public class NearCacheStatsImpl implements NearCacheStats {
         root.add("misses", misses);
         root.add("evictions", evictions);
         root.add("expirations", expirations);
+        root.add("invalidations", invalidations);
+        root.add("invalidationEvents", invalidationRequests);
         root.add("persistenceCount", persistenceCount);
         root.add("lastPersistenceTime", lastPersistenceTime);
         root.add("lastPersistenceDuration", lastPersistenceDuration);
@@ -258,6 +312,8 @@ public class NearCacheStatsImpl implements NearCacheStats {
         misses = getLong(json, "misses", -1L);
         evictions = getLong(json, "evictions", -1L);
         expirations = getLong(json, "expirations", -1L);
+        invalidations = getLong(json, "invalidations", -1L);
+        invalidationRequests = getLong(json, "invalidationEvents", -1L);
         persistenceCount = getLong(json, "persistenceCount", -1L);
         lastPersistenceTime = getLong(json, "lastPersistenceTime", -1L);
         lastPersistenceDuration = getLong(json, "lastPersistenceDuration", -1L);
@@ -277,6 +333,7 @@ public class NearCacheStatsImpl implements NearCacheStats {
                 + ", ratio=" + format("%.1f%%", getRatio())
                 + ", evictions=" + evictions
                 + ", expirations=" + expirations
+                + ", invalidations=" + invalidations
                 + ", lastPersistenceTime=" + lastPersistenceTime
                 + ", persistenceCount=" + persistenceCount
                 + ", lastPersistenceDuration=" + lastPersistenceDuration

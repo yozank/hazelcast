@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -164,8 +164,8 @@ public class MulticastJoinTest extends AbstractJoinTest {
         HazelcastInstance h2 = Hazelcast.newHazelcastInstance(c2);
 
         // First two nodes are up. All should be in separate clusters.
-        assertEquals(1, h1.getCluster().getMembers().size());
-        assertEquals(1, h2.getCluster().getMembers().size());
+        assertClusterSize(1, h1);
+        assertClusterSize(1, h2);
 
         HazelcastInstance h3 = Hazelcast.newHazelcastInstance(c3);
 

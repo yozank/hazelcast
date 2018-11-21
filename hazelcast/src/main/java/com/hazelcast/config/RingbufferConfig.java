@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,16 @@
 
 package com.hazelcast.config;
 
+import com.hazelcast.internal.cluster.Versions;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.nio.serialization.impl.Versioned;
 import com.hazelcast.spi.annotation.Beta;
+import com.hazelcast.spi.merge.SplitBrainMergeTypeProvider;
+import com.hazelcast.spi.merge.SplitBrainMergeTypes;
+
+import java.io.IOException;
 
 import static com.hazelcast.config.InMemoryFormat.NATIVE;
 import static com.hazelcast.util.Preconditions.checkAsyncBackupCount;
@@ -29,12 +38,12 @@ import static com.hazelcast.util.Preconditions.checkPositive;
 
 /**
  * Contains the configuration for the {@link com.hazelcast.ringbuffer.Ringbuffer}.
- * <p/>
+ * <p>
  * The RingBuffer is currently not a distributed data-structure, so its content will be fully stored on a single member
  * in the cluster and its backup in another member in the cluster.
  */
 @Beta
-public class RingbufferConfig {
+public class RingbufferConfig implements SplitBrainMergeTypeProvider, IdentifiedDataSerializable, Versioned {
 
     /**
      * Default value of capacity of the RingBuffer.
@@ -64,6 +73,8 @@ public class RingbufferConfig {
     private int timeToLiveSeconds = DEFAULT_TTL_SECONDS;
     private InMemoryFormat inMemoryFormat = DEFAULT_IN_MEMORY_FORMAT;
     private RingbufferStoreConfig ringbufferStoreConfig = new RingbufferStoreConfig().setEnabled(false);
+    private String quorumName;
+    private MergePolicyConfig mergePolicyConfig = new MergePolicyConfig();
 
     public RingbufferConfig() {
     }
@@ -72,7 +83,7 @@ public class RingbufferConfig {
      * Creates a RingbufferConfig with the provided name.
      *
      * @param name the name
-     * @throws java.lang.NullPointerException if name is null
+     * @throws java.lang.NullPointerException if name is {@code null}
      */
     public RingbufferConfig(String name) {
         this.name = checkNotNull(name, "name can't be null");
@@ -82,7 +93,7 @@ public class RingbufferConfig {
      * Clones a RingbufferConfig
      *
      * @param config the ringbuffer config to clone
-     * @throws java.lang.NullPointerException if config is null
+     * @throws java.lang.NullPointerException if config is {@code null}
      */
     public RingbufferConfig(RingbufferConfig config) {
         checkNotNull(config, "config can't be null");
@@ -95,14 +106,16 @@ public class RingbufferConfig {
         if (config.ringbufferStoreConfig != null) {
             this.ringbufferStoreConfig = new RingbufferStoreConfig(config.ringbufferStoreConfig);
         }
+        this.mergePolicyConfig = config.mergePolicyConfig;
+        this.quorumName = config.quorumName;
     }
 
     /**
      * Creates a new RingbufferConfig by cloning an existing config and overriding the name.
      *
      * @param name   the new name
-     * @param config the config.
-     * @throws java.lang.NullPointerException if name or config is null.
+     * @param config the config
+     * @throws java.lang.NullPointerException if name or config is {@code null}
      */
     public RingbufferConfig(String name, RingbufferConfig config) {
         this(config);
@@ -114,7 +127,7 @@ public class RingbufferConfig {
      *
      * @param name the name of the ringbuffer
      * @return the updated {@link RingbufferConfig}
-     * @throws IllegalArgumentException if name is null or an empty string.
+     * @throws IllegalArgumentException if name is {@code null} or an empty string
      */
     public RingbufferConfig setName(String name) {
         this.name = checkHasText(name, "name must contain text");
@@ -124,7 +137,7 @@ public class RingbufferConfig {
     /**
      * Returns the name of the ringbuffer.
      *
-     * @return the name of the ringbuffer.
+     * @return the name of the ringbuffer
      */
     public String getName() {
         return name;
@@ -132,13 +145,13 @@ public class RingbufferConfig {
 
     /**
      * Gets the capacity of the ringbuffer.
-     * <p/>
+     * <p>
      * The capacity is the total number of items in the ringbuffer. The items will remain in the ringbuffer, but the oldest items
      * will eventually be be overwritten by the newest items.
-     * <p/>
+     * <p>
      * In the future we'll add more advanced policies e.g. based on memory usage or lifespan.
      *
-     * @return the capacity.
+     * @return the capacity
      */
     public int getCapacity() {
         return capacity;
@@ -147,21 +160,20 @@ public class RingbufferConfig {
     /**
      * Sets the capacity of the ringbuffer.
      *
-     * @param capacity the capacity.
-     * @return the updated Config.
-     * @throws java.lang.IllegalArgumentException if capacity smaller than 1.
+     * @param capacity the capacity
+     * @return the updated Config
+     * @throws java.lang.IllegalArgumentException if capacity smaller than 1
      * @see #getCapacity()
      */
     public RingbufferConfig setCapacity(int capacity) {
-        checkPositive(capacity, "capacity can't be smaller than 1");
-        this.capacity = capacity;
+        this.capacity = checkPositive(capacity, "capacity can't be smaller than 1");
         return this;
     }
 
     /**
      * Gets the number of synchronous backups.
      *
-     * @return number of synchronous backups.
+     * @return number of synchronous backups
      */
     public int getBackupCount() {
         return backupCount;
@@ -186,14 +198,14 @@ public class RingbufferConfig {
     /**
      * Gets the number of asynchronous backups.
      *
-     * @return the number of asynchronous backups.
+     * @return the number of asynchronous backups
      */
     public int getAsyncBackupCount() {
         return asyncBackupCount;
     }
 
     /**
-     * Sets the number of asynchronous backups. 0 means no backups
+     * Sets the number of asynchronous backups. 0 means no backups.
      *
      * @param asyncBackupCount the number of asynchronous synchronous backups to set
      * @return the updated SemaphoreConfig
@@ -220,7 +232,7 @@ public class RingbufferConfig {
     /**
      * Gets the time to live in seconds.
      *
-     * @return the time to live in seconds. Returns 0 the time to live if the items don't expire.
+     * @return the time to live in seconds or 0 if the items don't expire
      */
     public int getTimeToLiveSeconds() {
         return timeToLiveSeconds;
@@ -237,7 +249,7 @@ public class RingbufferConfig {
      *
      * @param timeToLiveSeconds the time to live period in seconds
      * @return the updated RingbufferConfig
-     * @throws IllegalArgumentException if timeToLiveSeconds smaller than 0.
+     * @throws IllegalArgumentException if timeToLiveSeconds smaller than 0
      */
     public RingbufferConfig setTimeToLiveSeconds(int timeToLiveSeconds) {
         this.timeToLiveSeconds = checkNotNegative(timeToLiveSeconds, "timeToLiveSeconds can't be smaller than 0");
@@ -247,7 +259,7 @@ public class RingbufferConfig {
     /**
      * Gets the InMemoryFormat.
      *
-     * @return the InMemoryFormat.
+     * @return the InMemoryFormat
      */
     public InMemoryFormat getInMemoryFormat() {
         return inMemoryFormat;
@@ -269,16 +281,80 @@ public class RingbufferConfig {
      * object format.</li>
      * </ol>
      *
-     * @param inMemoryFormat the new in memory format.
-     * @return the updated Config.
-     * @throws NullPointerException     if inMemoryFormat is null.
-     * @throws IllegalArgumentException if {@link InMemoryFormat#NATIVE} in memory format is selected.
+     * @param inMemoryFormat the new in memory format
+     * @return the updated Config
+     * @throws NullPointerException     if inMemoryFormat is {@code null}
+     * @throws IllegalArgumentException if {@link InMemoryFormat#NATIVE} in memory format is selected
      */
     public RingbufferConfig setInMemoryFormat(InMemoryFormat inMemoryFormat) {
         checkNotNull(inMemoryFormat, "inMemoryFormat can't be null");
         checkFalse(inMemoryFormat == NATIVE, "InMemoryFormat " + NATIVE + " is not supported");
         this.inMemoryFormat = inMemoryFormat;
         return this;
+    }
+
+    /**
+     * Get the RingbufferStore (load and store ringbuffer items from/to a database) configuration.
+     *
+     * @return the ringbuffer configuration
+     */
+    public RingbufferStoreConfig getRingbufferStoreConfig() {
+        return ringbufferStoreConfig;
+    }
+
+    /**
+     * Set the RingbufferStore (load and store ringbuffer items from/to a database) configuration.
+     *
+     * @param ringbufferStoreConfig set the RingbufferStore configuration to this configuration
+     * @return the ringbuffer configuration
+     */
+    public RingbufferConfig setRingbufferStoreConfig(RingbufferStoreConfig ringbufferStoreConfig) {
+        this.ringbufferStoreConfig = ringbufferStoreConfig;
+        return this;
+    }
+
+    /**
+     * Returns the quorum name for operations.
+     *
+     * @return the quorum name
+     */
+    public String getQuorumName() {
+        return quorumName;
+    }
+
+    /**
+     * Sets the quorum name for operations.
+     *
+     * @param quorumName the quorum name
+     * @return the updated configuration
+     */
+    public RingbufferConfig setQuorumName(String quorumName) {
+        this.quorumName = quorumName;
+        return this;
+    }
+
+    /**
+     * Gets the {@link MergePolicyConfig} for this ringbuffer.
+     *
+     * @return the {@link MergePolicyConfig} for this ringbuffer
+     */
+    public MergePolicyConfig getMergePolicyConfig() {
+        return mergePolicyConfig;
+    }
+
+    /**
+     * Sets the {@link MergePolicyConfig} for this ringbuffer.
+     *
+     * @return the ringbuffer configuration
+     */
+    public RingbufferConfig setMergePolicyConfig(MergePolicyConfig mergePolicyConfig) {
+        this.mergePolicyConfig = mergePolicyConfig;
+        return this;
+    }
+
+    @Override
+    public Class getProvidedMergeTypes() {
+        return SplitBrainMergeTypes.RingbufferMergeTypes.class;
     }
 
     @Override
@@ -291,46 +367,123 @@ public class RingbufferConfig {
                 + ", timeToLiveSeconds=" + timeToLiveSeconds
                 + ", inMemoryFormat=" + inMemoryFormat
                 + ", ringbufferStoreConfig=" + ringbufferStoreConfig
+                + ", quorumName=" + quorumName
+                + ", mergePolicyConfig=" + mergePolicyConfig
                 + '}';
     }
 
-    /**
-     * Get the RingbufferStore (load and store ring buffer items from/to a database) configuration.
-     *
-     * @return The ring buffer configuration.
-     */
-    public RingbufferStoreConfig getRingbufferStoreConfig() {
-        return ringbufferStoreConfig;
+    @Override
+    public int getFactoryId() {
+        return ConfigDataSerializerHook.F_ID;
     }
 
-    /**
-     * Set the RingbufferStore (load and store ring buffer items from/to a database) configuration.
-     *
-     * @param ringbufferStoreConfig Set the RingbufferStore configuration to this configuration.
-     * @return The RingbufferStore configuration.
-     */
-    public RingbufferConfig setRingbufferStoreConfig(RingbufferStoreConfig ringbufferStoreConfig) {
-        this.ringbufferStoreConfig = ringbufferStoreConfig;
-        return this;
+    @Override
+    public int getId() {
+        return ConfigDataSerializerHook.RINGBUFFER_CONFIG;
+    }
+
+    @Override
+    public void writeData(ObjectDataOutput out) throws IOException {
+        out.writeUTF(name);
+        out.writeInt(capacity);
+        out.writeInt(backupCount);
+        out.writeInt(asyncBackupCount);
+        out.writeInt(timeToLiveSeconds);
+        out.writeUTF(inMemoryFormat.name());
+        out.writeObject(ringbufferStoreConfig);
+        // RU_COMPAT_3_9
+        if (out.getVersion().isGreaterOrEqual(Versions.V3_10)) {
+            out.writeUTF(quorumName);
+            out.writeObject(mergePolicyConfig);
+        }
+    }
+
+    @Override
+    public void readData(ObjectDataInput in) throws IOException {
+        name = in.readUTF();
+        capacity = in.readInt();
+        backupCount = in.readInt();
+        asyncBackupCount = in.readInt();
+        timeToLiveSeconds = in.readInt();
+        inMemoryFormat = InMemoryFormat.valueOf(in.readUTF());
+        ringbufferStoreConfig = in.readObject();
+        // RU_COMPAT_3_9
+        if (in.getVersion().isGreaterOrEqual(Versions.V3_10)) {
+            quorumName = in.readUTF();
+            mergePolicyConfig = in.readObject();
+        }
+    }
+
+    @Override
+    @SuppressWarnings({"checkstyle:cyclomaticcomplexity", "checkstyle:npathcomplexity"})
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof RingbufferConfig)) {
+            return false;
+        }
+
+        RingbufferConfig that = (RingbufferConfig) o;
+        if (capacity != that.capacity) {
+            return false;
+        }
+        if (backupCount != that.backupCount) {
+            return false;
+        }
+        if (asyncBackupCount != that.asyncBackupCount) {
+            return false;
+        }
+        if (timeToLiveSeconds != that.timeToLiveSeconds) {
+            return false;
+        }
+        if (!name.equals(that.name)) {
+            return false;
+        }
+        if (inMemoryFormat != that.inMemoryFormat) {
+            return false;
+        }
+        if (ringbufferStoreConfig != null ? !ringbufferStoreConfig.equals(that.ringbufferStoreConfig)
+                : that.ringbufferStoreConfig != null) {
+            return false;
+        }
+        if (quorumName != null ? !quorumName.equals(that.quorumName) : that.quorumName != null) {
+            return false;
+        }
+        return mergePolicyConfig != null ? mergePolicyConfig.equals(that.mergePolicyConfig) : that.mergePolicyConfig == null;
+    }
+
+    @Override
+    public final int hashCode() {
+        int result = name.hashCode();
+        result = 31 * result + capacity;
+        result = 31 * result + backupCount;
+        result = 31 * result + asyncBackupCount;
+        result = 31 * result + timeToLiveSeconds;
+        result = 31 * result + (inMemoryFormat != null ? inMemoryFormat.hashCode() : 0);
+        result = 31 * result + (ringbufferStoreConfig != null ? ringbufferStoreConfig.hashCode() : 0);
+        result = 31 * result + (quorumName != null ? quorumName.hashCode() : 0);
+        result = 31 * result + (mergePolicyConfig != null ? mergePolicyConfig.hashCode() : 0);
+        return result;
     }
 
     /**
      * Gets immutable version of this configuration.
      *
-     * @return Immutable version of this configuration.
-     * @deprecated this method will be removed in 4.0; it is meant for internal usage only.
+     * @return immutable version of this configuration
+     * @deprecated this method will be removed in 4.0; it is meant for internal usage only
      */
     public RingbufferConfig getAsReadOnly() {
-        return new RingbufferConfigReadonly(this);
+        return new RingbufferConfigReadOnly(this);
     }
 
     /**
      * A readonly version of the {@link RingbufferConfig}.
      */
     @Beta
-    private static class RingbufferConfigReadonly extends RingbufferConfig {
+    private static class RingbufferConfigReadOnly extends RingbufferConfig {
 
-        RingbufferConfigReadonly(RingbufferConfig config) {
+        RingbufferConfigReadOnly(RingbufferConfig config) {
             super(config);
         }
 
@@ -346,31 +499,45 @@ public class RingbufferConfig {
 
         @Override
         public RingbufferConfig setCapacity(int capacity) {
-            throw new UnsupportedOperationException("This config is read-only");
+            throw throwReadOnly();
         }
 
         @Override
         public RingbufferConfig setAsyncBackupCount(int asyncBackupCount) {
-            throw new UnsupportedOperationException("This config is read-only");
+            throw throwReadOnly();
         }
 
         @Override
         public RingbufferConfig setBackupCount(int backupCount) {
-            throw new UnsupportedOperationException("This config is read-only");
+            throw throwReadOnly();
         }
 
         @Override
         public RingbufferConfig setTimeToLiveSeconds(int timeToLiveSeconds) {
-            throw new UnsupportedOperationException("This config is read-only");
+            throw throwReadOnly();
         }
 
         @Override
         public RingbufferConfig setInMemoryFormat(InMemoryFormat inMemoryFormat) {
-            throw new UnsupportedOperationException("This config is read-only");
+            throw throwReadOnly();
         }
 
         @Override
         public RingbufferConfig setRingbufferStoreConfig(RingbufferStoreConfig ringbufferStoreConfig) {
+            throw throwReadOnly();
+        }
+
+        @Override
+        public RingbufferConfig setQuorumName(String quorumName) {
+            throw throwReadOnly();
+        }
+
+        @Override
+        public RingbufferConfig setMergePolicyConfig(MergePolicyConfig mergePolicyConfig) {
+            throw throwReadOnly();
+        }
+
+        private UnsupportedOperationException throwReadOnly() {
             throw new UnsupportedOperationException("This config is read-only");
         }
     }

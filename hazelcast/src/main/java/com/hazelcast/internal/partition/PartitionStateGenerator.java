@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,13 +28,30 @@ public interface PartitionStateGenerator {
      * <p/>
      * This method does not actually change the partitions, but send back the updated layout.
      * <p/>
-     * A two-dimensional array of addresses is returned where the first index is the partition id, and
+     * A two-dimensional array of addresses is returned where the first index is the partition ID, and
      * the second index is the replica index.
      *
-     * @param groups member groups
+     * @param groups       member groups
      * @param currentState current partition state.
      * @return proposed partition table
      */
     Address[][] arrange(Collection<MemberGroup> groups, InternalPartition[] currentState);
 
+    /**
+     * Arranges the partition layout.
+     * <p/>
+     * This method does not actually change the partitions, but send back the updated layout.
+     * <p/>
+     * A two-dimensional array of addresses is returned where the first index is the partition ID, and
+     * the second index is the replica index.
+     * <p/>
+     * When null partitions is given, all partitions will be arranged,
+     * similar to {@link #arrange(Collection, InternalPartition[])}.
+     *
+     * @param groups       member groups
+     * @param currentState current partition state.
+     * @param partitions Partitions to be arranged only.
+     * @return proposed partition table
+     */
+    Address[][] arrange(Collection<MemberGroup> groups, InternalPartition[] currentState, Collection<Integer> partitions);
 }

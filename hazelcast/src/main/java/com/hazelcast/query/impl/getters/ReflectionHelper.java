@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package com.hazelcast.query.impl.getters;
 import com.hazelcast.query.QueryException;
 import com.hazelcast.query.impl.AttributeType;
 import com.hazelcast.query.impl.IndexImpl;
-import com.hazelcast.util.EmptyStatement;
 import com.hazelcast.util.ExceptionUtil;
 
 import java.lang.reflect.Field;
@@ -34,8 +33,10 @@ import java.util.UUID;
 
 import static com.hazelcast.query.QueryConstants.THIS_ATTRIBUTE_NAME;
 import static com.hazelcast.query.impl.getters.NullGetter.NULL_GETTER;
+import static com.hazelcast.query.impl.getters.NullMultiValueGetter.NULL_MULTIVALUE_GETTER;
 import static com.hazelcast.query.impl.getters.SuffixModifierUtils.getModifierSuffix;
 import static com.hazelcast.query.impl.getters.SuffixModifierUtils.removeModifierSuffix;
+import static com.hazelcast.util.EmptyStatement.ignore;
 
 /**
  * Scans your classpath, indexes the metadata, allows you to query it on runtime.
@@ -125,25 +126,25 @@ public final class ReflectionHelper {
                             final Method method = clazz.getMethod(methodName);
                             method.setAccessible(true);
                             localGetter = GetterFactory.newMethodGetter(obj, parent, method, modifier);
-                            if (localGetter == NULL_GETTER) {
+                            if (localGetter == NULL_GETTER || localGetter == NULL_MULTIVALUE_GETTER) {
                                 return localGetter;
                             }
                             clazz = method.getReturnType();
                             break;
                         } catch (NoSuchMethodException ignored) {
-                            EmptyStatement.ignore(ignored);
+                            ignore(ignored);
                         }
                     }
                     if (localGetter == null) {
                         try {
                             final Field field = clazz.getField(baseName);
                             localGetter = GetterFactory.newFieldGetter(obj, parent, field, modifier);
-                            if (localGetter == NULL_GETTER) {
+                            if (localGetter == NULL_GETTER || localGetter == NULL_MULTIVALUE_GETTER) {
                                 return localGetter;
                             }
                             clazz = field.getType();
                         } catch (NoSuchFieldException ignored) {
-                            EmptyStatement.ignore(ignored);
+                            ignore(ignored);
                         }
                     }
                     if (localGetter == null) {
@@ -153,8 +154,8 @@ public final class ReflectionHelper {
                                 final Field field = c.getDeclaredField(baseName);
                                 field.setAccessible(true);
                                 localGetter = GetterFactory.newFieldGetter(obj, parent, field, modifier);
-                                if (localGetter == NULL_GETTER) {
-                                    return NULL_GETTER;
+                                if (localGetter == NULL_GETTER || localGetter == NULL_MULTIVALUE_GETTER) {
+                                    return localGetter;
                                 }
                                 clazz = field.getType();
                                 break;
@@ -166,7 +167,7 @@ public final class ReflectionHelper {
                 }
                 if (localGetter == null) {
                     throw new IllegalArgumentException("There is no suitable accessor for '"
-                            + baseName + "' on class '" + clazz + "'");
+                            + baseName + "' on class '" + clazz.getName() + "'");
                 }
                 parent = localGetter;
             }

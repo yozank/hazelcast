@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ package com.hazelcast.test.bounce;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 
+import java.util.Arrays;
+
 import static com.hazelcast.test.HazelcastTestSupport.waitAllForSafeState;
 
 /**
- * Default member-side test driver factory. When test driver is {@code ALWAYS_UP_MEMBER}, returns a single test driver
- * set to the always-up member of the cluster as returned by {@link BounceMemberRule#getSteadyMember()}. When test driver
+ * Default member-side test driver factory. When test driver is {@code ALWAYS_UP_MEMBER}, returns the steady member of
+ * the cluster as returned by {@link BounceMemberRule#getSteadyMember()} as test driver. When test driver
  * is {@code MEMBER}, the configured number of test drivers are created. Otherwise, an {@code AssertionError} is thrown.
  */
 public class MemberDriverFactory implements DriverFactory {
@@ -31,13 +33,15 @@ public class MemberDriverFactory implements DriverFactory {
     @Override
     public HazelcastInstance[] createTestDrivers(BounceMemberRule rule) {
         BounceTestConfiguration testConfiguration = rule.getBounceTestConfig();
+        HazelcastInstance[] drivers = new HazelcastInstance[testConfiguration.getDriverCount()];
         switch (testConfiguration.getDriverType()) {
             case ALWAYS_UP_MEMBER:
-                return new HazelcastInstance[] {rule.getSteadyMember()};
+                Arrays.fill(drivers, rule.getSteadyMember());
+                return drivers;
             case MEMBER:
-                HazelcastInstance[] drivers = new HazelcastInstance[testConfiguration.getDriverCount()];
                 for (int i = 0; i < drivers.length; i++) {
-                    drivers[i] = rule.getFactory().newHazelcastInstance(getConfig());
+                    Config driverConfig = getDriverConfig(testConfiguration);
+                    drivers[i] = rule.getFactory().newHazelcastInstance(driverConfig);
                 }
                 waitAllForSafeState(drivers);
                 return drivers;
@@ -47,11 +51,23 @@ public class MemberDriverFactory implements DriverFactory {
         }
     }
 
+    private Config getDriverConfig(BounceTestConfiguration testConfiguration) {
+        Config driverConfig = getConfig();
+        if (driverConfig == null) {
+            driverConfig = testConfiguration.getMemberConfig();
+        }
+        return driverConfig;
+    }
+
     /**
      * Override this method to provide custom configuration for test drivers
+     * <p>
+     * When you return <code>null</code> then drivers will use the same
+     * configuration as other (non-driver) members.
+     *
      * @return
      */
     protected Config getConfig() {
-        return new Config();
+        return null;
     }
 }

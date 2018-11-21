@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.map.MapInterceptor;
 import com.hazelcast.spi.impl.operationexecutor.OperationRunner;
-import com.hazelcast.spi.impl.operationexecutor.impl.DefaultOperationQueue;
+import com.hazelcast.spi.impl.operationexecutor.impl.OperationQueueImpl;
 import com.hazelcast.spi.impl.operationexecutor.impl.OperationQueue;
 import com.hazelcast.spi.impl.operationexecutor.impl.PartitionOperationThread;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -71,7 +71,7 @@ public class InterceptorRegistryTest extends HazelcastTestSupport {
     @Test
     @RequireAssertEnabled
     public void testRegister_fromPartitionOperationThread() throws Exception {
-        OperationQueue queue = new DefaultOperationQueue();
+        OperationQueue queue = new OperationQueueImpl();
         PartitionOperationThread thread = getPartitionOperationThread(queue);
         thread.start();
 
@@ -114,7 +114,7 @@ public class InterceptorRegistryTest extends HazelcastTestSupport {
     @Test
     @RequireAssertEnabled
     public void testDeregister_fromPartitionOperationThread() throws Exception {
-        OperationQueue queue = new DefaultOperationQueue();
+        OperationQueue queue = new OperationQueueImpl();
         PartitionOperationThread thread = getPartitionOperationThread(queue);
         thread.start();
 

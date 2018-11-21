@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -270,7 +270,7 @@ public class PreconditionsTest {
 
     @Test
     public void test_checkInstanceOf() throws Exception {
-        int value = checkInstanceOf(Number.class, Integer.MAX_VALUE, "argumentName");
+        Number value = checkInstanceOf(Number.class, Integer.MAX_VALUE, "argumentName");
         assertEquals("Returned value should be " + Integer.MAX_VALUE, Integer.MAX_VALUE, value);
     }
 

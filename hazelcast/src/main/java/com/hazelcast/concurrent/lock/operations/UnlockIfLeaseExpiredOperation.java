@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,12 +34,7 @@ public final class UnlockIfLeaseExpiredOperation extends UnlockOperation {
 
     private int version;
 
-    /**
-     * This constructor should not be used to obtain an instance of this class; it exists to fulfill IdentifiedDataSerializable
-     * coding conventions.
-     */
     public UnlockIfLeaseExpiredOperation() {
-        version = 0;
     }
 
     public UnlockIfLeaseExpiredOperation(ObjectNamespace namespace, Data key, int version) {
@@ -68,6 +63,7 @@ public final class UnlockIfLeaseExpiredOperation extends UnlockOperation {
     /**
      * This operation runs on both primary and backup
      * If it is running on backup we should not send a backup operation
+     *
      * @return
      */
     @Override

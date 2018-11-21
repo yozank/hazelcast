@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 
 package com.hazelcast.test;
 
+import com.hazelcast.cache.jsr.JsrTestUtil;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.test.annotation.Repeat;
 import com.hazelcast.test.bounce.BounceMemberRule;
-import com.hazelcast.util.EmptyStatement;
+import com.hazelcast.test.compatibility.CompatibilityTestUtils;
 import org.junit.After;
 import org.junit.AssumptionViolatedException;
 import org.junit.Before;
@@ -47,12 +48,16 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.cache.jsr.JsrTestUtil.clearCachingProviderRegistry;
+import static com.hazelcast.cache.jsr.JsrTestUtil.getCachingProviderRegistrySize;
+import static com.hazelcast.test.TestEnvironment.isRunningCompatibilityTest;
+import static com.hazelcast.util.EmptyStatement.ignore;
 import static java.lang.Integer.getInteger;
 
 /**
  * Base test runner which has base system properties and test repetition logic.
- *
- * The tests are run in random order.
+ * <p>
+ * The tests are executed in random order.
  */
 public abstract class AbstractHazelcastClassRunner extends AbstractParameterizedHazelcastClassRunner {
 
@@ -64,15 +69,7 @@ public abstract class AbstractHazelcastClassRunner extends AbstractParameterized
     private static final boolean THREAD_CONTENTION_INFO_AVAILABLE;
 
     static {
-        TestLoggingUtils.initializeLogging();
-        if (System.getProperty(TestEnvironment.HAZELCAST_TEST_USE_NETWORK) == null) {
-            System.setProperty(TestEnvironment.HAZELCAST_TEST_USE_NETWORK, "false");
-        }
-        System.setProperty("hazelcast.phone.home.enabled", "false");
-        System.setProperty("hazelcast.mancenter.enabled", "false");
-        System.setProperty("hazelcast.wait.seconds.before.join", "1");
-        System.setProperty("hazelcast.local.localAddress", "127.0.0.1");
-        System.setProperty("java.net.preferIPv4Stack", "true");
+        initialize();
 
         final String threadDumpOnFailure = System.getProperty("hazelcast.test.threadDumpOnFailure");
         THREAD_DUMP_ON_FAILURE = threadDumpOnFailure != null
@@ -93,7 +90,7 @@ public abstract class AbstractHazelcastClassRunner extends AbstractParameterized
                 threadMXBean.setThreadCpuTimeEnabled(true);
                 threadCPUTimeInfoAvailable = true;
             } catch (Throwable t) {
-                EmptyStatement.ignore(t);
+                ignore(t);
             }
         }
         THREAD_CPU_TIME_INFO_AVAILABLE = threadCPUTimeInfoAvailable;
@@ -104,11 +101,39 @@ public abstract class AbstractHazelcastClassRunner extends AbstractParameterized
                 threadMXBean.setThreadContentionMonitoringEnabled(true);
                 threadContentionInfoAvailable = true;
             } catch (Throwable t) {
-                EmptyStatement.ignore(t);
+                ignore(t);
             }
         }
         THREAD_CONTENTION_INFO_AVAILABLE = threadContentionInfoAvailable;
     }
+
+    // initialize environment, logging and attach a final-modifier removing agent if required
+    private static void initialize() {
+        // we set the JSR System properties globally, since some tests trigger the MBeanServer
+        // initialization, which will not create the correct one without these System properties
+        // (this was done via the pom.xml before for most test profiles, so this does no harm)
+        JsrTestUtil.setSystemProperties();
+
+        if (isRunningCompatibilityTest()) {
+            CompatibilityTestUtils.attachFinalRemovalAgent();
+            System.out.println("Running compatibility tests.");
+            // Mock network cannot be used for compatibility testing
+            System.setProperty(TestEnvironment.HAZELCAST_TEST_USE_NETWORK, "true");
+        } else {
+            TestLoggingUtils.initializeLogging();
+            if (System.getProperty(TestEnvironment.HAZELCAST_TEST_USE_NETWORK) == null) {
+                System.setProperty(TestEnvironment.HAZELCAST_TEST_USE_NETWORK, "false");
+            }
+        }
+        System.setProperty("hazelcast.phone.home.enabled", "false");
+        System.setProperty("hazelcast.mancenter.enabled", "false");
+        System.setProperty("hazelcast.wait.seconds.before.join", "1");
+        System.setProperty("hazelcast.local.localAddress", "127.0.0.1");
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        // speed up closing connections in com.hazelcast.internal.networking.nio.NioChannel.doClose()
+        System.setProperty("hazelcast.channel.close.delayMs", "0");
+    }
+
 
     /**
      * Creates a BlockJUnit4ClassRunner to run {@code clazz}
@@ -213,7 +238,7 @@ public abstract class AbstractHazelcastClassRunner extends AbstractParameterized
 
     /**
      * Gets the {@link Repeat} annotation if set.
-     *
+     * <p>
      * Method level definition overrides class level definition.
      */
     private Repeat getRepeatable(FrameworkMethod method) {
@@ -279,11 +304,20 @@ public abstract class AbstractHazelcastClassRunner extends AbstractParameterized
             public void evaluate() throws Throwable {
                 originalStatement.evaluate();
 
+                // check for running Hazelcast instances
                 Set<HazelcastInstance> instances = Hazelcast.getAllHazelcastInstances();
                 if (!instances.isEmpty()) {
                     String message = "Instances haven't been shut down: " + instances;
                     Hazelcast.shutdownAll();
                     throw new IllegalStateException(message);
+                }
+
+                // check for leftover CachingProvider instances
+                int registrySize = getCachingProviderRegistrySize();
+                if (registrySize > 0) {
+                    clearCachingProviderRegistry();
+                    throw new IllegalStateException(registrySize + " CachingProviders are not cleaned up."
+                            + " Please use JsrTestUtil.cleanup() in your test!");
                 }
             }
         };

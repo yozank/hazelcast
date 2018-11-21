@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,13 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Removes data from Record store on LoadAllOperation that replaces existing values
+ * Removes keys that are contained in the {@link com.hazelcast.map.impl.recordstore.RecordStore}
+ * from the provided list, leaving only keys which are not contained in the record store.
+ * <p>
+ * This operation is expected to be invoked locally as the key collection is mutated
+ * when running the operation and the operation does not have a response object.
+ *
+ * @see com.hazelcast.core.IMap#loadAll(java.util.Set, boolean)
  */
 public class RemoveFromLoadAllOperation extends MapOperation implements PartitionAwareOperation, MutatingOperation {
 
@@ -52,6 +58,12 @@ public class RemoveFromLoadAllOperation extends MapOperation implements Partitio
         removeExistingKeys(keys);
     }
 
+    /**
+     * Removes keys from the provided collection which
+     * are contained in the partition record store.
+     *
+     * @param keys the keys to be filtered
+     */
     private void removeExistingKeys(Collection<Data> keys) {
         if (keys == null || keys.isEmpty()) {
             return;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,6 +53,22 @@ public class SlowMulticastJoinTest extends AbstractJoinTest {
     }
 
     @Test
+    public void testMembersStaysIndependentWhenHostIsNotTrusted() {
+        Config config1 = newConfig("8.8.8.8"); //8.8.8.8 is never a local address
+        Config config2 = newConfig("8.8.8.8");
+
+        int testDurationSeconds = 30;
+        assertIndependentClustersAndDoNotMergedEventually(config1, config2, testDurationSeconds);
+    }
+
+    @Test
+    public void testMembersFormAClusterWhenHostIsTrusted() throws Exception {
+        Config config2 = newConfig("*.*.*.*"); //matching everything
+
+        testJoin(config2);
+    }
+
+    @Test
     public void testSplitBrainMessagesNotAccumulated_whenClusterIsStableOrNodeIsNotMaster() throws Exception {
         final int clusterSize = 3;
         Config config = new Config();
@@ -68,7 +84,7 @@ public class SlowMulticastJoinTest extends AbstractJoinTest {
             joiners[i] = (MulticastJoiner) getNode(instances[i]).getJoiner();
         }
 
-        assertEquals(clusterSize, instances[0].getCluster().getMembers().size());
+        assertClusterSize(clusterSize, instances[0]);
 
         // we will split the cluster to subclusters (0, 1), (2)
         final CountDownLatch splitLatch = new CountDownLatch(2);
@@ -102,11 +118,11 @@ public class SlowMulticastJoinTest extends AbstractJoinTest {
         assertTrue(splitLatch.await(10, TimeUnit.SECONDS));
 
         // while cluster is split, no split brain join messages should be accumulated in the non-master member 1
-        assertSplitBrainMessagesCount(clusterSize, new HazelcastInstance[] {instances[1]},
-                new MulticastJoiner[] {joiners[1]});
+        assertSplitBrainMessagesCount(clusterSize, new HazelcastInstance[]{instances[1]},
+                new MulticastJoiner[]{joiners[1]});
 
         assertTrue(mergeLatch.await(30, TimeUnit.SECONDS));
-        assertEquals(clusterSize, instances[0].getCluster().getMembers().size());
+        assertClusterSize(clusterSize, instances[0]);
 
         // cluster is merged & stable again, split brain join messages should not be accumulated.
         assertSplitBrainMessagesCount(clusterSize, instances, joiners);
@@ -131,4 +147,11 @@ public class SlowMulticastJoinTest extends AbstractJoinTest {
         }, 10);
     }
 
+    private Config newConfig(String trustedInterface) {
+        Config config = new Config();
+        config.setProperty(GroupProperty.MERGE_FIRST_RUN_DELAY_SECONDS.getName(), "5");
+        config.setProperty(GroupProperty.MERGE_NEXT_RUN_DELAY_SECONDS.getName(), "3");
+        config.getNetworkConfig().getJoin().getMulticastConfig().addTrustedInterface(trustedInterface);
+        return config;
+    }
 }

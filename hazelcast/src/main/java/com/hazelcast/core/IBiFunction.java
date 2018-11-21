@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,15 @@
 
 package com.hazelcast.core;
 
+/**
+ * Represents a function that accepts two arguments and produces a result.
+ * <p>
+ * This class is called IBiFunction instead of BiFunction to prevent clashes with the one in Java 8.
+ *
+ * @param <T> an argument
+ * @param <U> another argument
+ * @param <R> a result
+ */
 public interface IBiFunction<T, U, R> {
 
     /**

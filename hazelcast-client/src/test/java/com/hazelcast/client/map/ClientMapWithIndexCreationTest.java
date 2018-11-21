@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import com.hazelcast.config.XmlConfigBuilder;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.Member;
-import com.hazelcast.query.SampleObjects;
+import com.hazelcast.query.SampleTestObjects;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -73,13 +73,12 @@ public class ClientMapWithIndexCreationTest extends HazelcastTestSupport {
         clientConfig.setLoadBalancer(new StaticLB((Member) hz1.getLocalEndpoint()));
         clientConfig.getNetworkConfig().setSmartRouting(false);
         // the client only connects to member hz2.
-        clientConfig.getNetworkConfig().addAddress(
-                        hz2.getCluster().getLocalMember().getAddress().getHost() + ":" +
-                        hz2.getCluster().getLocalMember().getAddress().getPort());
+        clientConfig.getNetworkConfig().addAddress(hz2.getCluster().getLocalMember().getAddress().getHost() + ":"
+                + hz2.getCluster().getLocalMember().getAddress().getPort());
 
         HazelcastInstance client = factory.newHazelcastClient(clientConfig);
 
-        IMap<String, SampleObjects.Employee> test = client.getMap("test");
-        test.put("foo", new SampleObjects.Employee(1, "name", "age", 32, true, 230));
+        IMap<String, SampleTestObjects.Employee> test = client.getMap("test");
+        test.put("foo", new SampleTestObjects.Employee(1, "name", "age", 32, true, 230));
     }
 }

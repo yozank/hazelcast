@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,17 @@ package com.hazelcast.instance;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.hotrestart.HotRestartService;
 import com.hazelcast.hotrestart.InternalHotRestartService;
+import com.hazelcast.internal.ascii.TextCommandService;
 import com.hazelcast.internal.cluster.impl.JoinMessage;
 import com.hazelcast.internal.cluster.impl.JoinRequest;
-import com.hazelcast.internal.networking.ReadHandler;
-import com.hazelcast.internal.networking.SocketChannelWrapperFactory;
-import com.hazelcast.internal.networking.WriteHandler;
+import com.hazelcast.internal.diagnostics.Diagnostics;
+import com.hazelcast.internal.dynamicconfig.DynamicConfigListener;
+import com.hazelcast.internal.jmx.ManagementService;
+import com.hazelcast.internal.management.ManagementCenterConnectionFactory;
+import com.hazelcast.internal.management.TimedMemberStateFactory;
+import com.hazelcast.internal.networking.InboundHandler;
+import com.hazelcast.internal.networking.ChannelInitializer;
+import com.hazelcast.internal.networking.OutboundHandler;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.memory.MemoryStats;
 import com.hazelcast.nio.Address;
@@ -32,14 +38,16 @@ import com.hazelcast.nio.IOService;
 import com.hazelcast.nio.MemberSocketInterceptor;
 import com.hazelcast.nio.tcp.TcpIpConnection;
 import com.hazelcast.security.SecurityContext;
+import com.hazelcast.security.SecurityService;
 import com.hazelcast.spi.annotation.PrivateApi;
+import com.hazelcast.util.ByteArrayProcessor;
 import com.hazelcast.version.Version;
 
 import java.util.Map;
 
 /**
  * NodeExtension is a <tt>Node</tt> extension mechanism to be able to plug different implementations of
- * some modules, like; <tt>SerializationService</tt>, <tt>SocketChannelWrapperFactory</tt> etc.
+ * some modules, like; <tt>SerializationService</tt>, <tt>ChannelFactory</tt> etc.
  */
 @PrivateApi
 @SuppressWarnings({"checkstyle:methodcount"})
@@ -87,6 +95,8 @@ public interface NodeExtension {
      */
     InternalSerializationService createSerializationService();
 
+    SecurityService getSecurityService();
+
     /**
      * Returns <tt>SecurityContext</tt> for this <tt>Node</tt> if available, otherwise returns null.
      *
@@ -122,29 +132,38 @@ public interface NodeExtension {
     MemberSocketInterceptor getMemberSocketInterceptor();
 
     /**
-     * Returns <tt>SocketChannelWrapperFactory</tt> instance to be used by this <tt>Node</tt>.
+     * Creates a <tt>InboundHandler</tt> for given <tt>Connection</tt> instance.
      *
-     * @return SocketChannelWrapperFactory
-     */
-    SocketChannelWrapperFactory getSocketChannelWrapperFactory();
-
-    /**
-     * Creates a <tt>ReadHandler</tt> for given <tt>Connection</tt> instance.
+     * For TLS and other enterprise features, instead of returning the regular protocol decoder, a TLS decoder
+     * can be returned. This is the first item in the chain.
      *
      * @param connection tcp-ip connection
      * @param ioService  IOService
-     * @return the created ReadHandler.
+     * @return the created InboundHandler.
      */
-    ReadHandler createReadHandler(TcpIpConnection connection, IOService ioService);
+    InboundHandler[] createInboundHandlers(TcpIpConnection connection, IOService ioService);
 
     /**
-     * Creates a <tt>WriteHandler</tt> for given <tt>Connection</tt> instance.
+     * Creates a <tt>OutboundHandler</tt> for given <tt>Connection</tt> instance.
      *
      * @param connection tcp-ip connection
      * @param ioService  IOService
-     * @return the created WriteHandler
+     * @return the created OutboundHandler
      */
-    WriteHandler createWriteHandler(TcpIpConnection connection, IOService ioService);
+    OutboundHandler[] createOutboundHandlers(TcpIpConnection connection, IOService ioService);
+
+
+    /**
+     * Creates the ChannelInitializer.
+     *
+     * Currently there is a single global channel instance per member; but as soon
+     * as WAN is going to run on different ports, we probably need multiple
+     * ChannelInitializers.
+     *
+     * @param ioService
+     * @return
+     */
+    ChannelInitializer createChannelInitializer(IOService ioService);
 
     /**
      * Called on thread start to inject/intercept extension specific logic,
@@ -187,9 +206,14 @@ public interface NodeExtension {
     void onClusterStateChange(ClusterState newState, boolean isTransient);
 
     /**
-     * Called when partition state (partition assignments, version etc) changes
+     * Called synchronously when partition state (partition assignments, version etc) changes
      */
     void onPartitionStateChange();
+
+    /**
+     * Called synchronously when member list changes
+     */
+    void onMemberListChange();
 
     /**
      * Called after cluster version is changed.
@@ -221,7 +245,46 @@ public interface NodeExtension {
     /**
      * Creates a UUID for local member
      * @param address address of local member
-     * @return new uuid
+     * @return new UUID
      */
     String createMemberUuid(Address address);
+
+    /**
+     * Creates a TimedMemberStateFactory for a given Hazelcast instance
+     * @param instance The instance to associate with the timed member state factory
+     * @return {@link TimedMemberStateFactory}
+     */
+    TimedMemberStateFactory createTimedMemberStateFactory(HazelcastInstanceImpl instance);
+
+    ManagementCenterConnectionFactory getManagementCenterConnectionFactory();
+
+    ManagementService createJMXManagementService(HazelcastInstanceImpl instance);
+
+    TextCommandService createTextCommandService();
+
+    /** Returns a byte array processor for incoming data on the Multicast joiner */
+    ByteArrayProcessor createMulticastInputProcessor(IOService ioService);
+
+    /** Returns a byte array processor for outgoing data on the Multicast joiner */
+    ByteArrayProcessor createMulticastOutputProcessor(IOService ioService);
+
+    /**
+     * Creates a listener for changes in dynamic data structure configurations
+     *
+     * @return Listener to be notfied about changes in data structure configurations
+     */
+    DynamicConfigListener createDynamicConfigListener();
+
+    /**
+     * Register the node extension specific diagnostics plugins on the provided
+     * {@code diagnostics}.
+     *
+     * @param diagnostics the diagnostics on which plugins should be registered
+     */
+    void registerPlugins(Diagnostics diagnostics);
+
+    /**
+     * Send PhoneHome ping from OS or EE instance to PhoneHome application
+     */
+    void sendPhoneHome();
 }

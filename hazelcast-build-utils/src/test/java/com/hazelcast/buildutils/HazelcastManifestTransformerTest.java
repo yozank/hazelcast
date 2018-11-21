@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,8 +39,8 @@ import static com.hazelcast.nio.IOUtil.closeResource;
 import static com.hazelcast.nio.IOUtil.getFileFromResources;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyByte;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -89,13 +89,12 @@ public class HazelcastManifestTransformerTest {
     }
 
     @Test
-    @SuppressWarnings("Since15")
     public void testTransformation() throws Exception {
         transformer.processResource(null, is, Collections.<Relocator>emptyList());
         transformer.modifyOutputStream(os);
 
         verify(os).putNextEntry(any(JarEntry.class));
-        verify(os, atLeastOnce()).write(anyByte());
+        verify(os, atLeastOnce()).write(anyInt());
         verify(os, atLeastOnce()).flush();
         verifyNoMoreInteractions(os);
     }

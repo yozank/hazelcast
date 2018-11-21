@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import org.junit.runner.RunWith;
 
 import java.io.IOException;
 
-import static org.junit.Assert.assertEquals;
+import static com.hazelcast.test.HazelcastTestSupport.assertClusterSize;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -76,10 +76,10 @@ public class ClusterJoinConfigCheckTest {
         HazelcastInstance hz2 = Hazelcast.newHazelcastInstance(config2);
 
         assertTrue(hz1.getLifecycleService().isRunning());
-        assertEquals(1, hz1.getCluster().getMembers().size());
+        assertClusterSize(1, hz1);
 
         assertTrue(hz2.getLifecycleService().isRunning());
-        assertEquals(1, hz2.getCluster().getMembers().size());
+        assertClusterSize(1, hz2);
     }
 
     private void enableTcp(Config config) {

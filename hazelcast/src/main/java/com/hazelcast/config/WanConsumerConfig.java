@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,47 +16,128 @@
 
 package com.hazelcast.config;
 
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.nio.serialization.impl.Versioned;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Config to be used by WanReplicationConsumer instances (EE only).
+ * Config for processing WAN events received from a target cluster.
+ * You can configure certain behaviour when processing incoming WAN events
+ * or even configure your own implementation for a WAN consumer. A custom
+ * WAN consumer allows you to define custom processing logic and is usually
+ * used in combination with a custom WAN publisher.
+ * A custom consumer is optional and you may simply omit defining it which
+ * will cause the default processing logic to be used.
+ * <p>
+ * NOTE: EE only
+ *
+ * @see WanReplicationConfig#setWanConsumerConfig(WanConsumerConfig)
+ * @see WanPublisherConfig#setClassName(String)
  */
-public class WanConsumerConfig implements IdentifiedDataSerializable {
+public class WanConsumerConfig implements IdentifiedDataSerializable, Versioned {
 
-    private Map<String, Comparable> properties = new HashMap<String, Comparable>();
+    /**
+     * @see #isPersistWanReplicatedData
+     */
+    public static final boolean DEFAULT_PERSIST_WAN_REPLICATED_DATA = false;
+
+    private boolean persistWanReplicatedData = DEFAULT_PERSIST_WAN_REPLICATED_DATA;
     private String className;
     private Object implementation;
+    private Map<String, Comparable> properties = new HashMap<String, Comparable>();
 
+    /**
+     * Returns the properties for the custom WAN consumer.
+     */
     public Map<String, Comparable> getProperties() {
         return properties;
     }
 
+    /**
+     * Sets the properties for the custom WAN consumer. These properties are
+     * accessible when initalizing the WAN consumer.
+     *
+     * @param properties the properties for the WAN consumer
+     * @return this config
+     */
     public WanConsumerConfig setProperties(Map<String, Comparable> properties) {
         this.properties = properties;
         return this;
     }
 
+    /**
+     * Returns the fully qualified class name of the class implementing
+     * WanReplicationConsumer.
+     *
+     * @return fully qualified class name
+     */
     public String getClassName() {
         return className;
     }
 
+    /**
+     * Sets the fully qualified class name of the class implementing
+     * WanReplicationConsumer.
+     * The class name may be {@code null} in which case the implementation or
+     * the default processing logic for incoming WAN events will be used.
+     *
+     * @param className fully qualified class name
+     * @return this config
+     * @see #setImplementation(Object)
+     */
     public WanConsumerConfig setClassName(String className) {
         this.className = className;
         return this;
     }
 
+    /**
+     * Returns the implementation implementing WanReplicationConsumer.
+     *
+     * @return the implementation for this WAN consumer
+     */
     public Object getImplementation() {
         return implementation;
     }
 
+    /**
+     * Sets the implementation for this WAN consumer. The object must implement
+     * WanReplicationConsumer.
+     * The implementation may be {@code null} in which case the class name or
+     * the default processing logic for incoming WAN events will be used.
+     *
+     * @param implementation the object implementing WanReplicationConsumer
+     * @return this config
+     * @see #setClassName(String)
+     */
     public WanConsumerConfig setImplementation(Object implementation) {
         this.implementation = implementation;
+        return this;
+    }
+
+    /**
+     * @return {@code true} when persistence of replicated data into backing
+     * store is enabled, otherwise returns {@code false}. By default this
+     * method returns {@value #DEFAULT_PERSIST_WAN_REPLICATED_DATA}.
+     */
+    public boolean isPersistWanReplicatedData() {
+        return persistWanReplicatedData;
+    }
+
+    /**
+     * @param persistWanReplicatedData set {@code true} to enable
+     *                                 persistence of replicated data into backing store, otherwise set
+     *                                 {@code false} to disable it. Default value is {@value
+     *                                 #DEFAULT_PERSIST_WAN_REPLICATED_DATA}.
+     * @return reference to this {@link WanReplicationRef} object
+     */
+    public WanConsumerConfig setPersistWanReplicatedData(boolean persistWanReplicatedData) {
+        this.persistWanReplicatedData = persistWanReplicatedData;
         return this;
     }
 
@@ -66,6 +147,7 @@ public class WanConsumerConfig implements IdentifiedDataSerializable {
                 + "properties=" + properties
                 + ", className='" + className + '\''
                 + ", implementation=" + implementation
+                + ", persistWanReplicatedData=" + persistWanReplicatedData
                 + '}';
     }
 
@@ -89,6 +171,11 @@ public class WanConsumerConfig implements IdentifiedDataSerializable {
         }
         out.writeUTF(className);
         out.writeObject(implementation);
+
+        // RU_COMPAT_3_10
+        if (out.getVersion().isGreaterOrEqual(Versions.V3_11)) {
+            out.writeBoolean(persistWanReplicatedData);
+        }
     }
 
     @Override
@@ -99,5 +186,10 @@ public class WanConsumerConfig implements IdentifiedDataSerializable {
         }
         className = in.readUTF();
         implementation = in.readObject();
+
+        // RU_COMPAT_3_10
+        if (in.getVersion().isGreaterOrEqual(Versions.V3_11)) {
+            persistWanReplicatedData = in.readBoolean();
+        }
     }
 }

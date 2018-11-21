@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 package com.hazelcast.monitor.impl;
 
 
-import com.eclipsesource.json.JsonObject;
+import com.hazelcast.internal.json.JsonObject;
+import com.hazelcast.config.WanPublisherState;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -37,6 +38,7 @@ public class LocalWanPublisherStatsTest {
         localWanPublisherStats.setConnected(true);
         localWanPublisherStats.setOutboundQueueSize(100);
         localWanPublisherStats.incrementPublishedEventCount(10);
+        localWanPublisherStats.setState(WanPublisherState.REPLICATING);
 
         JsonObject serialized = localWanPublisherStats.toJson();
 

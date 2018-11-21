@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.impl.querycache.subscriber;
 
-import com.hazelcast.client.impl.HazelcastClientInstanceImpl;
+import com.hazelcast.client.impl.clientside.HazelcastClientInstanceImpl;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.spi.ClientContext;
 import com.hazelcast.client.spi.impl.ClientInvocation;
@@ -53,7 +53,7 @@ public class ClientInvokerWrapper implements InvokerWrapper {
         checkNotNegative(partitionId, "partitionId");
 
         ClientMessage clientRequest = (ClientMessage) request;
-        ClientInvocation clientInvocation = new ClientInvocation(getClient(), clientRequest, partitionId);
+        ClientInvocation clientInvocation = new ClientInvocation(getClient(), clientRequest, null, partitionId);
         return clientInvocation.invoke();
     }
 
@@ -61,7 +61,7 @@ public class ClientInvokerWrapper implements InvokerWrapper {
     public Object invokeOnAllPartitions(Object request) {
         try {
             ClientMessage clientRequest = (ClientMessage) request;
-            final Future future = new ClientInvocation(getClient(), clientRequest).invoke();
+            final Future future = new ClientInvocation(getClient(), clientRequest, null).invoke();
             Object result = future.get();
             return context.toObject(result);
         } catch (Exception e) {
@@ -75,7 +75,7 @@ public class ClientInvokerWrapper implements InvokerWrapper {
         checkNotNull(address, "address cannot be null");
 
         ClientMessage clientRequest = (ClientMessage) request;
-        ClientInvocation invocation = new ClientInvocation(getClient(), clientRequest, address);
+        ClientInvocation invocation = new ClientInvocation(getClient(), clientRequest, null, address);
         return invocation.invoke();
     }
 
@@ -83,7 +83,7 @@ public class ClientInvokerWrapper implements InvokerWrapper {
     public Object invoke(Object request) {
         checkNotNull(request, "request cannot be null");
 
-        ClientInvocation invocation = new ClientInvocation(getClient(), (ClientMessage) request);
+        ClientInvocation invocation = new ClientInvocation(getClient(), (ClientMessage) request, null);
         ClientInvocationFuture future = invocation.invoke();
         try {
             Object result = future.get();

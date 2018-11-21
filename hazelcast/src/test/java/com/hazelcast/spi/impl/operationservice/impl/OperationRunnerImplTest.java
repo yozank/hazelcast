@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ public class OperationRunnerImplTest extends HazelcastTestSupport {
         remote = cluster[1];
         operationService = (OperationServiceImpl) getOperationService(local);
         clusterService = getClusterService(local);
-        operationRunner = new OperationRunnerImpl(operationService, getPartitionId(local), newSwCounter());
+        operationRunner = new OperationRunnerImpl(operationService, getPartitionId(local), 0, newSwCounter());
         responseHandler = mock(OperationResponseHandler.class);
     }
 

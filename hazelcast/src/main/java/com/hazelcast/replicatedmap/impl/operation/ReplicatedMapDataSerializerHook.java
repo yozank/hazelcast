@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,8 +35,6 @@ import static com.hazelcast.internal.serialization.impl.FactoryIdHelper.REPLICAT
 /**
  * This class contains all the ID hooks for IdentifiedDataSerializable classes used inside the replicated map.
  */
-//Deactivated all checkstyle rules because those classes will never comply
-//CHECKSTYLE:OFF
 public class ReplicatedMapDataSerializerHook implements DataSerializerHook {
 
     public static final int F_ID = FactoryIdHelper.getFactoryId(REPLICATED_MAP_DS_FACTORY, REPLICATED_MAP_DS_FACTORY_ID);
@@ -49,7 +47,7 @@ public class ReplicatedMapDataSerializerHook implements DataSerializerHook {
     public static final int PUT = 6;
     public static final int REMOVE = 7;
     public static final int SIZE = 8;
-    public static final int MERGE = 9;
+    public static final int LEGACY_MERGE = 9;
     public static final int VERSION_RESPONSE_PAIR = 10;
     public static final int GET = 11;
     public static final int CHECK_REPLICA_VERSION = 12;
@@ -70,8 +68,10 @@ public class ReplicatedMapDataSerializerHook implements DataSerializerHook {
     public static final int LATEST_UPDATE_MERGE_POLICY = 27;
     public static final int PASS_THROUGH_MERGE_POLICY = 28;
     public static final int PUT_IF_ABSENT_MERGE_POLICY = 29;
+    public static final int MERGE_FACTORY = 30;
+    public static final int MERGE = 31;
 
-    private static final int LEN = PUT_IF_ABSENT_MERGE_POLICY + 1;
+    private static final int LEN = MERGE + 1;
 
     private static final DataSerializableFactory FACTORY = createFactoryInternal();
 
@@ -135,10 +135,10 @@ public class ReplicatedMapDataSerializerHook implements DataSerializerHook {
                 return new SizeOperation();
             }
         };
-        constructors[MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+        constructors[LEGACY_MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             @Override
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new MergeOperation();
+                return new LegacyMergeOperation();
             }
         };
         constructors[VERSION_RESPONSE_PAIR] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
@@ -261,8 +261,19 @@ public class ReplicatedMapDataSerializerHook implements DataSerializerHook {
                 return PutIfAbsentMapMergePolicy.INSTANCE;
             }
         };
+        constructors[MERGE_FACTORY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MergeOperationFactory();
+            }
+        };
+        constructors[MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MergeOperation();
+            }
+        };
 
         return new ArrayDataSerializableFactory(constructors);
     }
-
 }

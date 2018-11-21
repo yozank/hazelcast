@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package com.hazelcast.test.jitter;
 
-import com.hazelcast.test.JenkinsDetector;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
@@ -24,6 +23,7 @@ import org.junit.runners.model.Statement;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 
+import static com.hazelcast.test.JenkinsDetector.isOnJenkins;
 import static com.hazelcast.util.QuickMath.nextPowerOfTwo;
 import static com.hazelcast.util.StringUtil.LINE_SEPARATOR;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -33,7 +33,9 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * JUnit rule for detecting JVM/OS hiccups. It's meant to give you an insight into your environment
  * in the case of a test failure. This is useful for troubleshooting of spuriously failing tests.
  */
+@SuppressWarnings("WeakerAccess")
 public class JitterRule implements TestRule {
+
     /**
      * Time interval aggregated into a single bucket. Smaller interval provides
      * a clearer picture about hiccups in time, too small intervals may use too
@@ -44,11 +46,11 @@ public class JitterRule implements TestRule {
     /**
      * Number of buckets to be created. Jitter monitor records a floating window
      * where the length of the window can be calculated as
-     * <code>AGGREGATION_INTERVAL_MILLIS * CAPACITY</code>
-     *
+     * {@code AGGREGATION_INTERVAL_MILLIS * CAPACITY}
+     * <p>
      * It has to be a power of two.
      */
-    public static final  int CAPACITY = nextPowerOfTwo(720);
+    public static final int CAPACITY = nextPowerOfTwo(720);
 
     /**
      * Resolution of the measurement. Smaller number can detect shorter pauses,
@@ -60,7 +62,6 @@ public class JitterRule implements TestRule {
     /**
      * Hiccups over this threshold will be counted separately. This is useful for counting
      * serious hiccups.
-     *
      */
     public static final long LONG_HICCUP_THRESHOLD = SECONDS.toNanos(1);
 
@@ -83,7 +84,7 @@ public class JitterRule implements TestRule {
             case ENABLED:
                 return true;
             case JENKINS:
-                return JenkinsDetector.isOnJenkins();
+                return isOnJenkins();
             default:
                 throw new IllegalArgumentException("Unknown mode: " + mode);
         }

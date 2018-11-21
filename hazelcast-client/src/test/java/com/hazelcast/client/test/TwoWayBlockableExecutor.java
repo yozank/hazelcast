@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 class TwoWayBlockableExecutor {
 
     static class LockPair {
+
         ReadWriteLock incomingLock;
         ReadWriteLock outgoingLock;
 
@@ -106,7 +107,7 @@ class TwoWayBlockableExecutor {
         try {
             incomingMessages.execute(new BlockableRunnable(runnable, lockPair.incomingLock.readLock()));
         } catch (RejectedExecutionException rejected) {
-            Logger.getLogger(this.getClass()).warning("Dropping incoming runnable since other end closed. " + runnable);
+            Logger.getLogger(getClass()).warning("Dropping incoming runnable since other end closed. " + runnable);
         }
     }
 
@@ -114,8 +115,7 @@ class TwoWayBlockableExecutor {
         try {
             outgoingMessages.execute(new BlockableRunnable(runnable, lockPair.outgoingLock.readLock()));
         } catch (RejectedExecutionException rejected) {
-            Logger.getLogger(this.getClass()).warning("Dropping outgoing runnable since other end closed. " + runnable);
+            Logger.getLogger(getClass()).warning("Dropping outgoing runnable since other end closed. " + runnable);
         }
     }
-
 }

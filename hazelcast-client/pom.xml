@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+  ~ Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -25,12 +25,12 @@
     <parent>
         <groupId>com.hazelcast</groupId>
         <artifactId>hazelcast-root</artifactId>
-        <version>3.8.5-SNAPSHOT</version>
+        <version>3.11.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <properties>
-        <!-- needed for checkstyle/findbugs -->
+        <!-- needed for CheckStyle -->
         <main.basedir>${project.parent.basedir}</main.basedir>
     </properties>
 
@@ -121,6 +121,9 @@
                             <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                         </manifest>
                         <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+                        <manifestEntries>
+                            <Automatic-Module-Name>com.hazelcast.client</Automatic-Module-Name>
+                        </manifestEntries>
                     </archive>
                 </configuration>
                 <executions>
@@ -144,7 +147,7 @@
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast-aws</artifactId>
-            <version>1.0</version>
+            <version>2.0.0</version>
             <optional>true</optional>
             <scope>provided</scope>
         </dependency>
@@ -164,6 +167,34 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>15.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>${log4j2.version}</version>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>${log4j2.version}</version>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>${http.components.version}</version>
+            <scope>test</scope>
+        </dependency>
         <!-- dependencies for XATransaction tests -->
         <dependency>
             <groupId>com.atomikos</groupId>
@@ -182,20 +213,26 @@
         <dependency>
             <groupId>org.hamcrest</groupId>
             <artifactId>hamcrest-library</artifactId>
-            <version>1.2</version>
+            <version>${hamcrest.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>javax.cache</groupId>
             <artifactId>cache-tests</artifactId>
             <classifier>tests</classifier>
-            <version>1.0.0</version>
+            <version>${jsr107.tck.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>javax.cache</groupId>
             <artifactId>cache-tests</artifactId>
-            <version>1.0.0</version>
+            <version>${jsr107.tck.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.felix</groupId>
+            <artifactId>org.apache.felix.utils</artifactId>
+            <version>${felix.utils.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

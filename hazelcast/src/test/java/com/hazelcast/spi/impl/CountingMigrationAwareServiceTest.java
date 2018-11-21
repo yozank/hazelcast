@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
 
 package com.hazelcast.spi.impl;
 
-import com.hazelcast.spi.MigrationAwareService;
+import com.hazelcast.spi.FragmentedMigrationAwareService;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
+import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -53,7 +54,7 @@ import static org.mockito.Mockito.when;
 public class CountingMigrationAwareServiceTest {
 
     @Parameterized.Parameter
-    public MigrationAwareService wrappedMigrationAwareService;
+    public FragmentedMigrationAwareService wrappedMigrationAwareService;
 
     @Parameterized.Parameter(1)
     public PartitionMigrationEvent event;
@@ -79,13 +80,13 @@ public class CountingMigrationAwareServiceTest {
         when(backupsEvent.getCurrentReplicaIndex()).thenReturn(2);
         when(backupsEvent.toString()).thenReturn("2 > 1");
 
-        return Arrays.asList(new Object[] {
-                new Object[] {new NoOpMigrationAwareService(), promotionEvent},
-                new Object[] {new NoOpMigrationAwareService(), demotionEvent},
-                new Object[] {new NoOpMigrationAwareService(), backupsEvent},
-                new Object[] {new ExceptionThrowingMigrationAwareService(), promotionEvent},
-                new Object[] {new ExceptionThrowingMigrationAwareService(), demotionEvent},
-                new Object[] {new ExceptionThrowingMigrationAwareService(), backupsEvent},
+        return Arrays.asList(new Object[]{
+                new Object[]{new NoOpMigrationAwareService(), promotionEvent},
+                new Object[]{new NoOpMigrationAwareService(), demotionEvent},
+                new Object[]{new NoOpMigrationAwareService(), backupsEvent},
+                new Object[]{new ExceptionThrowingMigrationAwareService(), promotionEvent},
+                new Object[]{new ExceptionThrowingMigrationAwareService(), demotionEvent},
+                new Object[]{new ExceptionThrowingMigrationAwareService(), backupsEvent},
         });
     }
 
@@ -99,8 +100,7 @@ public class CountingMigrationAwareServiceTest {
         // also execute the first part of migration: beforeMigration
         try {
             countingMigrationAwareService.beforeMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
     }
@@ -109,7 +109,7 @@ public class CountingMigrationAwareServiceTest {
     public void beforeMigration() throws Exception {
         // when: countingMigrationAwareService.beforeMigration was invoked (in setUp method)
         // then: if event involves primary replica, stamp should change.
-        if (isPrimaryReplicaMigrationEvent(event) ) {
+        if (isPrimaryReplicaMigrationEvent(event)) {
             assertEquals(IN_FLIGHT_MIGRATION_STAMP, countingMigrationAwareService.getMigrationStamp());
             assertFalse(countingMigrationAwareService.validateMigrationStamp(IN_FLIGHT_MIGRATION_STAMP));
         } else {
@@ -123,14 +123,13 @@ public class CountingMigrationAwareServiceTest {
         // when: before - commit migration methods have been executed
         try {
             countingMigrationAwareService.commitMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
 
         int currentMigrationStamp = countingMigrationAwareService.getMigrationStamp();
         // then: if event involves primary replica, stamp should change.
-        if (isPrimaryReplicaMigrationEvent(event) ) {
+        if (isPrimaryReplicaMigrationEvent(event)) {
             assertNotEquals(initialMigrationStamp, currentMigrationStamp);
         } else {
             assertEquals(initialMigrationStamp, currentMigrationStamp);
@@ -143,14 +142,13 @@ public class CountingMigrationAwareServiceTest {
         // when: before - rollback migration methods have been executed
         try {
             countingMigrationAwareService.rollbackMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
 
         int currentMigrationStamp = countingMigrationAwareService.getMigrationStamp();
         // then: if event involves primary replica, stamp should change.
-        if (isPrimaryReplicaMigrationEvent(event) ) {
+        if (isPrimaryReplicaMigrationEvent(event)) {
             assertNotEquals(initialMigrationStamp, currentMigrationStamp);
         } else {
             assertEquals(initialMigrationStamp, currentMigrationStamp);
@@ -164,19 +162,17 @@ public class CountingMigrationAwareServiceTest {
         // and
         try {
             countingMigrationAwareService.commitMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
 
         // on second commitMigration, if event involves partition owner assertion error is thrown
-        if (isPrimaryReplicaMigrationEvent(event) ) {
+        if (isPrimaryReplicaMigrationEvent(event)) {
             expectedException.expect(AssertionError.class);
         }
         try {
             countingMigrationAwareService.commitMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
     }
@@ -186,24 +182,38 @@ public class CountingMigrationAwareServiceTest {
         // when: invalid sequence of beforeMigration, rollbackMigration, rollbackMigration is executed
         try {
             countingMigrationAwareService.rollbackMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
 
         // on second rollbackMigration, if event involves partition owner assertion error is thrown
-        if (isPrimaryReplicaMigrationEvent(event) ) {
+        if (isPrimaryReplicaMigrationEvent(event)) {
             expectedException.expect(AssertionError.class);
         }
         try {
             countingMigrationAwareService.rollbackMigration(event);
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // we do not care whether the wrapped service throws an exception
         }
     }
 
-    static class ExceptionThrowingMigrationAwareService implements MigrationAwareService {
+    static class ExceptionThrowingMigrationAwareService implements FragmentedMigrationAwareService {
+        @Override
+        public Collection<ServiceNamespace> getAllServiceNamespaces(PartitionReplicationEvent event) {
+            return null;
+        }
+
+        @Override
+        public boolean isKnownServiceNamespace(ServiceNamespace namespace) {
+            return false;
+        }
+
+        @Override
+        public Operation prepareReplicationOperation(PartitionReplicationEvent event,
+                                                     Collection<ServiceNamespace> namespaces) {
+            return null;
+        }
+
         @Override
         public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
             return null;
@@ -231,7 +241,23 @@ public class CountingMigrationAwareServiceTest {
     }
 
 
-    static class NoOpMigrationAwareService implements MigrationAwareService {
+    static class NoOpMigrationAwareService implements FragmentedMigrationAwareService {
+        @Override
+        public Collection<ServiceNamespace> getAllServiceNamespaces(PartitionReplicationEvent event) {
+            return null;
+        }
+
+        @Override
+        public boolean isKnownServiceNamespace(ServiceNamespace namespace) {
+            return false;
+        }
+
+        @Override
+        public Operation prepareReplicationOperation(PartitionReplicationEvent event,
+                                                     Collection<ServiceNamespace> namespaces) {
+            return null;
+        }
+
         @Override
         public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
             return null;

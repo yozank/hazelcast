@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,14 +38,14 @@ public class NullGetterTest {
     }
 
     @Test
-    public void test_getReturnType() throws Exception {
+    public void test_getReturnType() {
         Class returnType = NullGetter.NULL_GETTER.getReturnType();
 
         assertNull(returnType);
     }
 
     @Test
-    public void test_isCacheable() throws Exception {
+    public void test_isCacheable() {
         boolean cacheable = NullGetter.NULL_GETTER.isCacheable();
 
         assertFalse(cacheable);

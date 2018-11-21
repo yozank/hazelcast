@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,21 @@
 
 package com.hazelcast.client.config;
 
+import com.hazelcast.config.AzureConfig;
 import com.hazelcast.config.DiscoveryConfig;
+import com.hazelcast.config.EurekaConfig;
+import com.hazelcast.config.GcpConfig;
+import com.hazelcast.config.KubernetesConfig;
 import com.hazelcast.config.SSLConfig;
 import com.hazelcast.config.SocketInterceptorConfig;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
+import static com.hazelcast.util.Preconditions.checkHasText;
 import static com.hazelcast.util.Preconditions.isNotNull;
 
 /**
@@ -37,13 +44,21 @@ public class ClientNetworkConfig {
     private boolean smartRouting = true;
     private boolean redoOperation;
     private int connectionTimeout = CONNECTION_TIMEOUT;
-    private int connectionAttemptLimit = 2;
+    private int connectionAttemptLimit = -1;
     private int connectionAttemptPeriod = CONNECTION_ATTEMPT_PERIOD;
     private SocketInterceptorConfig socketInterceptorConfig;
     private SocketOptions socketOptions = new SocketOptions();
     private SSLConfig sslConfig;
-    private ClientAwsConfig clientAwsConfig;
+    private ClientAwsConfig awsConfig = new ClientAwsConfig();
+    private GcpConfig gcpConfig = new GcpConfig();
+    private AzureConfig azureConfig = new AzureConfig();
+    private KubernetesConfig kubernetesConfig = new KubernetesConfig();
+    private EurekaConfig eurekaConfig = new EurekaConfig();
+    private ClientCloudConfig cloudConfig = new ClientCloudConfig();
     private DiscoveryConfig discoveryConfig;
+    private Collection<String> outboundPortDefinitions;
+    private Collection<Integer> outboundPorts;
+    private ClientIcmpPingConfig clientIcmpPingConfig = new ClientIcmpPingConfig();
 
     /**
      * Returns the configuration of the Hazelcast Discovery SPI and configured discovery providers
@@ -68,18 +83,24 @@ public class ClientNetworkConfig {
     }
 
     /**
+     * See {@link com.hazelcast.client.config.ClientNetworkConfig#setSmartRouting(boolean)}  for details
+     *
      * @return true if client is smart
-     * @see {@link com.hazelcast.client.config.ClientNetworkConfig#setSmartRouting(boolean)}  for details
      */
     public boolean isSmartRouting() {
         return smartRouting;
     }
 
     /**
-     * If true, client will route the key based operations to owner of the key at the best effort.
+     * If {@code true}, client will route the key based operations to owner of the key on best-effort basis.
      * Note that it uses a cached version of {@link com.hazelcast.core.PartitionService#getPartitions()} and doesn't
      * guarantee that the operation will always be executed on the owner. The cached table is updated every 10 seconds.
-     * Default value is true.
+     * <p>
+     * If {@code smartRouting == false}, all operations will be routed to single member. Operations will need two
+     * hops if the chosen member is not owner of the key. Client will have only single open connection. Useful, if
+     * there are many clients and we want to avoid each of them connecting to each member.
+     * <p>
+     * Default value is {@code true}.
      *
      * @param smartRouting true if smart routing should be enabled.
      * @return configured {@link com.hazelcast.client.config.ClientNetworkConfig} for chaining
@@ -109,9 +130,10 @@ public class ClientNetworkConfig {
 
     /**
      * Period for the next attempt to find a member to connect.
+     * <p>
+     * See {@link ClientNetworkConfig#connectionAttemptLimit}.
      *
      * @return connection attempt period in millis
-     * @see {@link ClientNetworkConfig#connectionAttemptLimit}.
      */
     public int getConnectionAttemptPeriod() {
         return connectionAttemptPeriod;
@@ -132,8 +154,9 @@ public class ClientNetworkConfig {
     }
 
     /**
+     * See {@link com.hazelcast.client.config.ClientNetworkConfig#setConnectionAttemptLimit(int)} for details
+     *
      * @return connection attempt Limit
-     * @see {@link com.hazelcast.client.config.ClientNetworkConfig#setConnectionAttemptLimit(int)} for details
      */
     public int getConnectionAttemptLimit() {
         return connectionAttemptLimit;
@@ -146,6 +169,7 @@ public class ClientNetworkConfig {
      *
      * @param connectionAttemptLimit number of times to attempt to connect
      *                               A zero value means try forever.
+     *                               A negative value means default value
      * @return configured {@link com.hazelcast.client.config.ClientNetworkConfig} for chaining
      */
     public ClientNetworkConfig setConnectionAttemptLimit(int connectionAttemptLimit) {
@@ -185,12 +209,17 @@ public class ClientNetworkConfig {
      * @return configured {@link com.hazelcast.client.config.ClientNetworkConfig} for chaining
      */
     public ClientNetworkConfig addAddress(String... addresses) {
+        isNotNull(addresses, "addresses");
+        for (String address : addresses) {
+            isNotNull(address, "address");
+            checkHasText(address.trim(), "member must contain text");
+        }
         Collections.addAll(addressList, addresses);
         return this;
     }
 
     /**
-     * Adds given addresses to candidate address list that client will use to establish initial connection
+     * Sets given addresses as candidate address list that client will use to establish initial connection
      *
      * @param addresses to be added to initial address list
      * @return configured {@link com.hazelcast.client.config.ClientNetworkConfig} for chaining
@@ -208,15 +237,13 @@ public class ClientNetworkConfig {
      * @return list of addresses
      */
     public List<String> getAddresses() {
-        if (addressList.size() == 0) {
-            addAddress("localhost");
-        }
         return addressList;
     }
 
     /**
+     * See {@link com.hazelcast.client.config.ClientNetworkConfig#setRedoOperation(boolean)} for details
+     *
      * @return true if redo operations are enabled
-     * @see {@link com.hazelcast.client.config.ClientNetworkConfig#setRedoOperation(boolean)} for details
      */
     public boolean isRedoOperation() {
         return redoOperation;
@@ -279,24 +306,203 @@ public class ClientNetworkConfig {
     }
 
     /**
-     * Sets configuration to connect nodes in aws environment.
-     * null value indicates that no AwsConfig should be used.
+     * Sets configuration to connect nodes in AWS environment.
      *
      * @param clientAwsConfig the ClientAwsConfig
      * @see #getAwsConfig()
      */
     public ClientNetworkConfig setAwsConfig(ClientAwsConfig clientAwsConfig) {
-        this.clientAwsConfig = clientAwsConfig;
+        this.awsConfig = clientAwsConfig;
         return this;
     }
 
     /**
-     * Returns the current {@link ClientAwsConfig}. It is possible that null is returned if no SSLConfig has been
+     * Returns the current {@link ClientAwsConfig}.
      *
      * @return ClientAwsConfig
      * @see #setAwsConfig(ClientAwsConfig)
      */
     public ClientAwsConfig getAwsConfig() {
-        return clientAwsConfig;
+        return awsConfig;
+    }
+
+    /**
+     * Sets configuration to connect nodes in GCP environment.
+     *
+     * @param gcpConfig the GcpConfig
+     * @see #getGcpConfig()
+     */
+    public ClientNetworkConfig setGcpConfig(GcpConfig gcpConfig) {
+        this.gcpConfig = gcpConfig;
+        return this;
+    }
+
+    /**
+     * Returns the current {@link GcpConfig}.
+     *
+     * @return GcpConfig
+     * @see #setGcpConfig(GcpConfig)
+     */
+    public GcpConfig getGcpConfig() {
+        return gcpConfig;
+    }
+
+    /**
+     * Sets configuration to connect nodes in Azure environment.
+     *
+     * @param azureConfig the AzureConfig
+     * @see #getAzureConfig()
+     */
+    public ClientNetworkConfig setAzureConfig(AzureConfig azureConfig) {
+        this.azureConfig = azureConfig;
+        return this;
+    }
+
+    /**
+     * Returns the current {@link AzureConfig}.
+     *
+     * @return AzureConfig
+     * @see #setAzureConfig(AzureConfig)
+     */
+    public AzureConfig getAzureConfig() {
+        return azureConfig;
+    }
+
+    /**
+     * Sets configuration to connect nodes in Kubernetes environment.
+     *
+     * @param kubernetesConfig the KubernetesConfig
+     * @see #getKubernetesConfig()
+     */
+    public ClientNetworkConfig setKubernetesConfig(KubernetesConfig kubernetesConfig) {
+        this.kubernetesConfig = kubernetesConfig;
+        return this;
+    }
+
+    /**
+     * Returns the current {@link KubernetesConfig}.
+     *
+     * @return KubernetesConfig
+     * @see #setKubernetesConfig(KubernetesConfig)
+     */
+    public KubernetesConfig getKubernetesConfig() {
+        return kubernetesConfig;
+    }
+
+    /**
+     * Sets configuration to connect nodes in Eureka environment.
+     *
+     * @param eurekaConfig the EurekaConfig
+     * @see #getEurekaConfig()
+     */
+    public ClientNetworkConfig setEurekaConfig(EurekaConfig eurekaConfig) {
+        this.eurekaConfig = eurekaConfig;
+        return this;
+    }
+
+    /**
+     * Returns the current {@link EurekaConfig}.
+     *
+     * @return EurekaConfig
+     * @see #setEurekaConfig(EurekaConfig)
+     */
+    public EurekaConfig getEurekaConfig() {
+        return eurekaConfig;
+    }
+
+    public ClientCloudConfig getCloudConfig() {
+        return cloudConfig;
+    }
+
+    public void setCloudConfig(ClientCloudConfig cloudConfig) {
+        this.cloudConfig = cloudConfig;
+    }
+
+    /**
+     * Returns the outbound port definitions. It is possible that null is returned if not defined.
+     *
+     * @return list of outbound port definitions
+     */
+    public Collection<String> getOutboundPortDefinitions() {
+        return outboundPortDefinitions;
+    }
+
+    /**
+     * Returns the outbound ports. It is possible that null is returned if not defined.
+     *
+     * @return list of outbound ports
+     */
+    public Collection<Integer> getOutboundPorts() {
+        return outboundPorts;
+    }
+
+    /**
+     * Set outbound port definitions
+     *
+     * @param outboundPortDefinitions outbound port definitions
+     * @return ClientNetworkConfig
+     */
+    public ClientNetworkConfig setOutboundPortDefinitions(final Collection<String> outboundPortDefinitions) {
+        this.outboundPortDefinitions = outboundPortDefinitions;
+        return this;
+    }
+
+    /**
+     * Set outbond ports
+     *
+     * @param outboundPorts outbound ports
+     * @return ClientNetworkConfig
+     */
+    public ClientNetworkConfig setOutboundPorts(final Collection<Integer> outboundPorts) {
+        this.outboundPorts = outboundPorts;
+        return this;
+    }
+
+    /**
+     * Add outbound port to the outbound port list
+     *
+     * @param port outbound port
+     * @return ClientNetworkConfig
+     */
+    public ClientNetworkConfig addOutboundPort(int port) {
+        if (outboundPorts == null) {
+            outboundPorts = new HashSet<Integer>();
+        }
+        outboundPorts.add(port);
+        return this;
+    }
+
+    /**
+     * Add outbound port definition to the outbound port definition list
+     *
+     * @param portDef outbound port definition
+     * @return ClientNetworkConfig
+     */
+    public ClientNetworkConfig addOutboundPortDefinition(String portDef) {
+        if (outboundPortDefinitions == null) {
+            outboundPortDefinitions = new HashSet<String>();
+        }
+        outboundPortDefinitions.add(portDef);
+        return this;
+    }
+
+    /**
+     * ICMP ping is used to detect if machine that a remote hazelcast member runs on alive or not
+     *
+     * @return current configuration for client icmp ping, returns the default configuration if not set by user
+     */
+    public ClientIcmpPingConfig getClientIcmpPingConfig() {
+        return clientIcmpPingConfig;
+    }
+
+    /**
+     * ICMP ping is used to detect if machine that a remote hazelcast member runs on alive or not
+     *
+     * @param clientIcmpPingConfig configuration for client icmp ping
+     * @return ClientNetworkConfig for chaining
+     */
+    public ClientNetworkConfig setClientIcmpPingConfig(ClientIcmpPingConfig clientIcmpPingConfig) {
+        this.clientIcmpPingConfig = clientIcmpPingConfig;
+        return this;
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +34,8 @@ public class NodeSubscriberContextSupport implements SubscriberContextSupport {
     }
 
     @Override
-    public Object createRecoveryOperation(String mapName, String cacheName, long sequence, int partitionId) {
-        return new SetReadCursorOperation(mapName, cacheName, sequence, partitionId);
+    public Object createRecoveryOperation(String mapName, String cacheId, long sequence, int partitionId) {
+        return new SetReadCursorOperation(mapName, cacheId, sequence, partitionId);
     }
 
     @Override
@@ -44,7 +44,7 @@ public class NodeSubscriberContextSupport implements SubscriberContextSupport {
     }
 
     @Override
-    public Object createDestroyQueryCacheOperation(String mapName, String cacheName) {
-        return new DestroyQueryCacheOperation(mapName, cacheName);
+    public Object createDestroyQueryCacheOperation(String mapName, String cacheId) {
+        return new DestroyQueryCacheOperation(mapName, cacheId);
     }
 }

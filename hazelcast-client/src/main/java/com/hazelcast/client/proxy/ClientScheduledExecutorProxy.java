@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,23 @@
 
 package com.hazelcast.client.proxy;
 
-import com.hazelcast.client.impl.ClientMessageDecoder;
+import com.hazelcast.client.impl.clientside.ClientMessageDecoder;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ScheduledExecutorGetAllScheduledFuturesCodec;
 import com.hazelcast.client.impl.protocol.codec.ScheduledExecutorShutdownCodec;
 import com.hazelcast.client.impl.protocol.codec.ScheduledExecutorSubmitToAddressCodec;
 import com.hazelcast.client.impl.protocol.codec.ScheduledExecutorSubmitToPartitionCodec;
+import com.hazelcast.client.spi.ClientContext;
 import com.hazelcast.client.spi.impl.ClientInvocation;
 import com.hazelcast.client.spi.impl.ClientInvocationFuture;
 import com.hazelcast.client.util.ClientDelegatingFuture;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.PartitionAware;
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.quorum.QuorumException;
 import com.hazelcast.scheduledexecutor.IScheduledExecutorService;
 import com.hazelcast.scheduledexecutor.IScheduledFuture;
 import com.hazelcast.scheduledexecutor.NamedTask;
@@ -36,7 +40,6 @@ import com.hazelcast.scheduledexecutor.ScheduledTaskHandler;
 import com.hazelcast.scheduledexecutor.impl.ScheduledRunnableAdapter;
 import com.hazelcast.scheduledexecutor.impl.ScheduledTaskHandlerImpl;
 import com.hazelcast.scheduledexecutor.impl.TaskDefinition;
-import com.hazelcast.spi.serialization.SerializationService;
 import com.hazelcast.util.FutureUtil;
 import com.hazelcast.util.UuidUtil;
 
@@ -53,7 +56,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import static com.hazelcast.util.ExceptionUtil.rethrow;
-import static com.hazelcast.util.FutureUtil.logAllExceptions;
+import static com.hazelcast.util.ExceptionUtil.sneakyThrow;
 import static com.hazelcast.util.FutureUtil.waitWithDeadline;
 import static com.hazelcast.util.Preconditions.checkNotNull;
 
@@ -67,8 +70,7 @@ public class ClientScheduledExecutorProxy
 
     private static final int SHUTDOWN_TIMEOUT = 10;
 
-    private static final FutureUtil.ExceptionHandler WHILE_SHUTDOWN_EXCEPTION_HANDLER =
-            logAllExceptions("Exception while ScheduledExecutor Service shutdown", Level.FINEST);
+    private static final ILogger LOGGER = Logger.getLogger(ClientScheduledExecutorProxy.class);
 
     private static final ClientMessageDecoder SUBMIT_DECODER = new ClientMessageDecoder() {
         @Override
@@ -77,8 +79,25 @@ public class ClientScheduledExecutorProxy
         }
     };
 
-    public ClientScheduledExecutorProxy(String serviceName, String objectId) {
-        super(serviceName, objectId);
+    private final FutureUtil.ExceptionHandler shutdownExceptionHandler = new FutureUtil.ExceptionHandler() {
+        @Override
+        public void handleException(Throwable throwable) {
+            if (throwable != null) {
+                if (throwable instanceof QuorumException) {
+                    sneakyThrow(throwable);
+                }
+                if (throwable.getCause() instanceof QuorumException) {
+                    sneakyThrow(throwable.getCause());
+                }
+            }
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                LOGGER.log(Level.FINEST, "Exception while ExecutorService shutdown", throwable);
+            }
+        }
+    };
+
+    public ClientScheduledExecutorProxy(String serviceName, String objectId, ClientContext context) {
+        super(serviceName, objectId, context);
     }
 
     @Override
@@ -245,7 +264,7 @@ public class ClientScheduledExecutorProxy
     @Override
     public <V> Map<Member, List<IScheduledFuture<V>>> getAllScheduledFutures() {
         ClientMessage request = ScheduledExecutorGetAllScheduledFuturesCodec.encodeRequest(getName());
-        final ClientInvocationFuture future = new ClientInvocation(getClient(), request).invoke();
+        ClientInvocationFuture future = new ClientInvocation(getClient(), request, getName()).invoke();
         ClientMessage response;
         try {
             response = future.get();
@@ -280,7 +299,7 @@ public class ClientScheduledExecutorProxy
             calls.add(doSubmitOnAddress(request, SUBMIT_DECODER, member.getAddress()));
         }
 
-        waitWithDeadline(calls, SHUTDOWN_TIMEOUT, TimeUnit.SECONDS, WHILE_SHUTDOWN_EXCEPTION_HANDLER);
+        waitWithDeadline(calls, SHUTDOWN_TIMEOUT, TimeUnit.SECONDS, shutdownExceptionHandler);
     }
 
     private <T> ScheduledRunnableAdapter<T> createScheduledRunnableAdapter(Runnable command) {
@@ -344,7 +363,7 @@ public class ClientScheduledExecutorProxy
                 unit.toMillis(definition.getInitialDelay()),
                 unit.toMillis(definition.getPeriod()));
         try {
-            new ClientInvocation(getClient(), request, partitionId).invoke().get();
+            new ClientInvocation(getClient(), request, getName(), partitionId).invoke().get();
         } catch (Exception e) {
             throw rethrow(e);
         }
@@ -360,7 +379,7 @@ public class ClientScheduledExecutorProxy
                 unit.toMillis(definition.getInitialDelay()),
                 unit.toMillis(definition.getPeriod()));
         try {
-            new ClientInvocation(getClient(), request, member.getAddress()).invoke().get();
+            new ClientInvocation(getClient(), request, getName(), member.getAddress()).invoke().get();
         } catch (Exception e) {
             throw rethrow(e);
         }
@@ -368,18 +387,12 @@ public class ClientScheduledExecutorProxy
     }
 
     private <T> ClientDelegatingFuture<T> doSubmitOnAddress(ClientMessage clientMessage,
-                                                            ClientMessageDecoder clientMessageDecoder,
-                                                            Address address) {
-        SerializationService serializationService = getContext().getSerializationService();
-
+                                                            ClientMessageDecoder clientMessageDecoder, Address address) {
         try {
-            final ClientInvocationFuture future = new ClientInvocation(getClient(), clientMessage,
-                    address).invoke();
-
-            return new ClientDelegatingFuture<T>(future, serializationService, clientMessageDecoder);
+            ClientInvocationFuture future = new ClientInvocation(getClient(), clientMessage, getName(), address).invoke();
+            return new ClientDelegatingFuture<T>(future, getSerializationService(), clientMessageDecoder);
         } catch (Exception e) {
             throw rethrow(e);
         }
     }
-
 }

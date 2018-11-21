@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ public class HazelcastOSGiIntegrationTest {
 
     private static final String MAVEN_REPOSITORIES_PROP = ServiceConstants.PID + MavenConstants.PROPERTY_REPOSITORIES;
     private static final String MAVEN_REPOSITORIES = "https://osgi.sonatype.org/content/groups/pax-runner@id=paxrunner,"
-                                                   + "https://repo1.maven.org/maven2@id=central";
+            + "https://repo1.maven.org/maven2@id=central";
     private String oldMavenRepoProperty;
 
     @Configuration
@@ -61,6 +61,8 @@ public class HazelcastOSGiIntegrationTest {
         System.setProperty(MAVEN_REPOSITORIES_PROP, MAVEN_REPOSITORIES);
 
         String url = "reference:file:" + PathUtils.getBaseDir() + "/target/classes";
+        // modify url for Windows environment
+        url = url.replace("\\", "/");
         UrlProvisionOption hzBundle = bundle(url);
         CompositeOption junitBundles = junitBundles();
         return options(hzBundle, junitBundles);
@@ -81,11 +83,13 @@ public class HazelcastOSGiIntegrationTest {
         }
     }
 
+    /**
+     * Is this test failing in your IDE?
+     * Some versions of Intellij IDEA use a wrong working directory in multi-module Maven projects.
+     * See this for a fix: https://youtrack.jetbrains.com/issue/IDEA-60965
+     */
     @Test
     public void serviceRetrievedSuccessfully() {
-        // Is this test failing in your IDE?
-        // Some versions of Intellij IDEA use a wrong working directory in multi-module
-        // Maven projects. See this for a fix: https://youtrack.jetbrains.com/issue/IDEA-60965
         HazelcastOSGiService service = getService();
         assertNotNull(service);
     }

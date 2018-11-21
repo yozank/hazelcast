@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,9 +29,10 @@ import org.junit.Before;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
 @RunWith(Parameterized.class)
-@Parameterized.UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
+@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class DummyClientMapPartitionIteratorTest extends AbstractMapPartitionIteratorTest {
 
@@ -46,14 +47,15 @@ public class DummyClientMapPartitionIteratorTest extends AbstractMapPartitionIte
         client = factory.newHazelcastClient(getClientConfig(server));
     }
 
-    private static ClientConfig getClientConfig(HazelcastInstance instance) {
+    private ClientConfig getClientConfig(HazelcastInstance instance) {
         Address address = instance.getCluster().getLocalMember().getAddress();
         String addressString = address.getHost() + ":" + address.getPort();
-        ClientConfig clientConfig = new ClientConfig();
-        ClientNetworkConfig networkConfig = new ClientNetworkConfig();
-        networkConfig.setSmartRouting(false);
-        networkConfig.addAddress(addressString);
-        clientConfig.setNetworkConfig(networkConfig);
-        return clientConfig;
+
+        ClientNetworkConfig networkConfig = new ClientNetworkConfig()
+                .setSmartRouting(false)
+                .addAddress(addressString);
+
+        return getClientConfig()
+                .setNetworkConfig(networkConfig);
     }
 }

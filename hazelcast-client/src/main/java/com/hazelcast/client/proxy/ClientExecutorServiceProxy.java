@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,13 @@
 
 package com.hazelcast.client.proxy;
 
-import com.hazelcast.client.impl.ClientMessageDecoder;
+import com.hazelcast.client.impl.clientside.ClientMessageDecoder;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceIsShutdownCodec;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceShutdownCodec;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceSubmitToAddressCodec;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceSubmitToPartitionCodec;
+import com.hazelcast.client.spi.ClientContext;
 import com.hazelcast.client.spi.ClientPartitionService;
 import com.hazelcast.client.spi.ClientProxy;
 import com.hazelcast.client.spi.impl.ClientInvocation;
@@ -40,7 +41,6 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.serialization.SerializationService;
 import com.hazelcast.util.Clock;
-import com.hazelcast.util.ExceptionUtil;
 import com.hazelcast.util.UuidUtil;
 import com.hazelcast.util.executor.CompletedFuture;
 
@@ -60,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.hazelcast.util.ExceptionUtil.rethrow;
 import static com.hazelcast.util.Preconditions.checkNotNull;
 
 /**
@@ -87,8 +88,8 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
     private final AtomicInteger consecutiveSubmits = new AtomicInteger();
     private volatile long lastSubmitTime;
 
-    public ClientExecutorServiceProxy(String serviceName, String objectId) {
-        super(serviceName, objectId);
+    public ClientExecutorServiceProxy(String serviceName, String objectId, ClientContext context) {
+        super(serviceName, objectId, context);
     }
 
     // execute on members
@@ -338,7 +339,7 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
 
     @Override
     public LocalExecutorStats getLocalExecutorStats() {
-        throw new UnsupportedOperationException("Locality is ambiguous for client!!!");
+        throw new UnsupportedOperationException("Locality is ambiguous for client!");
     }
 
     @Override
@@ -382,7 +383,7 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         Executor userExecutor = getContext().getExecutionService().getUserExecutor();
         for (Future<T> future : futures) {
             Object value = retrieveResult(future);
-            result.add(new CompletedFuture<T>(getContext().getSerializationService(), value, userExecutor));
+            result.add(new CompletedFuture<T>(getSerializationService(), value, userExecutor));
         }
         return result;
     }
@@ -435,12 +436,10 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
 
         String uuid = getUUID();
         int partitionId = getPartitionId(key);
-        ClientMessage request =
-                ExecutorServiceSubmitToPartitionCodec.encodeRequest(name, uuid, toData(task), partitionId);
+        ClientMessage request = ExecutorServiceSubmitToPartitionCodec.encodeRequest(name, uuid, toData(task), partitionId);
         ClientInvocationFuture f = invokeOnPartitionOwner(request, partitionId);
-        SerializationService serializationService = getContext().getSerializationService();
 
-        ClientDelegatingFuture<T> delegatingFuture = new ClientDelegatingFuture<T>(f, serializationService,
+        ClientDelegatingFuture<T> delegatingFuture = new ClientDelegatingFuture<T>(f, getSerializationService(),
                 SUBMIT_TO_PARTITION_DECODER);
         delegatingFuture.andThen(callback);
     }
@@ -464,10 +463,8 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         ClientMessage request =
                 ExecutorServiceSubmitToPartitionCodec.encodeRequest(name, uuid, toData(task), partitionId);
         ClientInvocationFuture f = invokeOnPartitionOwner(request, partitionId);
-        SerializationService serializationService = getContext().getSerializationService();
-        ClientDelegatingFuture<T> delegatingFuture =
-                new ClientDelegatingFuture<T>(f, serializationService,
-                        SUBMIT_TO_PARTITION_DECODER);
+        ClientDelegatingFuture<T> delegatingFuture = new ClientDelegatingFuture<T>(f, getSerializationService(),
+                SUBMIT_TO_PARTITION_DECODER);
         delegatingFuture.andThen(callback);
     }
 
@@ -487,9 +484,8 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         String uuid = getUUID();
         ClientMessage request = ExecutorServiceSubmitToAddressCodec.encodeRequest(name, uuid, toData(task), address);
         ClientInvocationFuture f = invokeOnTarget(request, address);
-        SerializationService serializationService = getContext().getSerializationService();
-        ClientDelegatingFuture<T> delegatingFuture =
-                new ClientDelegatingFuture<T>(f, serializationService, SUBMIT_TO_ADDRESS_DECODER);
+        ClientDelegatingFuture<T> delegatingFuture = new ClientDelegatingFuture<T>(f, getSerializationService(),
+                SUBMIT_TO_ADDRESS_DECODER);
         delegatingFuture.andThen(callback);
     }
 
@@ -504,10 +500,10 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         if (sync) {
             Object response = retrieveResultFromMessage(f);
             Executor userExecutor = getContext().getExecutionService().getUserExecutor();
-            return new CompletedFuture<T>(getContext().getSerializationService(), response, userExecutor);
+            return new CompletedFuture<T>(getSerializationService(), response, userExecutor);
         } else {
             return new IExecutorDelegatingFuture<T>(f, getContext(), uuid, defaultValue,
-                    SUBMIT_TO_ADDRESS_DECODER, address);
+                    SUBMIT_TO_ADDRESS_DECODER, name, address);
         }
     }
 
@@ -517,10 +513,10 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         if (sync) {
             Object response = retrieveResultFromMessage(f);
             Executor userExecutor = getContext().getExecutionService().getUserExecutor();
-            return new CompletedFuture<T>(getContext().getSerializationService(), response, userExecutor);
+            return new CompletedFuture<T>(getSerializationService(), response, userExecutor);
         } else {
             return new IExecutorDelegatingFuture<T>(f, getContext(), uuid, defaultValue,
-                    SUBMIT_TO_PARTITION_DECODER, partitionId);
+                    SUBMIT_TO_PARTITION_DECODER, name, partitionId);
         }
     }
 
@@ -597,6 +593,7 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
 
         @Override
         public void onFailure(Throwable t) {
+            multiExecutionCallbackWrapper.onResponse(member, t);
         }
     }
 
@@ -631,19 +628,19 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
 
     private ClientInvocationFuture invokeOnPartitionOwner(ClientMessage request, int partitionId) {
         try {
-            ClientInvocation clientInvocation = new ClientInvocation(getClient(), request, partitionId);
+            ClientInvocation clientInvocation = new ClientInvocation(getClient(), request, getName(), partitionId);
             return clientInvocation.invoke();
         } catch (Exception e) {
-            throw ExceptionUtil.rethrow(e);
+            throw rethrow(e);
         }
     }
 
     private ClientInvocationFuture invokeOnTarget(ClientMessage request, Address target) {
         try {
-            ClientInvocation invocation = new ClientInvocation(getClient(), request, target);
+            ClientInvocation invocation = new ClientInvocation(getClient(), request, getName(), target);
             return invocation.invoke();
         } catch (Exception e) {
-            throw ExceptionUtil.rethrow(e);
+            throw rethrow(e);
         }
     }
 
@@ -654,7 +651,7 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
     private Address getMemberAddress(Member member) {
         Member m = getContext().getClusterService().getMember(member.getUuid());
         if (m == null) {
-            throw new HazelcastException(member + " is not available!!!");
+            throw new HazelcastException(member + " is not available!");
         }
         return m.getAddress();
     }
@@ -668,5 +665,4 @@ public class ClientExecutorServiceProxy extends ClientProxy implements IExecutor
         ClientPartitionService partitionService = getContext().getPartitionService();
         return random.nextInt(partitionService.getPartitionCount());
     }
-
 }

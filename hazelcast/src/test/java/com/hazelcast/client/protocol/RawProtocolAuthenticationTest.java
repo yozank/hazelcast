@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.protocol;
 
-import com.hazelcast.client.ClientTypes;
+import com.hazelcast.client.impl.ClientTypes;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ClientAuthenticationCodec;
 import com.hazelcast.client.impl.protocol.util.ClientProtocolBuffer;
@@ -130,7 +130,7 @@ public class RawProtocolAuthenticationTest {
         final ByteBuffer initData = ByteBuffer.wrap("CB2".getBytes());
         channel.write(initData);
 
-        String username = GroupConfig.DEFAULT_GROUP_NAME;
+        String username = "TheInvalidName";
         String pass = "TheInvalidPassword";
 
         final ClientMessage authMessage = ClientAuthenticationCodec

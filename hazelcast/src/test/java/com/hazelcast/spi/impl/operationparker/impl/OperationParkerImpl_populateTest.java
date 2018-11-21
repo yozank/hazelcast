@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ public class OperationParkerImpl_populateTest extends HazelcastTestSupport {
         operationParker.populate(callsPerMember);
 
         assertEquals(singleton(thatAddress), callsPerMember.addresses());
-        assertArrayEquals(new long[]{100},  callsPerMember.toOpControl(thatAddress).runningOperations());
+        assertArrayEquals(new long[]{100}, callsPerMember.toOpControl(thatAddress).runningOperations());
     }
 
     private static class WaitNotifyKeyImpl implements WaitNotifyKey {

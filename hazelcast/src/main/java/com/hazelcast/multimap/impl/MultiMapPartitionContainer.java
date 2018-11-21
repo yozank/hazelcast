@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,21 +17,25 @@
 package com.hazelcast.multimap.impl;
 
 import com.hazelcast.concurrent.lock.LockService;
-import com.hazelcast.spi.DefaultObjectNamespace;
+import com.hazelcast.config.MultiMapConfig;
+import com.hazelcast.spi.DistributedObjectNamespace;
 import com.hazelcast.spi.NodeEngine;
+import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.util.ConcurrencyUtil;
 import com.hazelcast.util.ConstructorFunction;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.concurrent.ConcurrentMap;
+
+import static com.hazelcast.util.MapUtil.createConcurrentHashMap;
 
 public class MultiMapPartitionContainer {
 
-    final int partitionId;
+    final ConcurrentMap<String, MultiMapContainer> containerMap = createConcurrentHashMap(1000);
 
     final MultiMapService service;
-
-    final ConcurrentMap<String, MultiMapContainer> containerMap = new ConcurrentHashMap<String, MultiMapContainer>(1000);
+    final int partitionId;
 
     private final ConstructorFunction<String, MultiMapContainer> containerConstructor
             = new ConstructorFunction<String, MultiMapContainer>() {
@@ -40,18 +44,24 @@ public class MultiMapPartitionContainer {
         }
     };
 
-    public MultiMapPartitionContainer(MultiMapService service, int partitionId) {
+    MultiMapPartitionContainer(MultiMapService service, int partitionId) {
         this.service = service;
         this.partitionId = partitionId;
     }
 
     public MultiMapContainer getOrCreateMultiMapContainer(String name) {
+        return getOrCreateMultiMapContainer(name, true);
+    }
+
+    public MultiMapContainer getOrCreateMultiMapContainer(String name, boolean isAccess) {
         MultiMapContainer container = ConcurrencyUtil.getOrPutIfAbsent(containerMap, name, containerConstructor);
-        container.access();
+        if (isAccess) {
+            container.access();
+        }
         return container;
     }
 
-    public MultiMapContainer getCollectionContainer(String name) {
+    public MultiMapContainer getMultiMapContainer(String name) {
         MultiMapContainer container = containerMap.get(name);
         if (container != null) {
             container.access();
@@ -59,13 +69,20 @@ public class MultiMapPartitionContainer {
         return container;
     }
 
-    // need for testing..
-    public boolean containsCollection(String name) {
-        return containerMap.containsKey(name);
+    public Collection<ServiceNamespace> getAllNamespaces(int replicaIndex) {
+        Collection<ServiceNamespace> namespaces = new HashSet<ServiceNamespace>();
+        for (MultiMapContainer container : containerMap.values()) {
+            MultiMapConfig config = container.getConfig();
+            if (config.getTotalBackupCount() < replicaIndex) {
+                continue;
+            }
+            namespaces.add(container.getObjectNamespace());
+        }
+        return namespaces;
     }
 
-    void destroyCollection(String name) {
-        final MultiMapContainer container = containerMap.remove(name);
+    void destroyMultiMap(String name) {
+        MultiMapContainer container = containerMap.remove(name);
         if (container != null) {
             container.destroy();
         } else {
@@ -81,7 +98,7 @@ public class MultiMapPartitionContainer {
         NodeEngine nodeEngine = service.getNodeEngine();
         LockService lockService = nodeEngine.getSharedService(LockService.SERVICE_NAME);
         if (lockService != null) {
-            DefaultObjectNamespace namespace = new DefaultObjectNamespace(MultiMapService.SERVICE_NAME, name);
+            DistributedObjectNamespace namespace = new DistributedObjectNamespace(MultiMapService.SERVICE_NAME, name);
             lockService.clearLockStore(partitionId, namespace);
         }
     }
@@ -92,5 +109,4 @@ public class MultiMapPartitionContainer {
         }
         containerMap.clear();
     }
-
 }

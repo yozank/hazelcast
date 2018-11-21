@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,9 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+/**
+ * Invokes all {@link JVMUtil} method to ensure no exception is thrown.
+ */
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class JVMUtilTest extends HazelcastTestSupport {
@@ -33,7 +36,11 @@ public class JVMUtilTest extends HazelcastTestSupport {
         assertUtilityConstructor(JVMUtil.class);
     }
 
-    // just invoke each JVMUtil static method to ensure no exception is thrown
+    @Test
+    public void testIs32bitJVM() {
+        JVMUtil.is32bitJVM();
+    }
+
     @Test
     public void testIsCompressedOops() {
         JVMUtil.isCompressedOops();
@@ -47,11 +54,6 @@ public class JVMUtilTest extends HazelcastTestSupport {
     @Test
     public void testIsObjectLayoutCompressedOopsOrNull() {
         JVMUtil.isObjectLayoutCompressedOopsOrNull();
-    }
-
-    @Test
-    public void testIs32bitJVM() {
-        JVMUtil.is32bitJVM();
     }
 
     // Prints the size of object reference as calculated by JVMUtil.

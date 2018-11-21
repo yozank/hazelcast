@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,8 +79,8 @@ public class MulticastDiscoveryStrategy extends AbstractDiscoveryStrategy {
             multicastSocket.joinGroup(InetAddress.getByName(group));
             multicastDiscoverySender = new MulticastDiscoverySender(discoveryNode, multicastSocket, logger, group, port);
             multicastDiscoveryReceiver = new MulticastDiscoveryReceiver(multicastSocket, logger);
-            if (discoveryNode != null) {
-                isClient = false;
+            if (discoveryNode == null) {
+                isClient = true;
             }
         } catch (Exception e) {
             logger.finest(e.getMessage());
@@ -118,7 +118,9 @@ public class MulticastDiscoveryStrategy extends AbstractDiscoveryStrategy {
     @Override
     public void destroy() {
         multicastDiscoverySender.stop();
-        thread.interrupt();
+        if (thread != null) {
+            thread.interrupt();
+        }
     }
 
     @Override

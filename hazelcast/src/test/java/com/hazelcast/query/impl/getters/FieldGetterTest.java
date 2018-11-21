@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -92,12 +91,12 @@ public class FieldGetterTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void constructor_whenModifierIsStarAndFieldTypeIsCollection_thenThrowIllegalArgumentException() throws Exception {
+    public void constructor_whenModifierIsStarAndFieldTypeIsCollection_thenThrowIllegalArgumentException() {
         new FieldGetter(null, limbCollectionField, "[any]", null);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void constructor_whenModifierIsPositionAndFieldTypeIsCollection_thenThrowIllegalArgumentException() throws Exception {
+    public void constructor_whenModifierIsPositionAndFieldTypeIsCollection_thenThrowIllegalArgumentException() {
         new FieldGetter(null, limbCollectionField, "[0]", null);
     }
 
@@ -392,10 +391,11 @@ public class FieldGetterTest {
         }
     }
 
-    static class Body {
+    static final class Body {
+
         String name;
-        Limb[] limbArray = new Limb[0];
-        Collection<Limb> limbCollection = new ArrayList<Limb>();
+        Limb[] limbArray;
+        Collection<Limb> limbCollection;
 
         Body(String name, Limb... limbs) {
             this.name = name;
@@ -404,10 +404,11 @@ public class FieldGetterTest {
         }
     }
 
-    static class Limb {
+    static final class Limb {
+
         String name;
-        Nail[] nailArray = new Nail[0];
-        Collection<Nail> nailCollection = new ArrayList<Nail>();
+        Nail[] nailArray;
+        Collection<Nail> nailCollection;
 
         Limb(String name, Nail... nails) {
             this.name = name;
@@ -416,7 +417,8 @@ public class FieldGetterTest {
         }
     }
 
-    static class Nail {
+    static final class Nail {
+
         String colour;
 
         private Nail(String colour) {
@@ -424,7 +426,8 @@ public class FieldGetterTest {
         }
     }
 
-    static class PrimitiveBloke {
+    static final class PrimitiveBloke {
+
         public byte[] bytes = new byte[]{1};
         public short[] shorts = new short[]{1};
         public int[] ints = new int[]{1};
@@ -433,6 +436,5 @@ public class FieldGetterTest {
         public double[] doubles = new double[]{1.0d};
         public char[] chars = new char[]{0};
         public boolean[] booleans = new boolean[]{false};
-
     }
 }

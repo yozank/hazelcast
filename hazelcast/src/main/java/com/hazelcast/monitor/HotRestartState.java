@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,9 @@ package com.hazelcast.monitor;
 import com.hazelcast.hotrestart.BackupTaskStatus;
 import com.hazelcast.internal.management.JsonSerializable;
 
+/**
+ * Hot Restart statistics to be used by {@link MemberState} implementations.
+ */
 public interface HotRestartState extends JsonSerializable {
 
     /**
@@ -27,4 +30,6 @@ public interface HotRestartState extends JsonSerializable {
     BackupTaskStatus getBackupTaskStatus();
 
     boolean isHotBackupEnabled();
+
+    String getBackupDirectory();
 }

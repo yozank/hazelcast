@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.hazelcast.map.impl.record.AbstractRecord;
 import com.hazelcast.map.impl.record.DataRecordFactory;
 import com.hazelcast.map.impl.record.Record;
 import com.hazelcast.map.impl.record.Records;
+import com.hazelcast.monitor.impl.PerIndexStats;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.Data;
@@ -39,13 +40,19 @@ import com.hazelcast.query.impl.getters.Extractors;
 import com.hazelcast.query.impl.getters.ReflectionHelper;
 import com.hazelcast.query.impl.predicates.AndPredicate;
 import com.hazelcast.query.impl.predicates.EqualPredicate;
-import com.hazelcast.test.HazelcastSerialClassRunner;
+import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameter;
+import org.junit.runners.Parameterized.Parameters;
+import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,9 +65,22 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
-@RunWith(HazelcastSerialClassRunner.class)
+@RunWith(Parameterized.class)
+@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
 @Category(QuickTest.class)
 public class IndexTest {
+
+    @Parameter(0)
+    public IndexCopyBehavior copyBehavior;
+
+    @Parameters(name = "copyBehavior: {0}")
+    public static Collection<Object[]> parameters() {
+        return Arrays.asList(new Object[][]{
+                {IndexCopyBehavior.COPY_ON_READ},
+                {IndexCopyBehavior.COPY_ON_WRITE},
+                {IndexCopyBehavior.NEVER},
+        });
+    }
 
     static final short FACTORY_ID = 1;
 
@@ -83,28 +103,28 @@ public class IndexTest {
 
     @Test
     public void testRemoveEnumIndex() {
-        Indexes is = new Indexes(ss, Extractors.empty());
+        Indexes is = Indexes.newBuilder(ss, copyBehavior).build();
         is.addOrGetIndex("favoriteCity", false);
         Data key = ss.toData(1);
         Data value = ss.toData(new SerializableWithEnum(SerializableWithEnum.City.ISTANBUL));
-        is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+        is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         assertNotNull(is.getIndex("favoriteCity"));
         Record record = recordFactory.newRecord(value);
         ((AbstractRecord) record).setKey(key);
-        is.removeEntryIndex(key, Records.getValueOrCachedValue(record, ss));
+        is.removeEntryIndex(key, Records.getValueOrCachedValue(record, ss), Index.OperationSource.USER);
         assertEquals(0, is.getIndex("favoriteCity").getRecords(SerializableWithEnum.City.ISTANBUL).size());
     }
 
     @Test
     public void testUpdateEnumIndex() {
-        Indexes is = new Indexes(ss, Extractors.empty());
+        Indexes is = Indexes.newBuilder(ss, copyBehavior).build();
         is.addOrGetIndex("favoriteCity", false);
         Data key = ss.toData(1);
         Data value = ss.toData(new SerializableWithEnum(SerializableWithEnum.City.ISTANBUL));
-        is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+        is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
 
         Data newValue = ss.toData(new SerializableWithEnum(SerializableWithEnum.City.KRAKOW));
-        is.saveEntryIndex(new QueryEntry(ss, key, newValue, Extractors.empty()), value);
+        is.saveEntryIndex(new QueryEntry(ss, key, newValue, Extractors.empty()), value, Index.OperationSource.USER);
 
         assertEquals(0, is.getIndex("favoriteCity").getRecords(SerializableWithEnum.City.ISTANBUL).size());
         assertEquals(1, is.getIndex("favoriteCity").getRecords(SerializableWithEnum.City.KRAKOW).size());
@@ -112,14 +132,14 @@ public class IndexTest {
 
     @Test
     public void testIndex() throws QueryException {
-        Indexes is = new Indexes(ss, Extractors.empty());
+        Indexes is = Indexes.newBuilder(ss, copyBehavior).build();
         Index dIndex = is.addOrGetIndex("d", false);
         Index boolIndex = is.addOrGetIndex("bool", false);
         Index strIndex = is.addOrGetIndex("str", false);
         for (int i = 0; i < 1000; i++) {
             Data key = ss.toData(i);
             Data value = ss.toData(new MainPortable(i % 2 == 0, -10.34d, "joe" + i));
-            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         }
         assertEquals(1000, dIndex.getRecords(-10.34d).size());
         assertEquals(1, strIndex.getRecords("joe23").size());
@@ -130,7 +150,7 @@ public class IndexTest {
         for (int i = 0; i < 1000; i++) {
             Data key = ss.toData(i);
             Data value = ss.toData(new MainPortable(false, 11.34d, "joe"));
-            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         }
 
         assertEquals(0, dIndex.getRecords(-10.34d).size());
@@ -144,7 +164,7 @@ public class IndexTest {
         for (int i = 0; i < 1000; i++) {
             Data key = ss.toData(i);
             Data value = ss.toData(new MainPortable(false, -1 * (i + 1), "joe" + i));
-            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         }
         assertEquals(0, dIndex.getSubRecordsBetween(1d, 1001d).size());
         assertEquals(1000, dIndex.getSubRecordsBetween(-1d, -1001d).size());
@@ -153,7 +173,7 @@ public class IndexTest {
         for (int i = 0; i < 1000; i++) {
             Data key = ss.toData(i);
             Data value = ss.toData(new MainPortable(false, 1 * (i + 1), "joe" + i));
-            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         }
         assertEquals(1000, dIndex.getSubRecordsBetween(1d, 1001d).size());
         assertEquals(0, dIndex.getSubRecordsBetween(-1d, -1001d).size());
@@ -174,22 +194,22 @@ public class IndexTest {
 
     @Test
     public void testIndexWithNull() throws QueryException {
-        Indexes is = new Indexes(ss, Extractors.empty());
+        Indexes is = Indexes.newBuilder(ss, copyBehavior).build();
         Index strIndex = is.addOrGetIndex("str", true);
 
         Data value = ss.toData(new MainPortable(false, 1, null));
         Data key1 = ss.toData(0);
-        is.saveEntryIndex(new QueryEntry(ss, key1, value, Extractors.empty()), null);
+        is.saveEntryIndex(new QueryEntry(ss, key1, value, Extractors.empty()), null, Index.OperationSource.USER);
 
         value = ss.toData(new MainPortable(false, 2, null));
         Data key2 = ss.toData(1);
-        is.saveEntryIndex(new QueryEntry(ss, key2, value, Extractors.empty()), null);
+        is.saveEntryIndex(new QueryEntry(ss, key2, value, Extractors.empty()), null, Index.OperationSource.USER);
 
 
         for (int i = 2; i < 1000; i++) {
             Data key = ss.toData(i);
             value = ss.toData(new MainPortable(false, 1 * (i + 1), "joe" + i));
-            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null);
+            is.saveEntryIndex(new QueryEntry(ss, key, value, Extractors.empty()), null, Index.OperationSource.USER);
         }
 
         assertEquals(2, strIndex.getRecords((Comparable) null).size());
@@ -202,8 +222,9 @@ public class IndexTest {
             switch (classId) {
                 case MainPortable.CLASS_ID:
                     return new MainPortable();
+                default:
+                    return null;
             }
-            return null;
         }
 
         public int getFactoryId() {
@@ -211,7 +232,7 @@ public class IndexTest {
         }
     }
 
-    private static class SerializableWithEnum implements DataSerializable {
+    private static final class SerializableWithEnum implements DataSerializable {
 
         enum City {
             ISTANBUL,
@@ -240,7 +261,7 @@ public class IndexTest {
         }
     }
 
-    private static class MainPortable implements Portable {
+    private static final class MainPortable implements Portable {
 
         public static final int CLASS_ID = 1;
 
@@ -336,10 +357,7 @@ public class IndexTest {
             if (s != that.s) {
                 return false;
             }
-            if (str != null ? !str.equals(that.str) : that.str != null) {
-                return false;
-            }
-            return true;
+            return str != null ? str.equals(that.str) : that.str == null;
         }
 
         @Override
@@ -361,17 +379,17 @@ public class IndexTest {
 
         @Override
         public String toString() {
-            return "MainPortable{" +
-                    "b=" + b +
-                    ", bool=" + bool +
-                    ", c=" + c +
-                    ", s=" + s +
-                    ", i=" + i +
-                    ", l=" + l +
-                    ", f=" + f +
-                    ", d=" + d +
-                    ", str='" + str + '\'' +
-                    '}';
+            return "MainPortable{"
+                    + "b=" + b
+                    + ", bool=" + bool
+                    + ", c=" + c
+                    + ", s=" + s
+                    + ", i=" + i
+                    + ", l=" + l
+                    + ", f=" + f
+                    + ", d=" + d
+                    + ", str='" + str + '\''
+                    + '}';
         }
 
         public int getFactoryId() {
@@ -448,20 +466,21 @@ public class IndexTest {
     }
 
     private void testIt(boolean ordered) {
-        IndexImpl index = new IndexImpl(QueryConstants.THIS_ATTRIBUTE_NAME.value(), ordered, ss, Extractors.empty());
+        IndexImpl index = new IndexImpl(QueryConstants.THIS_ATTRIBUTE_NAME.value(), ordered, ss, Extractors.empty(),
+                copyBehavior, PerIndexStats.EMPTY);
         assertEquals(0, index.getRecords(0L).size());
         assertEquals(0, index.getSubRecordsBetween(0L, 1000L).size());
         QueryRecord record5 = newRecord(5L, 55L);
-        index.saveEntryIndex(record5, null);
+        index.saveEntryIndex(record5, null, Index.OperationSource.USER);
         assertEquals(Collections.<QueryableEntry>singleton(record5), index.getRecords(55L));
 
         QueryRecord record6 = newRecord(6L, 66L);
-        index.saveEntryIndex(record6, null);
+        index.saveEntryIndex(record6, null, Index.OperationSource.USER);
 
         assertEquals(Collections.<QueryableEntry>singleton(record6), index.getRecords(66L));
 
         QueryRecord newRecord5 = newRecord(5L, 555L);
-        index.saveEntryIndex(newRecord5, record5.getValue());
+        index.saveEntryIndex(newRecord5, record5.getValue(), Index.OperationSource.USER);
         record5 = newRecord5;
 
         assertEquals(0, index.getRecords(55L).size());
@@ -472,7 +491,7 @@ public class IndexTest {
         assertEquals(2, index.getSubRecordsBetween(66L, 555L).size());
         assertEquals(1, index.getSubRecordsBetween(555L, 555L).size());
         QueryRecord record50 = newRecord(50L, 555L);
-        index.saveEntryIndex(record50, null);
+        index.saveEntryIndex(record50, null, Index.OperationSource.USER);
         assertEquals(new HashSet<QueryableEntry>(asList(record5, record50)), index.getRecords(555L));
 
         Map<Data, QueryableEntry> records = getRecordMap(index, 555L);
@@ -497,13 +516,14 @@ public class IndexTest {
         assertEquals(2, index.getRecords(new Comparable[]{555L, 34234L}).size());
 
         Record recordToRemove = record5.toRecord();
-        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss));
+        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss),
+                Index.OperationSource.USER);
 
         assertEquals(Collections.<QueryableEntry>singleton(record50), index.getRecords(555L));
 
         records = getRecordMap(index, 555L);
         assertNotNull(records);
-        assertEquals(null, records.get(5L));
+        assertNull(records.get(5L));
         assertEquals(record50, records.get(toData(50L)));
         assertEquals(1, index.getRecords(555L).size());
         assertEquals(2, index.getSubRecordsBetween(55L, 555L).size());
@@ -517,7 +537,8 @@ public class IndexTest {
         assertEquals(2, index.getSubRecords(ComparisonType.GREATER_EQUAL, 61L).size());
 
         recordToRemove = record50.toRecord();
-        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss));
+        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss),
+                Index.OperationSource.USER);
 
         assertEquals(0, index.getRecords(555L).size());
 
@@ -529,7 +550,8 @@ public class IndexTest {
         assertEquals(0, index.getSubRecordsBetween(555L, 555L).size());
 
         recordToRemove = record6.toRecord();
-        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss));
+        index.removeEntryIndex(recordToRemove.getKey(), Records.getValueOrCachedValue(recordToRemove, ss),
+                Index.OperationSource.USER);
 
         assertEquals(0, index.getRecords(66L).size());
 

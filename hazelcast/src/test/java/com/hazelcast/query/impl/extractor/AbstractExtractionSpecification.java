@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,11 @@ package com.hazelcast.query.impl.extractor;
 
 import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.query.Predicate;
-import com.hazelcast.query.impl.extractor.specification.ComplexDataStructure;
+import com.hazelcast.query.impl.extractor.specification.ComplexTestDataStructure;
 import com.hazelcast.query.impl.predicates.AbstractPredicate;
 import com.hazelcast.query.impl.predicates.PredicateTestUtils;
 import com.hazelcast.test.HazelcastTestSupport;
+import com.hazelcast.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -110,7 +111,7 @@ public class AbstractExtractionSpecification extends HazelcastTestSupport {
 
         public static Expected empty() {
             Expected expected = new Expected();
-            expected.objects = new ComplexDataStructure.Person[0];
+            expected.objects = new ComplexTestDataStructure.Person[0];
             return expected;
         }
     }
@@ -123,7 +124,7 @@ public class AbstractExtractionSpecification extends HazelcastTestSupport {
      */
     protected static String parametrize(String expression, AbstractExtractionTest.Multivalue mv) {
         if (expression != null && !expression.contains("__")) {
-            return expression.replaceAll("_", "_" + mv.name().toLowerCase());
+            return expression.replaceAll("_", "_" + mv.name().toLowerCase(StringUtil.LOCALE_INTERNAL));
         }
         return expression;
     }

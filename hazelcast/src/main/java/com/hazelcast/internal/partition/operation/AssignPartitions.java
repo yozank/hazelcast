@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,25 @@
 
 package com.hazelcast.internal.partition.operation;
 
+import com.hazelcast.internal.partition.MigrationCycleOperation;
+import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.PartitionDataSerializerHook;
 
-public class AssignPartitions extends AbstractPartitionOperation {
+/** Sent from non-master nodes to the master to initialize the partition assignment. */
+public class AssignPartitions extends AbstractPartitionOperation implements MigrationCycleOperation {
+
+    private PartitionRuntimeState partitionState;
 
     @Override
     public void run() {
         InternalPartitionServiceImpl service = getService();
-        service.firstArrangement();
+        partitionState = service.firstArrangement();
     }
 
     @Override
     public Object getResponse() {
-        return Boolean.TRUE;
+        return partitionState;
     }
 
     @Override

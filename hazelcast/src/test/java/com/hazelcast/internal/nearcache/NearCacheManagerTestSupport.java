@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package com.hazelcast.internal.nearcache;
 import com.hazelcast.config.NearCacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.spi.ExecutionService;
+import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.spi.serialization.SerializationService;
 import org.junit.Before;
 
@@ -35,26 +37,24 @@ import static org.junit.Assert.assertTrue;
 
 public abstract class NearCacheManagerTestSupport extends CommonNearCacheTestSupport {
 
-    protected static final int DEFAULT_NEAR_CACHE_COUNT = 5;
+    private static final int DEFAULT_NEAR_CACHE_COUNT = 5;
 
     protected abstract NearCacheManager createNearCacheManager();
 
     protected SerializationService ss;
+    protected HazelcastProperties properties;
     protected ExecutionService executionService;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         HazelcastInstance instance = createHazelcastInstance();
-        ss = getSerializationService(instance);
-        executionService = getNodeEngineImpl(instance).getExecutionService();
+        NodeEngineImpl nodeEngineImpl = getNodeEngineImpl(instance);
+        properties = nodeEngineImpl.getProperties();
+        ss = nodeEngineImpl.getSerializationService();
+        executionService = nodeEngineImpl.getExecutionService();
     }
 
-    protected NearCache createNearCache(NearCacheManager nearCacheManager, String name) {
-        NearCacheConfig nearCacheConfig = createNearCacheConfig(DEFAULT_NEAR_CACHE_NAME, DEFAULT_MEMORY_FORMAT);
-        return nearCacheManager.getOrCreateNearCache(name, nearCacheConfig);
-    }
-
-    protected void doCreateAndGetNearCache() {
+    void doCreateAndGetNearCache() {
         NearCacheManager nearCacheManager = createNearCacheManager();
 
         assertNull(nearCacheManager.getNearCache(DEFAULT_NEAR_CACHE_NAME));
@@ -71,7 +71,7 @@ public abstract class NearCacheManagerTestSupport extends CommonNearCacheTestSup
         assertEquals(createdNearCache1, nearCaches.iterator().next());
     }
 
-    protected void doListNearCaches() {
+    void doListNearCaches() {
         NearCacheManager nearCacheManager = createNearCacheManager();
 
         Set<String> nearCacheNames = new HashSet<String>();
@@ -93,7 +93,7 @@ public abstract class NearCacheManagerTestSupport extends CommonNearCacheTestSup
         }
     }
 
-    protected void doClearNearCacheAndClearAllNearCaches() {
+    void doClearNearCacheAndClearAllNearCaches() {
         NearCacheManager nearCacheManager = createNearCacheManager();
         for (int i = 0; i < DEFAULT_NEAR_CACHE_COUNT; i++) {
             createNearCache(nearCacheManager, DEFAULT_NEAR_CACHE_NAME + "-" + i);
@@ -118,7 +118,7 @@ public abstract class NearCacheManagerTestSupport extends CommonNearCacheTestSup
         assertFalse(nearCacheManager.clearNearCache(DEFAULT_NEAR_CACHE_NAME + "-" + DEFAULT_NEAR_CACHE_COUNT));
     }
 
-    protected void doDestroyNearCacheAndDestroyAllNearCaches() {
+    void doDestroyNearCacheAndDestroyAllNearCaches() {
         NearCacheManager nearCacheManager = createNearCacheManager();
 
         for (int i = 0; i < DEFAULT_NEAR_CACHE_COUNT; i++) {
@@ -149,5 +149,10 @@ public abstract class NearCacheManagerTestSupport extends CommonNearCacheTestSup
         Collection<NearCache> nearCaches4 = nearCacheManager.listAllNearCaches();
         // destroy all also removes Near Caches
         assertEquals(0, nearCaches4.size());
+    }
+
+    private NearCache createNearCache(NearCacheManager nearCacheManager, String name) {
+        NearCacheConfig nearCacheConfig = createNearCacheConfig(DEFAULT_NEAR_CACHE_NAME, DEFAULT_MEMORY_FORMAT);
+        return nearCacheManager.getOrCreateNearCache(name, nearCacheConfig);
     }
 }

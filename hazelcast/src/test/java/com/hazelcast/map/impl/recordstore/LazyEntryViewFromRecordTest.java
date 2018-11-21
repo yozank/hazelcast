@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,12 +43,11 @@ import static org.mockito.Mockito.mock;
 @Category({QuickTest.class, ParallelTest.class})
 public class LazyEntryViewFromRecordTest {
 
-    private static final int ENTRY_VIEW_COST_IN_BYTES = 97 + 4 * REFERENCE_COST_IN_BYTES;
+    private static final int ENTRY_VIEW_COST_IN_BYTES = 77 + 4 * REFERENCE_COST_IN_BYTES;
 
     private final String key = "key";
     private final String value = "value";
 
-    private SerializationService serializationService;
     private Record<Data> recordInstance;
     private EntryView view;
 
@@ -63,7 +62,7 @@ public class LazyEntryViewFromRecordTest {
     private EntryView createDefaultEntryView() {
         PartitioningStrategy mockPartitioningStrategy = mock(PartitioningStrategy.class);
         MapConfig mapConfig = new MapConfig();
-        serializationService = new DefaultSerializationServiceBuilder().build();
+        SerializationService serializationService = new DefaultSerializationServiceBuilder().build();
         DataRecordFactory dataRecordFactory
                 = new DataRecordFactory(mapConfig, serializationService, mockPartitioningStrategy);
         recordInstance = dataRecordFactory.newRecord(value);
@@ -172,5 +171,4 @@ public class LazyEntryViewFromRecordTest {
 
         assertEquals(expected, view.toString());
     }
-
 }

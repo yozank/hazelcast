@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,12 +72,12 @@ public class MapStableReadStressTest extends StressTestSupport {
         }
     }
 
-    @Test
+    @Test(timeout = 600000)
     public void testChangingCluster() {
         test(true);
     }
 
-    @Test(timeout=600000)
+    @Test(timeout = 600000)
     public void testFixedCluster() {
         test(false);
     }
@@ -92,6 +92,7 @@ public class MapStableReadStressTest extends StressTestSupport {
     }
 
     private void fillMap() {
+        long timeMillis = System.currentTimeMillis();
         System.out.println("==================================================================");
         System.out.println("Inserting data in map");
         System.out.println("==================================================================");
@@ -99,12 +100,13 @@ public class MapStableReadStressTest extends StressTestSupport {
         for (int k = 0; k < MAP_SIZE; k++) {
             map.put(k, k);
             if (k % 10000 == 0) {
-                System.out.println("Inserted data: "+k);
+                System.out.println("Inserted data: " + k);
             }
         }
+        long timeTookToInsertData = System.currentTimeMillis() - timeMillis;
 
         System.out.println("==================================================================");
-        System.out.println("Completed with inserting data in map");
+        System.out.println("Completed with inserting data in map in " + timeTookToInsertData + " millis ");
         System.out.println("==================================================================");
     }
 

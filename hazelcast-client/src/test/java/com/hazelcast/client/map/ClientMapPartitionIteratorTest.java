@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.client.map;
 
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
@@ -34,8 +35,10 @@ public class ClientMapPartitionIteratorTest extends AbstractMapPartitionIterator
     @Before
     public void setup() {
         Config config = getConfig();
+        ClientConfig clientConfig = getClientConfig();
+
         factory = new TestHazelcastFactory();
         server = factory.newHazelcastInstance(config);
-        client = factory.newHazelcastClient();
+        client = factory.newHazelcastClient(clientConfig);
     }
 }

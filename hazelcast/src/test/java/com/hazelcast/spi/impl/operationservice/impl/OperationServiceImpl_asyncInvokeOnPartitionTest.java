@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ public class OperationServiceImpl_asyncInvokeOnPartitionTest extends HazelcastTe
             Data sourceKey = nodeEngine.toData(entry.getKey());
             Data key = generateKey_FallsToSamePartitionThread_ButDifferentPartition(nodeEngine, sourceKey);
             Data val = nodeEngine.toData(randomString());
-            PutOperation op = new PutOperation((String) entry.getValue(), key, val, -1);
+            PutOperation op = new PutOperation((String) entry.getValue(), key, val, -1, -1);
             int partitionId = nodeEngine.getPartitionService().getPartitionId(key);
             operationService.asyncInvokeOnPartition(MapService.SERVICE_NAME, op, partitionId,
                     new ExecutionCallback<Object>() {

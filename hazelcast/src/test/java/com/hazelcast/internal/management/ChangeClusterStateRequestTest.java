@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 
 package com.hazelcast.internal.management;
 
-import com.eclipsesource.json.JsonObject;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.Cluster;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.internal.management.request.ChangeClusterStateRequest;
+import com.hazelcast.internal.json.JsonObject;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -30,6 +30,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static com.hazelcast.util.JsonUtil.getString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -54,7 +55,7 @@ public class ChangeClusterStateRequestTest extends HazelcastTestSupport {
         changeClusterStateRequest.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        assertEquals("SUCCESS", changeClusterStateRequest.readResponse(result));
+        assertEquals("SUCCESS", getString(result, "result"));
 
         assertEquals(ClusterState.valueOf("FROZEN"), cluster.getClusterState());
     }
@@ -66,7 +67,7 @@ public class ChangeClusterStateRequestTest extends HazelcastTestSupport {
         changeClusterStateRequest.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        String resultString = (String) changeClusterStateRequest.readResponse(result);
+        String resultString = getString(result, "result");
         assertTrue(resultString.startsWith("FAILURE"));
     }
 
@@ -77,7 +78,7 @@ public class ChangeClusterStateRequestTest extends HazelcastTestSupport {
         changeClusterStateRequest.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        String resultString = (String) changeClusterStateRequest.readResponse(result);
+        String resultString = getString(result, "result");
         assertTrue(resultString.startsWith("FAILURE"));
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,16 +44,16 @@ import static org.mockito.Mockito.when;
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class LatencyTrackingQueueStoreTest extends HazelcastTestSupport {
-    private static final String NAME = "somequeue";
 
-    private HazelcastInstance hz;
+    private static final String NAME = "someQueue";
+
     private StoreLatencyPlugin plugin;
     private QueueStore<String> delegate;
     private LatencyTrackingQueueStore<String> queueStore;
 
     @Before
     public void setup() {
-        hz = createHazelcastInstance();
+        HazelcastInstance hz = createHazelcastInstance();
         plugin = new StoreLatencyPlugin(getNodeEngineImpl(hz));
         delegate = mock(QueueStore.class);
         queueStore = new LatencyTrackingQueueStore<String>(delegate, plugin, NAME);
@@ -62,7 +62,7 @@ public class LatencyTrackingQueueStoreTest extends HazelcastTestSupport {
     @Test
     public void load() {
         Long key = 1L;
-        String value = "somevalue";
+        String value = "someValue";
 
         when(delegate.load(key)).thenReturn(value);
 
@@ -126,7 +126,7 @@ public class LatencyTrackingQueueStoreTest extends HazelcastTestSupport {
 
         queueStore.store(key, value);
 
-        verify(delegate).store(key,value);
+        verify(delegate).store(key, value);
         assertProbeCalledOnce("store");
     }
 

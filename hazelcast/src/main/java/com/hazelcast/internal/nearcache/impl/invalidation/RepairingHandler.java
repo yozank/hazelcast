@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.hazelcast.internal.nearcache.impl.invalidation;
 import com.hazelcast.internal.nearcache.NearCache;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.spi.serialization.SerializationService;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -30,7 +31,7 @@ import static java.lang.String.format;
  * Handler used on Near Cache side. Observes local and remote invalidations and registers relevant
  * data to {@link MetaDataContainer}s.
  * <p>
- * Used to repair Near Cache in the event of missed invalidation events or partition uuid changes.
+ * Used to repair Near Cache in the event of missed invalidation events or partition UUID changes.
  * Here repairing is done by making relevant Near Cache data unreachable.
  * To make stale data unreachable {@link StaleReadDetectorImpl} is used.
  * <p>
@@ -38,23 +39,26 @@ import static java.lang.String.format;
  *
  * @see StaleReadDetectorImpl
  */
-@SuppressWarnings({"checkstyle:nestedifdepth", "checkstyle:npathcomplexity"})
 public final class RepairingHandler {
 
     private final int partitionCount;
-    private final String name;
-    private final String localUuid;
-    private final NearCache nearCache;
+    private final boolean serializeKeys;
     private final ILogger logger;
+    private final String localUuid;
+    private final String name;
+    private final NearCache nearCache;
+    private final SerializationService serializationService;
     private final MinimalPartitionService partitionService;
     private final MetaDataContainer[] metaDataContainers;
 
-    public RepairingHandler(String name, NearCache nearCache, MinimalPartitionService partitionService,
-                            String localUuid, ILogger logger) {
-        this.name = name;
-        this.localUuid = localUuid;
-        this.nearCache = nearCache;
+    public RepairingHandler(ILogger logger, String localUuid, String name, NearCache nearCache,
+                            SerializationService serializationService, MinimalPartitionService partitionService) {
         this.logger = logger;
+        this.localUuid = localUuid;
+        this.name = name;
+        this.nearCache = nearCache;
+        this.serializeKeys = nearCache.isSerializeKeys();
+        this.serializationService = serializationService;
         this.partitionService = partitionService;
         this.partitionCount = partitionService.getPartitionCount();
         this.metaDataContainers = createMetadataContainers(partitionCount);
@@ -76,14 +80,14 @@ public final class RepairingHandler {
      * Handles a single invalidation
      */
     public void handle(Data key, String sourceUuid, UUID partitionUuid, long sequence) {
-        // Apply invalidation if it is not originated by local member/client. Because local near-caches are invalidated
-        // immediately. No need to invalidate them twice.
+        // apply invalidation if it's not originated by local member/client (because local
+        // Near Caches are invalidated immediately there is no need to invalidate them twice)
         if (!localUuid.equals(sourceUuid)) {
-            // sourceUuid is allowed to be null.
+            // sourceUuid is allowed to be `null`
             if (key == null) {
                 nearCache.clear();
             } else {
-                nearCache.remove(key);
+                nearCache.invalidate(serializeKeys ? key : serializationService.toObject(key));
             }
         }
 
@@ -94,8 +98,8 @@ public final class RepairingHandler {
 
     private int getPartitionIdOrDefault(Data key) {
         if (key == null) {
-            // `name` is used to determine partition-id of map-wide events like clear.
-            // since key is null, we are using `name` to find partition-id
+            // `name` is used to determine partition ID of map-wide events like clear()
+            // since key is `null`, we are using `name` to find the partition ID
             return partitionService.getPartitionId(name);
         }
         return partitionService.getPartitionId(key);
@@ -111,26 +115,20 @@ public final class RepairingHandler {
         Iterator<UUID> partitionUuidIterator = partitionUuids.iterator();
         Iterator<String> sourceUuidsIterator = sourceUuids.iterator();
 
-        do {
-            if (!(keyIterator.hasNext() && sequenceIterator.hasNext()
-                    && partitionUuidIterator.hasNext() && sourceUuidsIterator.hasNext())) {
-                break;
-            }
-
+        while (keyIterator.hasNext() && sourceUuidsIterator.hasNext()
+                && partitionUuidIterator.hasNext() && sequenceIterator.hasNext()) {
             handle(keyIterator.next(), sourceUuidsIterator.next(), partitionUuidIterator.next(), sequenceIterator.next());
-
-        } while (true);
+        }
     }
 
     public String getName() {
         return name;
     }
 
-    // TODO really need to pass partition-id?
+    // TODO: really need to pass partition ID?
     public void updateLastKnownStaleSequence(MetaDataContainer metaData, int partition) {
         long lastReceivedSequence;
         long lastKnownStaleSequence;
-
         do {
             lastReceivedSequence = metaData.getSequence();
             lastKnownStaleSequence = metaData.getStaleSequence();
@@ -138,60 +136,49 @@ public final class RepairingHandler {
             if (lastKnownStaleSequence >= lastReceivedSequence) {
                 break;
             }
-
         } while (!metaData.casStaleSequence(lastKnownStaleSequence, lastReceivedSequence));
-
 
         if (logger.isFinestEnabled()) {
             logger.finest(format("%s:[map=%s,partition=%d,lowerSequencesStaleThan=%d,lastReceivedSequence=%d]",
                     "Stale sequences updated", name, partition, metaData.getStaleSequence(), metaData.getSequence()));
         }
-
     }
 
-    // more than one thread can concurrently call this method: one is anti-entropy, other one is event service thread
+    // multiple threads can concurrently call this method: one is anti-entropy, other one is event service thread
     public void checkOrRepairUuid(final int partition, final UUID newUuid) {
         assert newUuid != null;
 
         MetaDataContainer metaData = getMetaDataContainer(partition);
-
-        do {
+        while (true) {
             UUID prevUuid = metaData.getUuid();
             if (prevUuid != null && prevUuid.equals(newUuid)) {
                 break;
             }
-
             if (metaData.casUuid(prevUuid, newUuid)) {
                 metaData.resetSequence();
                 metaData.resetStaleSequence();
-
                 if (logger.isFinestEnabled()) {
                     logger.finest(format("%s:[name=%s,partition=%d,prevUuid=%s,newUuid=%s]",
-                            "Invalid uuid, lost remote partition data unexpectedly",
-                            name, partition, prevUuid, newUuid));
+                            "Invalid UUID, lost remote partition data unexpectedly", name, partition, prevUuid, newUuid));
                 }
-
                 break;
             }
-        } while (true);
-
+        }
     }
 
     /**
      * Checks {@code nextSequence} against current one. And updates current sequence if next one is bigger.
      */
-    // more than one thread can concurrently call this method: one is anti-entropy, other one is event service thread
+    // multiple threads can concurrently call this method: one is anti-entropy, other one is event service thread
     public void checkOrRepairSequence(final int partition, final long nextSequence, final boolean viaAntiEntropy) {
         assert nextSequence > 0;
 
         MetaDataContainer metaData = getMetaDataContainer(partition);
-
-        do {
+        while (true) {
             final long currentSequence = metaData.getSequence();
             if (currentSequence >= nextSequence) {
                 break;
             }
-
             if (metaData.casSequence(currentSequence, nextSequence)) {
                 final long sequenceDiff = nextSequence - currentSequence;
                 if (viaAntiEntropy || sequenceDiff > 1L) {
@@ -206,12 +193,10 @@ public final class RepairingHandler {
                         logger.finest(format("%s:[map=%s,partition=%d,currentSequence=%d,nextSequence=%d,totalMissCount=%d]",
                                 "Invalid sequence", name, partition, currentSequence, nextSequence, totalMissCount));
                     }
-
                 }
-
                 break;
             }
-        } while (true);
+        }
     }
 
     @Override

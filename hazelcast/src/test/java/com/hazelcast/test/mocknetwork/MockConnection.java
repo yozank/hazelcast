@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@
 
 package com.hazelcast.test.mocknetwork;
 
-import com.hazelcast.instance.Node;
-import com.hazelcast.instance.NodeState;
+import com.hazelcast.internal.networking.OutboundFrame;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
+import com.hazelcast.nio.ConnectionManager;
 import com.hazelcast.nio.ConnectionType;
-import com.hazelcast.nio.OutboundFrame;
 import com.hazelcast.nio.Packet;
+import com.hazelcast.nio.PacketIOHelper;
 import com.hazelcast.spi.impl.NodeEngineImpl;
-import com.hazelcast.util.ExceptionUtil;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -32,20 +31,25 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.hazelcast.test.mocknetwork.MockConnectionManager.isTargetLeft;
+import static com.hazelcast.util.ExceptionUtil.rethrow;
+import static org.junit.Assert.assertNotNull;
+
 public class MockConnection implements Connection {
 
     protected final Address localEndpoint;
-    protected final NodeEngineImpl nodeEngine;
+    protected final NodeEngineImpl remoteNodeEngine;
 
-    private final Address remoteEndpoint;
     volatile MockConnection localConnection;
 
-    private volatile AtomicBoolean alive = new AtomicBoolean(true);
+    private final AtomicBoolean alive = new AtomicBoolean(true);
 
-    public MockConnection(Address localEndpoint, Address remoteEndpoint, NodeEngineImpl nodeEngine) {
+    private final Address remoteEndpoint;
+
+    public MockConnection(Address localEndpoint, Address remoteEndpoint, NodeEngineImpl remoteNodeEngine) {
         this.localEndpoint = localEndpoint;
         this.remoteEndpoint = remoteEndpoint;
-        this.nodeEngine = nodeEngine;
+        this.remoteNodeEngine = remoteNodeEngine;
     }
 
     @Override
@@ -63,39 +67,37 @@ public class MockConnection implements Connection {
     }
 
     public boolean write(OutboundFrame frame) {
-        if (!alive.get()) {
-            return false;
-        }
-
-        if (nodeEngine.getNode().getState() == NodeState.SHUT_DOWN) {
+        if (!isAlive()) {
             return false;
         }
 
         Packet packet = (Packet) frame;
         Packet newPacket = readFromPacket(packet);
-        nodeEngine.getPacketDispatcher().dispatch(newPacket);
+        try {
+            remoteNodeEngine.getPacketDispatcher().accept(newPacket);
+        } catch (Exception e) {
+            throw rethrow(e);
+        }
         return true;
     }
 
     private Packet readFromPacket(Packet packet) {
-        Packet newPacket = new Packet();
+        Packet newPacket;
+        PacketIOHelper packetReader = new PacketIOHelper();
+        PacketIOHelper packetWriter = new PacketIOHelper();
         ByteBuffer buffer = ByteBuffer.allocate(4096);
         boolean writeDone;
-        boolean readDone;
         do {
-            writeDone = packet.writeTo(buffer);
+            writeDone = packetWriter.writeTo(packet, buffer);
             buffer.flip();
-            readDone = newPacket.readFrom(buffer);
+            newPacket = packetReader.readFrom(buffer);
             if (buffer.hasRemaining()) {
                 throw new IllegalStateException("Buffer should be empty! " + buffer);
             }
             buffer.clear();
         } while (!writeDone);
 
-        if (!readDone) {
-            throw new IllegalStateException("Read should be completed!");
-        }
-
+        assertNotNull(newPacket);
         newPacket.setConn(localConnection);
         return newPacket;
     }
@@ -115,16 +117,15 @@ public class MockConnection implements Connection {
 
         if (localConnection != null) {
             //this is a member-to-member connection
-            NodeEngineImpl localNodeEngine = localConnection.nodeEngine;
-            Node localNode = localNodeEngine.getNode();
-            MockConnectionManager connectionManager = (MockConnectionManager) localNode.connectionManager;
-            connectionManager.onClose(this);
+            NodeEngineImpl nodeEngine = localConnection.remoteNodeEngine;
+            ConnectionManager connectionManager = nodeEngine.getNode().connectionManager;
+            localConnection.close(msg, cause);
+            connectionManager.onConnectionClose(this);
         } else {
             //this is a client-member connection. we need to notify NodeEngine about a client connection being closed.
-            MockConnectionManager connectionManager = (MockConnectionManager) nodeEngine.getNode().connectionManager;
-            connectionManager.onClose(this);
+            ConnectionManager connectionManager = remoteNodeEngine.getNode().connectionManager;
+            connectionManager.onConnectionClose(this);
         }
-
     }
 
     @Override
@@ -145,7 +146,7 @@ public class MockConnection implements Connection {
         try {
             return localEndpoint.getInetAddress();
         } catch (UnknownHostException e) {
-            throw ExceptionUtil.rethrow(e);
+            throw rethrow(e);
         }
     }
 
@@ -159,7 +160,7 @@ public class MockConnection implements Connection {
 
     @Override
     public boolean isAlive() {
-        return alive.get() && nodeEngine.getNode().getState() != NodeState.SHUT_DOWN;
+        return alive.get() && !isTargetLeft(remoteNodeEngine.getNode());
     }
 
     @Override

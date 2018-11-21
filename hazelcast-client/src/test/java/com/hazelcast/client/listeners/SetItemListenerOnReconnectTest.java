@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.client.listeners;
 
+import com.hazelcast.collection.impl.set.SetService;
 import com.hazelcast.core.ISet;
 import com.hazelcast.core.ItemEvent;
 import com.hazelcast.core.ItemListener;
@@ -30,6 +31,11 @@ import org.junit.runner.RunWith;
 public class SetItemListenerOnReconnectTest extends AbstractListenersOnReconnectTest {
 
     private ISet<String> iSet;
+
+    @Override
+    String getServiceName() {
+        return SetService.SERVICE_NAME;
+    }
 
     @Override
     protected String addListener() {

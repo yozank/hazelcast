@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,11 @@ import com.hazelcast.internal.serialization.impl.ArrayDataSerializableFactory;
 import com.hazelcast.internal.serialization.impl.FactoryIdHelper;
 import com.hazelcast.map.impl.iterator.MapEntriesWithCursor;
 import com.hazelcast.map.impl.iterator.MapKeysWithCursor;
+import com.hazelcast.map.impl.journal.DeserializingEventJournalMapEvent;
+import com.hazelcast.map.impl.journal.InternalEventJournalMapEvent;
+import com.hazelcast.map.impl.journal.MapEventJournalReadOperation;
+import com.hazelcast.map.impl.journal.MapEventJournalReadResultSetImpl;
+import com.hazelcast.map.impl.journal.MapEventJournalSubscribeOperation;
 import com.hazelcast.map.impl.nearcache.invalidation.UuidFilter;
 import com.hazelcast.map.impl.operation.AccumulatorConsumerOperation;
 import com.hazelcast.map.impl.operation.AddIndexOperation;
@@ -46,6 +51,7 @@ import com.hazelcast.map.impl.operation.EvictAllBackupOperation;
 import com.hazelcast.map.impl.operation.EvictAllOperation;
 import com.hazelcast.map.impl.operation.EvictAllOperationFactory;
 import com.hazelcast.map.impl.operation.EvictBackupOperation;
+import com.hazelcast.map.impl.operation.EvictBatchBackupOperation;
 import com.hazelcast.map.impl.operation.EvictOperation;
 import com.hazelcast.map.impl.operation.GetAllOperation;
 import com.hazelcast.map.impl.operation.GetEntryViewOperation;
@@ -56,10 +62,12 @@ import com.hazelcast.map.impl.operation.IsPartitionLoadedOperation;
 import com.hazelcast.map.impl.operation.IsPartitionLoadedOperationFactory;
 import com.hazelcast.map.impl.operation.KeyLoadStatusOperation;
 import com.hazelcast.map.impl.operation.KeyLoadStatusOperationFactory;
+import com.hazelcast.map.impl.operation.LegacyMergeOperation;
 import com.hazelcast.map.impl.operation.LoadAllOperation;
 import com.hazelcast.map.impl.operation.LoadMapOperation;
 import com.hazelcast.map.impl.operation.MapFetchEntriesOperation;
 import com.hazelcast.map.impl.operation.MapFetchKeysOperation;
+import com.hazelcast.map.impl.operation.MapFetchWithQueryOperation;
 import com.hazelcast.map.impl.operation.MapFlushBackupOperation;
 import com.hazelcast.map.impl.operation.MapFlushOperation;
 import com.hazelcast.map.impl.operation.MapFlushOperationFactory;
@@ -72,6 +80,7 @@ import com.hazelcast.map.impl.operation.MapReplicationOperation;
 import com.hazelcast.map.impl.operation.MapReplicationStateHolder;
 import com.hazelcast.map.impl.operation.MapSizeOperation;
 import com.hazelcast.map.impl.operation.MergeOperation;
+import com.hazelcast.map.impl.operation.MergeOperationFactory;
 import com.hazelcast.map.impl.operation.MultipleEntryBackupOperation;
 import com.hazelcast.map.impl.operation.MultipleEntryOperation;
 import com.hazelcast.map.impl.operation.MultipleEntryOperationFactory;
@@ -102,6 +111,8 @@ import com.hazelcast.map.impl.operation.RemoveOperation;
 import com.hazelcast.map.impl.operation.ReplaceIfSameOperation;
 import com.hazelcast.map.impl.operation.ReplaceOperation;
 import com.hazelcast.map.impl.operation.SetOperation;
+import com.hazelcast.map.impl.operation.SetTtlBackupOperation;
+import com.hazelcast.map.impl.operation.SetTtlOperation;
 import com.hazelcast.map.impl.operation.SizeOperationFactory;
 import com.hazelcast.map.impl.operation.TriggerLoadIfNeededOperation;
 import com.hazelcast.map.impl.operation.TryPutOperation;
@@ -114,6 +125,7 @@ import com.hazelcast.map.impl.query.QueryOperation;
 import com.hazelcast.map.impl.query.QueryPartitionOperation;
 import com.hazelcast.map.impl.query.QueryResult;
 import com.hazelcast.map.impl.query.QueryResultRow;
+import com.hazelcast.map.impl.query.ResultSegment;
 import com.hazelcast.map.impl.query.Target;
 import com.hazelcast.map.impl.querycache.subscriber.operation.DestroyQueryCacheOperation;
 import com.hazelcast.map.impl.querycache.subscriber.operation.MadePublishableOperation;
@@ -140,6 +152,8 @@ import com.hazelcast.map.merge.PassThroughMergePolicy;
 import com.hazelcast.map.merge.PutIfAbsentMapMergePolicy;
 import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.query.impl.IndexInfo;
+import com.hazelcast.query.impl.MapIndexInfo;
 import com.hazelcast.util.ConstructorFunction;
 
 import static com.hazelcast.internal.serialization.impl.FactoryIdHelper.MAP_DS_FACTORY;
@@ -184,7 +198,7 @@ public final class MapDataSerializerHook implements DataSerializerHook {
     public static final int EVICT_ALL_BACKUP = 32;
     public static final int GET_ALL = 33;
     public static final int IS_EMPTY = 34;
-    public static final int MERGE = 35;
+    public static final int LEGACY_MERGE = 35;
     public static final int NEAR_CACHE_SINGLE_INVALIDATION = 36;
     public static final int NEAR_CACHE_BATCH_INVALIDATION = 37;
     public static final int IS_PARTITION_LOADED = 38;
@@ -285,8 +299,22 @@ public final class MapDataSerializerHook implements DataSerializerHook {
     public static final int REMOVE_FROM_LOAD_ALL = 134;
     public static final int ENTRY_REMOVING_PROCESSOR = 135;
     public static final int ENTRY_OFFLOADABLE_SET_UNLOCK = 136;
+    public static final int LOCK_AWARE_LAZY_MAP_ENTRY = 137;
+    public static final int FETCH_WITH_QUERY = 138;
+    public static final int RESULT_SEGMENT = 139;
+    public static final int EVICT_BATCH_BACKUP = 140;
+    public static final int EVENT_JOURNAL_SUBSCRIBE_OPERATION = 141;
+    public static final int EVENT_JOURNAL_READ = 142;
+    public static final int EVENT_JOURNAL_DESERIALIZING_MAP_EVENT = 143;
+    public static final int EVENT_JOURNAL_INTERNAL_MAP_EVENT = 144;
+    public static final int EVENT_JOURNAL_READ_RESULT_SET = 145;
+    public static final int MERGE_FACTORY = 146;
+    public static final int MERGE = 147;
+    public static final int SET_TTL = 148;
+    public static final int SET_TTL_BACKUP = 149;
+    public static final int MERKLE_TREE_NODE_ENTRIES = 150;
 
-    private static final int LEN = ENTRY_OFFLOADABLE_SET_UNLOCK + 1;
+    private static final int LEN = MERKLE_TREE_NODE_ENTRIES + 1;
 
     @Override
     public int getFactoryId() {
@@ -472,9 +500,9 @@ public final class MapDataSerializerHook implements DataSerializerHook {
                 return new MapIsEmptyOperation();
             }
         };
-        constructors[MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+        constructors[LEGACY_MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new MergeOperation();
+                return new LegacyMergeOperation();
             }
         };
         constructors[IS_PARTITION_LOADED] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
@@ -774,12 +802,12 @@ public final class MapDataSerializerHook implements DataSerializerHook {
         };
         constructors[INDEX_INFO] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new PostJoinMapOperation.MapIndexInfo.IndexInfo();
+                return new IndexInfo();
             }
         };
         constructors[MAP_INDEX_INFO] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new PostJoinMapOperation.MapIndexInfo();
+                return new MapIndexInfo();
             }
         };
         constructors[INTERCEPTOR_INFO] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
@@ -960,6 +988,79 @@ public final class MapDataSerializerHook implements DataSerializerHook {
         constructors[ENTRY_OFFLOADABLE_SET_UNLOCK] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return new EntryOffloadableSetUnlockOperation();
+            }
+        };
+        constructors[LOCK_AWARE_LAZY_MAP_ENTRY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new LockAwareLazyMapEntry();
+            }
+        };
+        constructors[FETCH_WITH_QUERY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MapFetchWithQueryOperation();
+            }
+        };
+        constructors[RESULT_SEGMENT] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new ResultSegment();
+            }
+        };
+        constructors[EVICT_BATCH_BACKUP] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new EvictBatchBackupOperation();
+            }
+        };
+        constructors[EVENT_JOURNAL_SUBSCRIBE_OPERATION] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MapEventJournalSubscribeOperation();
+            }
+        };
+        constructors[EVENT_JOURNAL_READ] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MapEventJournalReadOperation<Object, Object, Object>();
+            }
+        };
+        constructors[EVENT_JOURNAL_DESERIALIZING_MAP_EVENT] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new DeserializingEventJournalMapEvent<Object, Object>();
+            }
+        };
+        constructors[EVENT_JOURNAL_INTERNAL_MAP_EVENT] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new InternalEventJournalMapEvent();
+            }
+        };
+        constructors[EVENT_JOURNAL_READ_RESULT_SET] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MapEventJournalReadResultSetImpl<Object, Object, Object>();
+            }
+        };
+        constructors[MERGE_FACTORY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MergeOperationFactory();
+            }
+        };
+        constructors[MERGE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MergeOperation();
+            }
+        };
+        constructors[SET_TTL] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new SetTtlOperation();
+            }
+        };
+        constructors[SET_TTL_BACKUP] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new SetTtlBackupOperation();
+            }
+        };
+        constructors[MERKLE_TREE_NODE_ENTRIES] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MerkleTreeNodeEntries();
             }
         };
 

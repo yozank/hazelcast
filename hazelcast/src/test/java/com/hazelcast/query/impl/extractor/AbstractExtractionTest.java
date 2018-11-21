@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,9 +47,9 @@ public abstract class AbstractExtractionTest extends AbstractExtractionSpecifica
     protected IMap<String, Object> map;
 
     // three parametrisation axes
+    protected Multivalue mv;
     private InMemoryFormat inMemoryFormat;
     private Index index;
-    protected Multivalue mv;
 
     // constructor required by JUnit for parametrisation purposes
     public AbstractExtractionTest(InMemoryFormat inMemoryFormat, Index index, Multivalue multivalue) {

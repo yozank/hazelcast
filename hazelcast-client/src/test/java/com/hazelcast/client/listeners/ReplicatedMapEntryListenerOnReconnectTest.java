@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,34 @@
 
 package com.hazelcast.client.listeners;
 
+import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.core.EntryAdapter;
 import com.hazelcast.core.EntryEvent;
+import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ReplicatedMap;
+import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
+import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.eventservice.impl.EventServiceImpl;
+import com.hazelcast.spi.impl.eventservice.impl.EventServiceSegment;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static org.junit.Assert.assertTrue;
+
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class ReplicatedMapEntryListenerOnReconnectTest extends AbstractListenersOnReconnectTest {
 
     private ReplicatedMap<String, String> replicatedMap;
+
+    @Override
+    String getServiceName() {
+        return ReplicatedMapService.SERVICE_NAME;
+    }
 
     @Override
     protected String addListener() {
@@ -51,5 +65,24 @@ public class ReplicatedMapEntryListenerOnReconnectTest extends AbstractListeners
     @Override
     public boolean removeListener(String registrationId) {
         return replicatedMap.removeEntryListener(registrationId);
+    }
+
+    @Override
+    protected void validateRegistrationsOnMembers(final TestHazelcastFactory factory) {
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                boolean found = false;
+                for (HazelcastInstance instance : factory.getAllHazelcastInstances()) {
+                    NodeEngineImpl nodeEngineImpl = getNodeEngineImpl(instance);
+                    EventServiceImpl eventService = (EventServiceImpl) nodeEngineImpl.getEventService();
+                    EventServiceSegment serviceSegment = eventService.getSegment(getServiceName(), false);
+                    if (serviceSegment != null && serviceSegment.getRegistrationIdMap().size() == 1) {
+                        found = true;
+                    }
+                }
+                assertTrue(found);
+            }
+        });
     }
 }

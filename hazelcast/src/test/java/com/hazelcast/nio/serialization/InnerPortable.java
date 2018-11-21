@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,18 +77,38 @@ class InnerPortable implements Portable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         InnerPortable that = (InnerPortable) o;
-        if (!Arrays.equals(bb, that.bb)) return false;
-        if (!Arrays.equals(cc, that.cc)) return false;
-        if (!Arrays.equals(dd, that.dd)) return false;
-        if (!Arrays.equals(ff, that.ff)) return false;
-        if (!Arrays.equals(ii, that.ii)) return false;
-        if (!Arrays.equals(ll, that.ll)) return false;
-        if (!Arrays.equals(nn, that.nn)) return false;
-        if (!Arrays.equals(ss, that.ss)) return false;
+        if (!Arrays.equals(bb, that.bb)) {
+            return false;
+        }
+        if (!Arrays.equals(cc, that.cc)) {
+            return false;
+        }
+        if (!Arrays.equals(dd, that.dd)) {
+            return false;
+        }
+        if (!Arrays.equals(ff, that.ff)) {
+            return false;
+        }
+        if (!Arrays.equals(ii, that.ii)) {
+            return false;
+        }
+        if (!Arrays.equals(ll, that.ll)) {
+            return false;
+        }
+        if (!Arrays.equals(nn, that.nn)) {
+            return false;
+        }
+        if (!Arrays.equals(ss, that.ss)) {
+            return false;
+        }
 
         return true;
     }

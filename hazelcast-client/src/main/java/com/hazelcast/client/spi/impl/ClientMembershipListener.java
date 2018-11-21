@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package com.hazelcast.client.spi.impl;
 
 import com.hazelcast.client.connection.nio.ClientConnectionManagerImpl;
-import com.hazelcast.client.impl.HazelcastClientInstanceImpl;
+import com.hazelcast.client.impl.clientside.HazelcastClientInstanceImpl;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ClientAddMembershipListenerCodec;
 import com.hazelcast.client.spi.EventHandler;
@@ -68,7 +68,7 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
     }
 
     @Override
-    public void handle(Member member, int eventType) {
+    public void handleMemberEventV10(Member member, int eventType) {
         switch (eventType) {
             case MembershipEvent.MEMBER_ADDED:
                 memberAdded(member);
@@ -77,13 +77,13 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
                 memberRemoved(member);
                 break;
             default:
-                logger.warning("Unknown event type :" + eventType);
+                logger.warning("Unknown event type: " + eventType);
         }
         partitionService.refreshPartitions();
     }
 
     @Override
-    public void handle(Collection<Member> initialMembers) {
+    public void handleMemberListEventV10(Collection<Member> initialMembers) {
         Map<String, Member> prevMembers = Collections.emptyMap();
         if (!members.isEmpty()) {
             prevMembers = new HashMap<String, Member>(members.size());
@@ -113,7 +113,7 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
     }
 
     @Override
-    public void handle(String uuid, String key, int opType, String value) {
+    public void handleMemberAttributeChangeEventV10(String uuid, String key, int opType, String value) {
         Collection<Member> members = clusterService.getMemberList();
         for (Member target : members) {
             if (target.getUuid().equals(uuid)) {
@@ -135,16 +135,10 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
     public void onListenerRegister() {
     }
 
-    void listenMembershipEvents(Address ownerConnectionAddress) throws Exception {
+    void listenMembershipEvents(Connection ownerConnection) throws Exception {
         initialListFetchedLatch = new CountDownLatch(1);
         ClientMessage clientMessage = ClientAddMembershipListenerCodec.encodeRequest(false);
-        Connection connection = connectionManager.getConnection(ownerConnectionAddress);
-        if (connection == null) {
-            throw new IllegalStateException(
-                    "Can not load initial members list because owner connection is null. Address "
-                            + ownerConnectionAddress);
-        }
-        ClientInvocation invocation = new ClientInvocation(client, clientMessage, connection);
+        ClientInvocation invocation = new ClientInvocation(client, clientMessage, null, ownerConnection);
         invocation.setEventHandler(this);
         invocation.invokeUrgent().get();
         waitInitialMemberListFetched();
@@ -160,7 +154,7 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
     private void memberRemoved(Member member) {
         members.remove(member);
         logger.info(membersString());
-        final Connection connection = connectionManager.getConnection(member.getAddress());
+        final Connection connection = connectionManager.getActiveConnection(member.getAddress());
         if (connection != null) {
             connection.close(null, newTargetDisconnectedExceptionCausedByMemberLeftEvent(connection));
         }
@@ -192,7 +186,7 @@ class ClientMembershipListener extends ClientAddMembershipListenerCodec.Abstract
             events.add(new MembershipEvent(client.getCluster(), member, MembershipEvent.MEMBER_REMOVED, eventMembers));
             Address address = member.getAddress();
             if (clusterService.getMember(address) == null) {
-                Connection connection = connectionManager.getConnection(address);
+                Connection connection = connectionManager.getActiveConnection(address);
                 if (connection != null) {
                     connection.close(null, newTargetDisconnectedExceptionCausedByMemberLeftEvent(connection));
                 }

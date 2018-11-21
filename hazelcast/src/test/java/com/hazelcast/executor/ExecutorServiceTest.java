@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,10 @@ import com.hazelcast.core.MemberSelector;
 import com.hazelcast.core.MultiExecutionCallback;
 import com.hazelcast.core.PartitionAware;
 import com.hazelcast.monitor.LocalExecutorStats;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.DataSerializable;
+import com.hazelcast.nio.serialization.HazelcastSerializationException;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
@@ -41,6 +45,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,6 +58,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -61,6 +67,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.hazelcast.config.ExecutorConfig.DEFAULT_POOL_SIZE;
 import static org.junit.Assert.assertEquals;
@@ -75,6 +82,39 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
 
     private static final int NODE_COUNT = 3;
     private static final int TASK_COUNT = 1000;
+
+
+    // we need to make sure that if a deserialization exception is encounter, the exception isn't lost but always
+    // is send to the caller.
+    @Test
+    public void whenDeserializationFails_thenExceptionPropagatedToCaller() throws Exception {
+        HazelcastInstance hz = createHazelcastInstance();
+        IExecutorService executor = hz.getExecutorService("executor");
+
+        Future<String> future = executor.submit(new CallableWithDeserializationError());
+        try {
+            future.get();
+            fail();
+        } catch (ExecutionException e) {
+            assertInstanceOf(HazelcastSerializationException.class, e.getCause());
+        }
+    }
+
+    public static class CallableWithDeserializationError implements Callable, DataSerializable {
+        @Override
+        public void writeData(ObjectDataOutput out) throws IOException {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) throws IOException {
+            in.readInt();
+        }
+
+        @Override
+        public Object call() throws Exception {
+            return null;
+        }
+    }
 
     /* ############ andThen(Callback) ############ */
 
@@ -309,7 +349,8 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
     }
 
     static class HazelcastInstanceAwareRunnable implements Runnable, HazelcastInstanceAware, Serializable {
-        private transient boolean initializeCalled = false;
+
+        private transient boolean initializeCalled;
 
         @Override
         public void run() {
@@ -408,7 +449,7 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
         ResponseCountingMultiExecutionCallback callback = new ResponseCountingMultiExecutionCallback(NODE_COUNT);
         int sum = 0;
         Set<Member> membersSet = instances[0].getCluster().getMembers();
-        Member[] members = membersSet.toArray(new Member[membersSet.size()]);
+        Member[] members = membersSet.toArray(new Member[0]);
         Random random = new Random();
         for (int i = 0; i < NODE_COUNT; i++) {
             IExecutorService service = instances[i].getExecutorService("testSubmitToMembersRunnable");
@@ -583,7 +624,7 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
         };
         int sum = 0;
         Set<Member> membersSet = instances[0].getCluster().getMembers();
-        Member[] members = membersSet.toArray(new Member[membersSet.size()]);
+        Member[] members = membersSet.toArray(new Member[0]);
         Random random = new Random();
         String name = "testSubmitToMembersCallable";
 
@@ -631,9 +672,10 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
 
     @Test
     public void testCancellationAwareTask() throws Exception {
-        SleepingTask task = new SleepingTask(5);
+        SleepingTask task = new SleepingTask(10);
         ExecutorService executor = createSingleNodeExecutorService("testCancellationAwareTask");
         Future future = executor.submit(task);
+
         try {
             future.get(2, TimeUnit.SECONDS);
             fail("Should throw TimeoutException!");
@@ -996,7 +1038,7 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
 
         Config config = new Config();
-        long callTimeoutMillis = 3000;
+        long callTimeoutMillis = 4000;
         config.setProperty(GroupProperty.OPERATION_CALL_TIMEOUT_MILLIS.getName(), String.valueOf(callTimeoutMillis));
 
         HazelcastInstance hz1 = factory.newHazelcastInstance(config);
@@ -1056,6 +1098,57 @@ public class ExecutorServiceTest extends ExecutorServiceTestSupport {
         @Override
         public Object getPartitionKey() {
             return "key";
+        }
+    }
+
+
+    @Test(expected = HazelcastSerializationException.class)
+    public void testUnserializableResponse_exceptionPropagatesToCaller() throws Throwable {
+        TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
+        HazelcastInstance instance1 = factory.newHazelcastInstance();
+        HazelcastInstance instance2 = factory.newHazelcastInstance();
+
+        IExecutorService service = instance1.getExecutorService("executor");
+        TaskWithUnserialazableResponse counterCallable = new TaskWithUnserialazableResponse();
+        Future future = service.submitToMember(counterCallable, instance2.getCluster().getLocalMember());
+        try {
+            future.get();
+        } catch (ExecutionException e) {
+            throw e.getCause();
+        }
+    }
+
+    @Test(expected = HazelcastSerializationException.class)
+    public void testUnserializableResponse_exceptionPropagatesToCallerCallback() throws Throwable {
+        TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
+        HazelcastInstance instance1 = factory.newHazelcastInstance();
+        HazelcastInstance instance2 = factory.newHazelcastInstance();
+
+
+        IExecutorService service = instance1.getExecutorService("executor");
+        TaskWithUnserialazableResponse counterCallable = new TaskWithUnserialazableResponse();
+        final CountDownLatch countDownLatch = new CountDownLatch(1);
+        final AtomicReference<Throwable> throwable = new AtomicReference<Throwable>();
+        service.submitToMember(counterCallable, instance2.getCluster().getLocalMember(), new ExecutionCallback() {
+            @Override
+            public void onResponse(Object response) {
+
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                throwable.set(t);
+                countDownLatch.countDown();
+            }
+        });
+        assertOpenEventually(countDownLatch);
+        throw throwable.get();
+    }
+
+    private static class TaskWithUnserialazableResponse implements Callable, Serializable {
+        @Override
+        public Object call() throws Exception {
+            return new Object();
         }
     }
 }

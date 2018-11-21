@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package com.hazelcast.map.impl.query;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.query.Predicate;
-import com.hazelcast.query.SampleObjects;
+import com.hazelcast.query.SampleTestObjects;
 import com.hazelcast.query.TruePredicate;
 import com.hazelcast.query.impl.predicates.InstanceOfPredicate;
 import com.hazelcast.spi.serialization.SerializationService;
@@ -122,7 +122,7 @@ public class MapValuesTest extends HazelcastTestSupport {
     @Test
     public void testSerializationServiceNullClassLoaderProblem() throws Exception {
         // if the classloader is null the following call throws NullPointerException
-        map.values(new InstanceOfPredicate(SampleObjects.PortableEmployee.class));
+        map.values(new InstanceOfPredicate(SampleTestObjects.PortableEmployee.class));
     }
 
     static class GoodPredicate implements Predicate<String, String> {

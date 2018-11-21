@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
+@SuppressWarnings("WeakerAccess")
 public class AbstractBaseReplicatedRecordStoreTest extends HazelcastTestSupport {
 
     TestReplicatedRecordStore recordStore;
@@ -58,7 +59,7 @@ public class AbstractBaseReplicatedRecordStoreTest extends HazelcastTestSupport 
     }
 
     @After
-    public void tearDown() throws Exception {
+    public void tearDown() {
         shutdownNodeFactory();
     }
 
@@ -89,13 +90,14 @@ public class AbstractBaseReplicatedRecordStoreTest extends HazelcastTestSupport 
         assertEquals(recordStore.hashCode(), recordStore.hashCode());
         assertEquals(recordStoreSameAttributes.hashCode(), recordStore.hashCode());
 
+        assumeDifferentHashCodes();
         assertNotEquals(recordStoreOtherStorage.hashCode(), recordStore.hashCode());
         assertNotEquals(recordStoreOtherName.hashCode(), recordStore.hashCode());
     }
 
     private class TestReplicatedRecordStore extends AbstractReplicatedRecordStore<String, String> {
 
-        public TestReplicatedRecordStore(String name, ReplicatedMapService replicatedMapService, int partitionId) {
+        TestReplicatedRecordStore(String name, ReplicatedMapService replicatedMapService, int partitionId) {
             super(name, replicatedMapService, partitionId);
         }
 

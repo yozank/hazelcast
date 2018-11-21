@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package com.hazelcast.client.cache.impl;
 
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.config.NearCacheConfig;
 import com.hazelcast.logging.AbstractLogger;
 import com.hazelcast.logging.LogEvent;
@@ -39,25 +38,26 @@ import static org.junit.Assert.assertNull;
 @Category({QuickTest.class, ParallelTest.class})
 public class ClientCacheProxyTest extends HazelcastTestSupport {
 
+    private TestLogger logger = new TestLogger();
+
     @Test
-    public void isCacheOnUpdate_prints_warning_message_for_deprecated_policy_CACHE() throws Exception {
+    @SuppressWarnings("deprecation")
+    public void isCacheOnUpdate_prints_warning_message_for_deprecated_policy_CACHE() {
         NearCacheConfig nearCacheConfig = new NearCacheConfig().setLocalUpdatePolicy(CACHE);
-        TestLogger logger = new TestLogger();
-        new ClientCacheProxy(new CacheConfig()).isCacheOnUpdate(nearCacheConfig, "cacheName", logger);
+        NearCachedClientCacheProxy.isCacheOnUpdate(nearCacheConfig, "cacheName", logger);
 
         assertNotNull(logger.message);
     }
 
     @Test
-    public void isCacheOnUpdate_not_prints_warning_message_for_policy_CACHE_ON_UPDATE() throws Exception {
+    public void isCacheOnUpdate_not_prints_warning_message_for_policy_CACHE_ON_UPDATE() {
         NearCacheConfig nearCacheConfig = new NearCacheConfig().setLocalUpdatePolicy(CACHE_ON_UPDATE);
-        TestLogger logger = new TestLogger();
-        new ClientCacheProxy(new CacheConfig()).isCacheOnUpdate(nearCacheConfig, "cacheName", logger);
+        NearCachedClientCacheProxy.isCacheOnUpdate(nearCacheConfig, "cacheName", logger);
 
         assertNull(logger.message);
     }
 
-    private class TestLogger extends AbstractLogger {
+    private static class TestLogger extends AbstractLogger {
 
         String message;
 
@@ -87,4 +87,3 @@ public class ClientCacheProxyTest extends HazelcastTestSupport {
         }
     }
 }
-

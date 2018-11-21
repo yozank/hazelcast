@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import com.hazelcast.internal.serialization.SerializationServiceBuilder;
 import com.hazelcast.internal.serialization.impl.DefaultSerializationServiceBuilder;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.serialization.SerializationService;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -40,6 +41,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.util.Clock;
 import com.hazelcast.version.MemberVersion;
 import org.junit.After;
 import org.junit.Before;
@@ -54,6 +56,7 @@ import javax.cache.configuration.MutableConfiguration;
 import javax.cache.spi.CachingProvider;
 import java.lang.reflect.Field;
 import java.net.UnknownHostException;
+import java.util.Collection;
 
 import static org.junit.Assert.assertEquals;
 
@@ -130,7 +133,10 @@ public class CacheSerializationTest extends HazelcastTestSupport {
             for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
                 CachePartitionSegment segment = cacheService.getSegment(partitionId);
 
-                CacheReplicationOperation operation = new CacheReplicationOperation(segment, 1);
+                int replicaIndex = 1;
+                Collection<ServiceNamespace> namespaces = segment.getAllNamespaces(replicaIndex);
+                CacheReplicationOperation operation = new CacheReplicationOperation();
+                operation.prepare(segment, namespaces, replicaIndex);
                 Data serialized = service.toData(operation);
                 try {
                     service.toObject(serialized);
@@ -147,7 +153,7 @@ public class CacheSerializationTest extends HazelcastTestSupport {
     @Test
     public void testCachePartitionEventData() throws UnknownHostException {
         Address address = new Address("127.0.0.1", 5701);
-        Member member = new MemberImpl(address, MemberVersion.UNKNOWN, true, false);
+        Member member = new MemberImpl(address, MemberVersion.UNKNOWN, true);
         CachePartitionEventData cachePartitionEventData = new CachePartitionEventData("test", 1, member);
         CachePartitionEventData deserialized = service.toObject(cachePartitionEventData);
         assertEquals(cachePartitionEventData, deserialized);
@@ -155,7 +161,7 @@ public class CacheSerializationTest extends HazelcastTestSupport {
 
     private CacheRecord createRecord(InMemoryFormat format, String value) {
         CacheRecordFactory factory = new CacheRecordFactory(format, service);
-        return factory.newRecord(value);
+        return factory.newRecordWithExpiry(value, Clock.currentTimeMillis(), -1);
     }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,165 +17,207 @@
 package com.hazelcast.client.map.impl.nearcache;
 
 import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.client.impl.clientside.HazelcastClientProxy;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.InMemoryFormat;
-import com.hazelcast.config.NearCacheConfig;
-import com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy;
-import com.hazelcast.config.SerializationConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
-import com.hazelcast.nio.serialization.ClassDefinition;
-import com.hazelcast.nio.serialization.ClassDefinitionBuilder;
-import com.hazelcast.nio.serialization.Portable;
-import com.hazelcast.nio.serialization.PortableFactory;
-import com.hazelcast.nio.serialization.PortableReader;
-import com.hazelcast.nio.serialization.PortableWriter;
-import com.hazelcast.test.HazelcastSerialClassRunner;
-import com.hazelcast.test.HazelcastTestSupport;
+import com.hazelcast.internal.adapter.DataStructureAdapter.DataStructureMethods;
+import com.hazelcast.internal.adapter.DataStructureAdapterMethod;
+import com.hazelcast.internal.adapter.IMapDataStructureAdapter;
+import com.hazelcast.internal.nearcache.AbstractNearCacheSerializationCountTest;
+import com.hazelcast.internal.nearcache.NearCache;
+import com.hazelcast.internal.nearcache.NearCacheManager;
+import com.hazelcast.internal.nearcache.NearCacheSerializationCountConfigBuilder;
+import com.hazelcast.internal.nearcache.NearCacheTestContext;
+import com.hazelcast.internal.nearcache.NearCacheTestContextBuilder;
+import com.hazelcast.internal.nearcache.NearCacheTestUtils;
+import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.test.HazelcastParametersRunnerFactory;
+import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
-import org.junit.Test;
+import org.junit.Before;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameter;
+import org.junit.runners.Parameterized.Parameters;
+import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Collection;
 
 import static com.hazelcast.config.InMemoryFormat.BINARY;
 import static com.hazelcast.config.InMemoryFormat.OBJECT;
-import static com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy.INVALIDATE;
-import static org.junit.Assert.assertEquals;
+import static com.hazelcast.internal.adapter.DataStructureAdapter.DataStructureMethods.GET;
+import static com.hazelcast.internal.adapter.DataStructureAdapter.DataStructureMethods.GET_ALL;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.createNearCacheConfig;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.getBaseConfig;
+import static com.hazelcast.spi.properties.GroupProperty.MAP_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MAP_INVALIDATION_MESSAGE_BATCH_SIZE;
+import static com.hazelcast.spi.properties.GroupProperty.PARTITION_COUNT;
+import static com.hazelcast.spi.properties.GroupProperty.PARTITION_OPERATION_THREAD_COUNT;
+import static java.util.Arrays.asList;
 
-@RunWith(HazelcastSerialClassRunner.class)
-@Category(QuickTest.class)
-public class ClientMapNearCacheSerializationCountTest extends HazelcastTestSupport {
+/**
+ * Near Cache serialization count tests for {@link IMap} on Hazelcast clients.
+ */
+@RunWith(Parameterized.class)
+@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
+@Category({QuickTest.class, ParallelTest.class})
+public class ClientMapNearCacheSerializationCountTest extends AbstractNearCacheSerializationCountTest<Data, String> {
 
-    protected static final String MAP_NAME = randomString();
-    protected static final AtomicInteger SERIALIZE_COUNT = new AtomicInteger();
-    protected static final AtomicInteger DESERIALIZE_COUNT = new AtomicInteger();
+    @Parameter
+    public DataStructureMethods method;
 
-    protected TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
-    protected IMap<String, SerializationCountingData> map;
+    @Parameter(value = 1)
+    public int[] keySerializationCounts;
 
-    @After
-    public void tearDown() {
-        DESERIALIZE_COUNT.set(0);
-        SERIALIZE_COUNT.set(0);
-        hazelcastFactory.terminateAll();
-    }
+    @Parameter(value = 2)
+    public int[] keyDeserializationCounts;
 
-    @Test
-    public void testDeserializationCountWith_ObjectNearCache_invalidateLocalUpdatePolicy() {
-        NearCacheConfig nearCacheConfig = createNearCacheConfig(OBJECT, INVALIDATE);
-        prepareCache(nearCacheConfig);
+    @Parameter(value = 3)
+    public int[] valueSerializationCounts;
 
-        String key = randomString();
-        SerializationCountingData value = new SerializationCountingData();
-        map.put(key, value);
-        assertAndReset(1, 0);
+    @Parameter(value = 4)
+    public int[] valueDeserializationCounts;
 
-        map.get(key);
-        assertAndReset(0, 1);
+    @Parameter(value = 5)
+    public InMemoryFormat mapInMemoryFormat;
 
-        map.get(key);
-        assertAndReset(0, 0);
-    }
+    @Parameter(value = 6)
+    public InMemoryFormat nearCacheInMemoryFormat;
 
-    @Test
-    public void testDeserializationCountWith_BinaryNearCache_invalidateLocalUpdatePolicy() {
-        NearCacheConfig nearCacheConfig = createNearCacheConfig(BINARY, INVALIDATE);
-        prepareCache(nearCacheConfig);
+    @Parameter(value = 7)
+    public Boolean invalidateOnChange;
 
-        String key = randomString();
-        SerializationCountingData value = new SerializationCountingData();
-        map.put(key, value);
-        assertAndReset(1, 0);
+    @Parameter(value = 8)
+    public Boolean serializeKeys;
 
-        map.get(key);
-        assertAndReset(0, 1);
+    private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
 
-        map.get(key);
-        assertAndReset(0, 1);
-    }
+    @Parameters(name = "method:{0} mapFormat:{5} nearCacheFormat:{6} invalidateOnChange:{7} serializeKeys:{8}")
+    public static Collection<Object[]> parameters() {
+        return asList(new Object[][]{
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, null, null, null},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, true, true},
+                {GET, newInt(1, 1, 0), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, true, false},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, false, true},
+                {GET, newInt(1, 1, 0), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, false, false},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 0), BINARY, OBJECT, true, true},
+                {GET, newInt(1, 1, 0), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 0), BINARY, OBJECT, true, false},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 0), BINARY, OBJECT, false, true},
+                {GET, newInt(1, 1, 0), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 0), BINARY, OBJECT, false, false},
 
-    protected NearCacheConfig createNearCacheConfig(InMemoryFormat inMemoryFormat, LocalUpdatePolicy localUpdatePolicy) {
-        return new NearCacheConfig()
-                .setName(MAP_NAME)
-                .setLocalUpdatePolicy(localUpdatePolicy)
-                .setInMemoryFormat(inMemoryFormat);
-    }
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 1), newInt(1, 1, 1), OBJECT, null, null, null},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 1), OBJECT, BINARY, true, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 1), OBJECT, BINARY, true, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 1), OBJECT, BINARY, false, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 1), OBJECT, BINARY, false, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, true, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, true, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, false, true},
+                {GET, newInt(1, 1, 1), newInt(0, 0, 0), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, false, true},
 
-    protected Config createConfig() {
-        Config config = new Config();
-        SerializationConfig serializationConfig = config.getSerializationConfig();
-        prepareSerializationConfig(serializationConfig);
-        return config;
-    }
+                {GET_ALL, newInt(1, 1, 1), newInt(0, 1, 1), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, null, null, null},
+                {GET_ALL, newInt(1, 1, 1), newInt(0, 1, 1), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, true, true},
+                {GET_ALL, newInt(1, 1, 0), newInt(0, 0, 0), newInt(1, 0, 0), newInt(0, 1, 1), BINARY, BINARY, true, false},
 
-    protected ClientConfig createClientConfig() {
-        ClientConfig config = new ClientConfig();
-        SerializationConfig serializationConfig = config.getSerializationConfig();
-        prepareSerializationConfig(serializationConfig);
-        return config;
-    }
-
-    protected void prepareSerializationConfig(SerializationConfig serializationConfig) {
-        ClassDefinition classDefinition = new ClassDefinitionBuilder(SerializationCountingData.FACTORY_ID,
-                SerializationCountingData.CLASS_ID).build();
-        serializationConfig.addClassDefinition(classDefinition);
-
-        serializationConfig.addPortableFactory(SerializationCountingData.FACTORY_ID, new PortableFactory() {
-            @Override
-            public Portable create(int classId) {
-                return new SerializationCountingData();
-            }
+                {GET_ALL, newInt(1, 1, 1), newInt(0, 1, 1), newInt(1, 1, 1), newInt(1, 1, 1), OBJECT, null, null, null},
+                {GET_ALL, newInt(1, 1, 1), newInt(0, 1, 1), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, false, true},
+                {GET_ALL, newInt(1, 1, 1), newInt(0, 1, 1), newInt(1, 1, 0), newInt(1, 1, 0), OBJECT, OBJECT, false, true},
         });
     }
 
-    protected void prepareCache(NearCacheConfig nearCacheConfig) {
-        hazelcastFactory.newHazelcastInstance(createConfig());
+    @Before
+    public void setUp() {
+        testMethod = method;
+        expectedKeySerializationCounts = keySerializationCounts;
+        expectedKeyDeserializationCounts = keyDeserializationCounts;
+        expectedValueSerializationCounts = valueSerializationCounts;
+        expectedValueDeserializationCounts = valueDeserializationCounts;
+        if (nearCacheInMemoryFormat != null) {
+            nearCacheConfig = createNearCacheConfig(nearCacheInMemoryFormat, serializeKeys)
+                    .setInvalidateOnChange(invalidateOnChange);
+        }
+    }
 
-        ClientConfig clientConfig = createClientConfig();
+    @After
+    public void tearDown() {
+        hazelcastFactory.shutdownAll();
+    }
+
+    @Override
+    protected void addConfiguration(NearCacheSerializationCountConfigBuilder configBuilder) {
+        configBuilder.append(method);
+        configBuilder.append(mapInMemoryFormat);
+        configBuilder.append(nearCacheInMemoryFormat);
+        configBuilder.append(invalidateOnChange);
+        configBuilder.append(serializeKeys);
+    }
+
+    @Override
+    protected void assumeThatMethodIsAvailable(DataStructureAdapterMethod method) {
+        NearCacheTestUtils.assumeThatMethodIsAvailable(IMapDataStructureAdapter.class, method);
+    }
+
+    @Override
+    protected <K, V> NearCacheTestContext<K, V, Data, String> createContext() {
+        Config config = getConfig()
+                // we don't want to have the invalidations from the initial population being sent during this test
+                .setProperty(MAP_INVALIDATION_MESSAGE_BATCH_SIZE.getName(), String.valueOf(Integer.MAX_VALUE))
+                .setProperty(MAP_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS.getName(), String.valueOf(Integer.MAX_VALUE))
+                .setProperty(PARTITION_COUNT.getName(), "1")
+                .setProperty(PARTITION_OPERATION_THREAD_COUNT.getName(), "1");
+        config.getMapConfig(DEFAULT_NEAR_CACHE_NAME)
+                .setInMemoryFormat(mapInMemoryFormat)
+                .setBackupCount(0)
+                .setAsyncBackupCount(0);
+        prepareSerializationConfig(config.getSerializationConfig());
+
+        HazelcastInstance member = hazelcastFactory.newHazelcastInstance(config);
+        IMap<K, V> memberMap = member.getMap(DEFAULT_NEAR_CACHE_NAME);
+
+        NearCacheTestContextBuilder<K, V, Data, String> contextBuilder = createNearCacheContextBuilder();
+        return contextBuilder
+                .setDataInstance(member)
+                .setDataAdapter(new IMapDataStructureAdapter<K, V>(memberMap))
+                .build();
+    }
+
+    @Override
+    protected <K, V> NearCacheTestContext<K, V, Data, String> createNearCacheContext() {
+        NearCacheTestContextBuilder<K, V, Data, String> contextBuilder = createNearCacheContextBuilder();
+        return contextBuilder.build();
+    }
+
+    @Override
+    protected Config getConfig() {
+        return getBaseConfig();
+    }
+
+    protected ClientConfig getClientConfig() {
+        return new ClientConfig();
+    }
+
+    private <K, V> NearCacheTestContextBuilder<K, V, Data, String> createNearCacheContextBuilder() {
+        ClientConfig clientConfig = getClientConfig();
         if (nearCacheConfig != null) {
             clientConfig.addNearCacheConfig(nearCacheConfig);
         }
+        prepareSerializationConfig(clientConfig.getSerializationConfig());
 
-        HazelcastInstance client = hazelcastFactory.newHazelcastClient(clientConfig);
-        map = client.getMap(MAP_NAME);
-    }
+        HazelcastClientProxy client = (HazelcastClientProxy) hazelcastFactory.newHazelcastClient(clientConfig);
+        IMap<K, V> clientMap = client.getMap(DEFAULT_NEAR_CACHE_NAME);
 
-    protected void assertAndReset(int serializeCount, int deserializeCount) {
-        assertEquals(serializeCount, SERIALIZE_COUNT.getAndSet(0));
-        assertEquals(deserializeCount, DESERIALIZE_COUNT.getAndSet(0));
-    }
+        NearCacheManager nearCacheManager = client.client.getNearCacheManager();
+        NearCache<Data, String> nearCache = nearCacheManager.getNearCache(DEFAULT_NEAR_CACHE_NAME);
 
-    protected static class SerializationCountingData implements Portable {
-
-        static int FACTORY_ID = 1;
-        static int CLASS_ID = 1;
-
-        public SerializationCountingData() {
-        }
-
-        @Override
-        public int getFactoryId() {
-            return FACTORY_ID;
-        }
-
-        @Override
-        public int getClassId() {
-            return CLASS_ID;
-        }
-
-        @Override
-        public void writePortable(PortableWriter writer) throws IOException {
-            SERIALIZE_COUNT.incrementAndGet();
-        }
-
-        @Override
-        public void readPortable(PortableReader reader) throws IOException {
-            DESERIALIZE_COUNT.incrementAndGet();
-        }
+        return new NearCacheTestContextBuilder<K, V, Data, String>(nearCacheConfig, client.getSerializationService())
+                .setNearCacheInstance(client)
+                .setNearCacheAdapter(new IMapDataStructureAdapter<K, V>(clientMap))
+                .setNearCache(nearCache)
+                .setNearCacheManager(nearCacheManager);
     }
 }

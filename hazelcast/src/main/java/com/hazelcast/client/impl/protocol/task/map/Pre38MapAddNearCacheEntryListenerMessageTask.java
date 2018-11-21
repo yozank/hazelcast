@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.impl.protocol.task.map;
 
-import com.hazelcast.client.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.MapAddNearCacheEntryListenerCodec;
 import com.hazelcast.instance.Node;
@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Client WITHOUT eventual consistent near cache will call this task.
+ * Client WITHOUT eventual consistent Near Cache will call this task.
  *
  * @see MapAddNearCacheInvalidationListenerMessageTask
  */
@@ -75,7 +75,9 @@ public class Pre38MapAddNearCacheEntryListenerMessageTask
 
     @Override
     protected Object newMapListener() {
-        return new Pre38NearCacheInvalidationListener(endpoint, nodeEngine.getLocalMember().getUuid());
+        String uuid = nodeEngine.getLocalMember().getUuid();
+        long correlationId = clientMessage.getCorrelationId();
+        return new Pre38NearCacheInvalidationListener(endpoint, uuid, correlationId);
     }
 
     @Override
@@ -85,12 +87,12 @@ public class Pre38MapAddNearCacheEntryListenerMessageTask
 
     /**
      * This listener is here to be used with server versions < 3.8.
-     * Because new improvements for near cache eventual consistency cannot work with server versions < 3.8.
+     * Because new improvements for Near Cache eventual consistency cannot work with server versions < 3.8.
      */
     private final class Pre38NearCacheInvalidationListener extends AbstractMapClientNearCacheInvalidationListener {
 
-        Pre38NearCacheInvalidationListener(ClientEndpoint endpoint, String localMemberUuid) {
-            super(endpoint, localMemberUuid);
+        Pre38NearCacheInvalidationListener(ClientEndpoint endpoint, String localMemberUuid, long correlationId) {
+            super(endpoint, localMemberUuid, correlationId);
         }
 
         @Override

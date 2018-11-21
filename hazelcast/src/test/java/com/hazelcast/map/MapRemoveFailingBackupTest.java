@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,16 @@ package com.hazelcast.map;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
-import com.hazelcast.instance.HazelcastInstanceImpl;
-import com.hazelcast.instance.TestUtil;
 import com.hazelcast.map.impl.operation.BaseRemoveOperation;
-import com.hazelcast.map.impl.operation.MutatingKeyBasedMapOperation;
+import com.hazelcast.map.impl.operation.KeyBasedMapOperation;
 import com.hazelcast.map.impl.proxy.MapProxyImpl;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.spi.InternalCompletableFuture;
+import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
-import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
@@ -56,7 +54,7 @@ import static org.mockito.Mockito.when;
 public class MapRemoveFailingBackupTest extends HazelcastTestSupport {
 
     @Test
-    public void testMapRemoveFailingBackupShouldNotLeadToStaleDataWhenReadBackupIsEnabled() throws Exception {
+    public void testMapRemoveFailingBackupShouldNotLeadToStaleDataWhenReadBackupIsEnabled() {
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
         final String mapName = randomMapName();
         final String key = "2";
@@ -67,14 +65,13 @@ public class MapRemoveFailingBackupTest extends HazelcastTestSupport {
         config.getMapConfig(mapName).setReadBackupData(true);
         HazelcastInstance hz1 = factory.newHazelcastInstance(config);
         HazelcastInstance hz2 = factory.newHazelcastInstance(config);
-        final HazelcastInstanceImpl hz1Impl = TestUtil.getHazelcastInstanceImpl(hz1);
+        final NodeEngine nodeEngine = getNodeEngineImpl(hz1);
         final IMap<Object, Object> map1 = hz1.getMap(mapName);
         final IMap<Object, Object> map2 = hz2.getMap(mapName);
         MapProxyImpl<Object, Object> mock1 = (MapProxyImpl<Object, Object>) spy(map1);
         when(mock1.remove(anyString())).then(new Answer<Object>() {
             @Override
             public Object answer(InvocationOnMock invocation) throws Throwable {
-                NodeEngineImpl nodeEngine = hz1Impl.node.nodeEngine;
                 Object object = invocation.getArguments()[0];
                 final Data key = nodeEngine.toData(object);
                 RemoveOperation operation = new RemoveOperation(mapName, key);
@@ -92,7 +89,7 @@ public class MapRemoveFailingBackupTest extends HazelcastTestSupport {
         mock1.remove(key);
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() throws Exception {
+            public void run() {
                 assertNull(map1.get(key));
                 assertNull(map2.get(key));
             }
@@ -124,7 +121,7 @@ public class MapRemoveFailingBackupTest extends HazelcastTestSupport {
 
         @Override
         public void run() {
-            dataOldValue = mapService.getMapServiceContext().toData(recordStore.remove(dataKey));
+            dataOldValue = mapService.getMapServiceContext().toData(recordStore.remove(dataKey, getCallerProvenance()));
             successful = dataOldValue != null;
         }
 
@@ -156,7 +153,7 @@ public class MapRemoveFailingBackupTest extends HazelcastTestSupport {
         }
     }
 
-    private static class ExceptionThrowingRemoveBackupOperation extends MutatingKeyBasedMapOperation {
+    private static class ExceptionThrowingRemoveBackupOperation extends KeyBasedMapOperation {
 
         private ExceptionThrowingRemoveBackupOperation() {
         }

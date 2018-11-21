@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.BackupOperation;
-import com.hazelcast.spi.serialization.SerializationService;
 
 import java.io.IOException;
-import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
+
+import static com.hazelcast.map.impl.operation.EntryOperator.operator;
+import static com.hazelcast.util.SetUtil.createLinkedHashSet;
 
 public class MultipleEntryBackupOperation extends AbstractMultipleEntryBackupOperation implements BackupOperation {
 
@@ -43,33 +43,9 @@ public class MultipleEntryBackupOperation extends AbstractMultipleEntryBackupOpe
 
     @Override
     public void run() throws Exception {
-        boolean shouldClone = mapContainer.shouldCloneOnEntryProcessing();
-        SerializationService serializationService = getNodeEngine().getSerializationService();
-
+        EntryOperator operator = operator(this, backupProcessor, getPredicate());
         for (Data key : keys) {
-            if (!isKeyProcessable(key)) {
-                continue;
-            }
-
-            Object oldValue = recordStore.get(key, true);
-            Object value = shouldClone ? serializationService.toObject(serializationService.toData(oldValue)) : oldValue;
-
-            Map.Entry entry = createMapEntry(key, value);
-            if (!isEntryProcessable(entry)) {
-                continue;
-            }
-
-            processBackup(entry);
-
-            if (noOp(entry, oldValue)) {
-                continue;
-            }
-            if (entryRemovedBackup(entry, key)) {
-                continue;
-            }
-            entryAddedOrUpdatedBackup(entry, key);
-
-            evict(key);
+            operator.operateOnKey(key).doPostOperateOps();
         }
     }
 
@@ -78,7 +54,7 @@ public class MultipleEntryBackupOperation extends AbstractMultipleEntryBackupOpe
         super.readInternal(in);
         backupProcessor = in.readObject();
         int size = in.readInt();
-        keys = new LinkedHashSet<Data>(size);
+        keys = createLinkedHashSet(size);
         for (int i = 0; i < size; i++) {
             Data key = in.readData();
             keys.add(key);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,13 +35,13 @@ import static org.junit.Assert.assertEquals;
 public class EntryViewTest extends HazelcastTestSupport {
 
     @Test
-    public void testEntryView() throws Exception {
+    public void testEntryView() {
         ReplicatedMapEntryView entryView = createEntryView();
         verifyFields(entryView);
     }
 
     @Test
-    public void testEntryViewSerialization() throws Exception {
+    public void testEntryViewSerialization() {
         ReplicatedMapEntryView entryView = createEntryView();
         SerializationServiceBuilder serializationServiceBuilder = new DefaultSerializationServiceBuilder();
         SerializationService serializationService = serializationServiceBuilder.build();
@@ -49,17 +49,17 @@ public class EntryViewTest extends HazelcastTestSupport {
         Data data = serializationService.toData(entryView);
         ReplicatedMapEntryView deserialized = serializationService.toObject(data);
         verifyFields(deserialized);
-
     }
 
     private ReplicatedMapEntryView createEntryView() {
-        ReplicatedMapEntryView entryView = new ReplicatedMapEntryView("foo", "bar");
-        entryView.setCreationTime(1);
-        entryView.setLastAccessTime(2);
-        entryView.setLastUpdateTime(3);
-        entryView.setHits(4);
-        entryView.setTtl(5);
-        return entryView;
+        return new ReplicatedMapEntryView<String, String>()
+                .setKey("foo")
+                .setValue("bar")
+                .setCreationTime(1)
+                .setLastAccessTime(2)
+                .setLastUpdateTime(3)
+                .setHits(4)
+                .setTtl(5);
     }
 
     private void verifyFields(ReplicatedMapEntryView entryView) {
@@ -75,6 +75,4 @@ public class EntryViewTest extends HazelcastTestSupport {
         assertEquals(-1, entryView.getCost());
         assertEquals(-1, entryView.getVersion());
     }
-
-
 }

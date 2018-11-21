@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,14 +26,14 @@ public interface SubscriberContextSupport {
     /**
      * Creates recovery operation for event loss cases.
      *
-     * @param mapName     map name.
-     * @param cacheName   cache name.
-     * @param sequence    sequence to be set.
-     * @param partitionId partitions id of broken sequence
-     * @return operation or request according to context.
+     * @param mapName     map name
+     * @param cacheId     ID of cache
+     * @param sequence    sequence to be set
+     * @param partitionId partitions ID of broken sequence
+     * @return operation or request according to context
      * @see QueryCache#tryRecover()
      */
-    Object createRecoveryOperation(String mapName, String cacheName, long sequence, int partitionId);
+    Object createRecoveryOperation(String mapName, String cacheId, long sequence, int partitionId);
 
     /**
      * Resolves response of recoveryOperation.
@@ -46,10 +46,10 @@ public interface SubscriberContextSupport {
     /**
      * Creates recovery operation for event loss cases.
      *
-     * @param mapName   map name.
-     * @param cacheName cache name.
-     * @return operation or request according to context.
+     * @param mapName map name
+     * @param cacheId ID of cache
+     * @return operation or request according to context
      * @see QueryCache#tryRecover()
      */
-    Object createDestroyQueryCacheOperation(String mapName, String cacheName);
+    Object createDestroyQueryCacheOperation(String mapName, String cacheId);
 }

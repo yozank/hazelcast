@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -278,7 +278,7 @@ public final class FutureUtil {
     }
 
     @PrivateApi
-    public static void waitForever(Collection<Future> futuresToWaitFor, ExceptionHandler exceptionHandler) {
+    public static void waitForever(Collection<? extends Future> futuresToWaitFor, ExceptionHandler exceptionHandler) {
         Collection<Future> futures = new ArrayList<Future>(futuresToWaitFor);
         while (true) {
             Iterator<Future> it = futures.iterator();
@@ -300,17 +300,17 @@ public final class FutureUtil {
     }
 
     @PrivateApi
-    public static void waitForever(Collection<Future> futures) {
+    public static void waitForever(Collection<? extends Future> futures) {
         waitForever(futures, IGNORE_ALL_EXCEPT_LOG_MEMBER_LEFT);
     }
 
     @PrivateApi
-    public static void waitWithDeadline(Collection<Future> futures, long timeout, TimeUnit timeUnit) {
+    public static void waitWithDeadline(Collection<? extends Future> futures, long timeout, TimeUnit timeUnit) {
         waitWithDeadline(futures, timeout, timeUnit, IGNORE_ALL_EXCEPT_LOG_MEMBER_LEFT);
     }
 
     @PrivateApi
-    public static void waitUntilAllRespondedWithDeadline(Collection<Future> futures, long timeout, TimeUnit timeUnit,
+    public static void waitUntilAllRespondedWithDeadline(Collection<? extends Future> futures, long timeout, TimeUnit timeUnit,
                                                          ExceptionHandler exceptionHandler) {
         CollectAllExceptionHandler collector = new CollectAllExceptionHandler(futures.size());
         waitWithDeadline(futures, timeout, timeUnit, collector);
@@ -324,14 +324,21 @@ public final class FutureUtil {
     }
 
     @PrivateApi
-    public static void waitWithDeadline(Collection<Future> futures, long timeout, TimeUnit timeUnit,
+    public static List<Throwable> waitUntilAllResponded(Collection<? extends Future> futures) {
+        CollectAllExceptionHandler collector = new CollectAllExceptionHandler(futures.size());
+        waitForever(futures, collector);
+        return collector.getThrowables();
+    }
+
+    @PrivateApi
+    public static void waitWithDeadline(Collection<? extends Future> futures, long timeout, TimeUnit timeUnit,
                                         ExceptionHandler exceptionHandler) {
 
         waitWithDeadline(futures, timeout, timeUnit, timeout, timeUnit, exceptionHandler);
     }
 
     @PrivateApi
-    public static void waitWithDeadline(Collection<Future> futures, long overallTimeout, TimeUnit overallTimeUnit,
+    public static void waitWithDeadline(Collection<? extends Future> futures, long overallTimeout, TimeUnit overallTimeUnit,
                                         long perFutureTimeout, TimeUnit perFutureTimeUnit) {
 
         waitWithDeadline(futures, overallTimeout, overallTimeUnit, perFutureTimeout, perFutureTimeUnit,
@@ -339,7 +346,7 @@ public final class FutureUtil {
     }
 
     @PrivateApi
-    public static void waitWithDeadline(Collection<Future> futures, long overallTimeout, TimeUnit overallTimeUnit,
+    public static void waitWithDeadline(Collection<? extends Future> futures, long overallTimeout, TimeUnit overallTimeUnit,
                                         long perFutureTimeout, TimeUnit perFutureTimeUnit, ExceptionHandler exceptionHandler) {
 
         // Calculate timeouts for whole operation and per future. If corresponding TimeUnits not set assume
@@ -402,8 +409,8 @@ public final class FutureUtil {
     /**
      * Check if all futures are done
      *
-     * @param futures
-     * @return true if all futures are done. false otherwise
+     * @param futures the list of futures
+     * @return {@code true} if all futures are done
      */
     public static boolean allDone(Collection<Future> futures) {
         for (Future f : futures) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -146,8 +146,8 @@ public final class UnsafeHelper {
                 unsafe.putLong(buffer, normalize(arrayBaseOffset, Bits.LONG_SIZE_IN_BYTES), 4L);
                 unsafe.putDouble(buffer, normalize(arrayBaseOffset, Bits.DOUBLE_SIZE_IN_BYTES), 5d);
                 unsafe.copyMemory(new byte[buffer.length], arrayBaseOffset,
-                                  buffer, arrayBaseOffset,
-                                  buffer.length);
+                        buffer, arrayBaseOffset,
+                        buffer.length);
 
                 unsafeAvailable = true;
             }

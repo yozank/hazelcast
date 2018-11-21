@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package com.hazelcast.test.mocknetwork;
 import com.hazelcast.core.Member;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
-import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.util.concurrent.ThreadFactoryImpl;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
@@ -27,18 +27,23 @@ import com.hazelcast.nio.ConnectionListener;
 import com.hazelcast.nio.ConnectionManager;
 import com.hazelcast.nio.IOService;
 import com.hazelcast.nio.Packet;
+import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.util.executor.StripedRunnable;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class MockConnectionManager implements ConnectionManager {
+import static com.hazelcast.test.HazelcastTestSupport.suspectMember;
+import static com.hazelcast.util.ThreadUtil.createThreadPoolName;
+
+class MockConnectionManager implements ConnectionManager {
 
     private static final int RETRY_NUMBER = 5;
     private static final int DELAY_FACTOR = 100;
@@ -48,16 +53,18 @@ public class MockConnectionManager implements ConnectionManager {
     private final Node node;
 
     private final Set<ConnectionListener> connectionListeners = new CopyOnWriteArraySet<ConnectionListener>();
-    private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(4);
+    private final ScheduledExecutorService scheduler;
     private final IOService ioService;
     private final ILogger logger;
 
     private volatile boolean live;
 
-    public MockConnectionManager(IOService ioService, Node node, TestNodeRegistry registry) {
+    MockConnectionManager(IOService ioService, Node node, TestNodeRegistry registry) {
         this.ioService = ioService;
         this.registry = registry;
         this.node = node;
+        this.scheduler = new ScheduledThreadPoolExecutor(4,
+                new ThreadFactoryImpl(createThreadPoolName(ioService.getHazelcastName(), "MockConnectionManager")));
         this.logger = ioService.getLoggingService().getLogger(MockConnectionManager.class);
     }
 
@@ -69,19 +76,48 @@ public class MockConnectionManager implements ConnectionManager {
     @Override
     public Connection getOrConnect(Address address) {
         Connection conn = mapConnections.get(address);
-        if (live && (conn == null || !conn.isAlive())) {
-            Node otherNode = registry.getNode(address);
-            if (otherNode != null && otherNode.getState() != NodeState.SHUT_DOWN) {
-                MockConnection thisConnection = new MockConnection(address, node.getThisAddress(), node.getNodeEngine());
-                MockConnection mockConn = new MockConnection(node.getThisAddress(), address, otherNode.getNodeEngine());
-                mockConn.localConnection = thisConnection;
-                thisConnection.localConnection = mockConn;
-                mapConnections.put(address, mockConn);
-                logger.info("Created connection to endpoint: " + address + ", connection: " + mockConn);
-                return mockConn;
-            }
+        if (conn != null && conn.isAlive()) {
+            return conn;
         }
-        return conn;
+        if (!live) {
+            return null;
+        }
+
+        Node targetNode = registry.getNode(address);
+        if (targetNode == null || isTargetLeft(targetNode)) {
+            suspectAddress(address);
+            return null;
+        }
+
+        return createConnection(targetNode);
+    }
+
+    private void suspectAddress(final Address address) {
+        // see NodeIOService#removeEndpoint()
+        node.getNodeEngine().getExecutionService().execute(ExecutionService.IO_EXECUTOR, new Runnable() {
+            @Override
+            public void run() {
+                node.getClusterService().suspectAddressIfNotConnected(address);
+            }
+        });
+    }
+
+    static boolean isTargetLeft(Node targetNode) {
+        return !targetNode.isRunning() && !targetNode.getClusterService().isJoined();
+    }
+
+    private synchronized Connection createConnection(Node targetNode) {
+        if (!live) {
+            throw new IllegalStateException("connection manager is not live!");
+        }
+        Address target = targetNode.getThisAddress();
+        MockConnection thisConnection = new MockConnection(target, node.getThisAddress(), node.getNodeEngine());
+        MockConnection remoteConnection = new MockConnection(node.getThisAddress(), target, targetNode.getNodeEngine());
+        remoteConnection.localConnection = thisConnection;
+        thisConnection.localConnection = remoteConnection;
+        mapConnections.put(target, remoteConnection);
+        logger.info("Created connection to endpoint: " + target + ", connection: " + remoteConnection);
+        return remoteConnection;
     }
 
     @Override
@@ -90,15 +126,23 @@ public class MockConnectionManager implements ConnectionManager {
     }
 
     @Override
-    public void start() {
+    public synchronized void start() {
         logger.fine("Starting connection manager");
         live = true;
     }
 
     @Override
-    public void stop() {
+    public synchronized void stop() {
+        if (!live) {
+            return;
+        }
         logger.fine("Stopping connection manager");
         live = false;
+
+        for (Connection connection : mapConnections.values()) {
+            connection.close(null, null);
+        }
+        mapConnections.clear();
 
         final Member localMember = node.getLocalMember();
         final Address thisAddress = localMember.getAddress();
@@ -110,31 +154,32 @@ public class MockConnectionManager implements ConnectionManager {
 
             Node otherNode = registry.getNode(address);
             if (otherNode != null && otherNode.getState() != NodeState.SHUT_DOWN) {
-                logger.fine(otherNode.getThisAddress() + " is instructed to remove us.");
-                ILogger otherLogger = otherNode.getLogger(MockConnectionManager.class);
-                otherLogger.fine(localMember + " will be removed from the cluster if present, "
-                        + "because it has requested to leave.");
+                logger.fine(otherNode.getThisAddress() + " is instructed to suspect from " + thisAddress);
                 try {
-                    ClusterServiceImpl clusterService = otherNode.getClusterService();
-                    clusterService.removeAddress(localMember.getAddress(), localMember.getUuid(),
-                            "Connection manager is stopped on " + localMember);
+                    suspectMember(otherNode, node, "Connection manager is stopped on " + localMember);
                 } catch (Throwable e) {
+                    ILogger otherLogger = otherNode.getLogger(MockConnectionManager.class);
                     otherLogger.warning("While removing " + thisAddress, e);
                 }
             }
         }
-        for (Connection connection : mapConnections.values()) {
-            connection.close(null, null);
-        }
     }
 
     @Override
-    public void shutdown() {
+    public synchronized void shutdown() {
         stop();
+        scheduler.shutdownNow();
     }
 
     @Override
-    public boolean registerConnection(final Address remoteEndpoint, final Connection connection) {
+    public synchronized boolean registerConnection(final Address remoteEndpoint, final Connection connection) {
+        if (!live) {
+            throw new IllegalStateException("connection manager is not live!");
+        }
+        if (!connection.isAlive()) {
+            return false;
+        }
+
         mapConnections.put(remoteEndpoint, connection);
         ioService.getEventService().executeEventCallback(new StripedRunnable() {
             @Override
@@ -157,11 +202,19 @@ public class MockConnectionManager implements ConnectionManager {
         connectionListeners.add(connectionListener);
     }
 
-    public void onClose(final Connection connection) {
+    @Override
+    public void onConnectionClose(final Connection connection) {
         final Address endPoint = connection.getEndPoint();
-        if (mapConnections.remove(endPoint, connection)) {
-            logger.info("Removed connection to endpoint: " + endPoint + ", connection: " + connection);
+        if (!mapConnections.remove(endPoint, connection)) {
+            return;
+        }
+        logger.info("Removed connection to endpoint: " + endPoint + ", connection: " + connection);
+        fireConnectionRemovedEvent(connection, endPoint);
+    }
 
+
+    private void fireConnectionRemovedEvent(final Connection connection, final Address endPoint) {
+        if (live) {
             ioService.getEventService().executeEventCallback(new StripedRunnable() {
                 @Override
                 public void run() {
@@ -221,11 +274,20 @@ public class MockConnectionManager implements ConnectionManager {
             sendTask = new SendTask(packet, target);
         }
 
-        int retries = sendTask.retries;
+        int retries = sendTask.retries.get();
         if (retries < RETRY_NUMBER && ioService.isActive()) {
             getOrConnect(target, true);
             // TODO: Caution: may break the order guarantee of the packets sent from the same thread!
-            scheduler.schedule(sendTask, (retries + 1) * DELAY_FACTOR, TimeUnit.MILLISECONDS);
+            try {
+                scheduler.schedule(sendTask, (retries + 1) * DELAY_FACTOR, TimeUnit.MILLISECONDS);
+            } catch (RejectedExecutionException e) {
+                if (live) {
+                    throw e;
+                }
+                if (logger.isFinestEnabled()) {
+                    logger.finest("Packet send task is rejected. Packet cannot be sent to " + target);
+                }
+            }
             return true;
         }
         return false;
@@ -233,22 +295,21 @@ public class MockConnectionManager implements ConnectionManager {
 
     private final class SendTask implements Runnable {
 
+        private final AtomicInteger retries = new AtomicInteger();
+
         private final Packet packet;
         private final Address target;
-
-        private volatile int retries;
 
         private SendTask(Packet packet, Address target) {
             this.packet = packet;
             this.target = target;
         }
 
-        @SuppressFBWarnings(value = "VO_VOLATILE_INCREMENT", justification = "single-writer, many-reader")
         @Override
         public void run() {
-            retries++;
+            int actualRetries = retries.incrementAndGet();
             if (logger.isFinestEnabled()) {
-                logger.finest("Retrying[" + retries + "] packet send operation to: " + target);
+                logger.finest("Retrying[" + actualRetries + "] packet send operation to: " + target);
             }
             send(packet, target, this);
         }

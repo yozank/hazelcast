@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,6 +54,11 @@ public class NearCacheConfigReadOnlyTest {
     @Test(expected = UnsupportedOperationException.class)
     public void setMaxIdleSecondsOnReadOnlyNearCacheConfigShouldFail() {
         getReadOnlyConfig().setMaxIdleSeconds(523);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void setSerializeKeysOnReadOnlyNearCacheConfigShouldFail() {
+        getReadOnlyConfig().setSerializeKeys(true);
     }
 
     @Test(expected = UnsupportedOperationException.class)

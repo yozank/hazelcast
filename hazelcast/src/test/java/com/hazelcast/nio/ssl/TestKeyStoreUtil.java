@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,75 +28,118 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Properties;
 
-public class TestKeyStoreUtil {
+import static com.hazelcast.nio.IOUtil.closeResource;
+import static com.hazelcast.util.ExceptionUtil.rethrow;
+
+@SuppressWarnings({"WeakerAccess", "unused"})
+public final class TestKeyStoreUtil {
 
     public static final String JAVAX_NET_SSL_KEY_STORE = "javax.net.ssl.keyStore";
     public static final String JAVAX_NET_SSL_TRUST_STORE = "javax.net.ssl.trustStore";
     public static final String JAVAX_NET_SSL_KEY_STORE_PASSWORD = "javax.net.ssl.keyStorePassword";
     public static final String JAVAX_NET_SSL_TRUST_STORE_PASSWORD = "javax.net.ssl.trustStorePassword";
     public static final String JAVAX_NET_SSL_MUTUAL_AUTHENTICATION = "javax.net.ssl.mutualAuthentication";
+    public static final String JAVAX_NET_SSL_KEY_FILE = "javax.net.ssl.keyFile";
+    public static final String JAVAX_NET_SSL_KEY_CERT_CHAIN_FILE = "javax.net.ssl.keyCertChainFile";
+    public static final String JAVAX_NET_SSL_TRUST_CERT_COLLECTION_FILE = "javax.net.ssl.trustCertCollectionFile";
+    public static final String KEY_FILE = "keyFile";
+
+    private static final ILogger LOGGER = Logger.getLogger(TestKeyStoreUtil.class.getName());
 
     private static String keyStore;
     private static String trustStore;
     private static String wrongKeyStore;
     private static String malformedKeystore;
-    private static ILogger logger = Logger.getLogger(TestKeyStoreUtil.class.getName());
+    private static String keyFile;
+    private static String certFile;
 
     private TestKeyStoreUtil() {
     }
 
-    public static synchronized String getKeyStoreFilePath() throws IOException {
+    public static Properties createSslProperties() {
+        return createSslProperties(false);
+    }
+
+    public static Properties createSslProperties(boolean openSsl) {
+        Properties props = new Properties();
+        if (openSsl) {
+            props.setProperty(JAVAX_NET_SSL_KEY_FILE, getKeyFilePath());
+            props.setProperty(JAVAX_NET_SSL_KEY_CERT_CHAIN_FILE, getCertFilePath());
+            props.setProperty(JAVAX_NET_SSL_TRUST_CERT_COLLECTION_FILE, getCertFilePath());
+        } else {
+            props.setProperty(JAVAX_NET_SSL_KEY_STORE, getKeyStoreFilePath());
+            props.setProperty(JAVAX_NET_SSL_TRUST_STORE, getTrustStoreFilePath());
+            props.setProperty(JAVAX_NET_SSL_KEY_STORE_PASSWORD, "123456");
+            props.setProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD, "123456");
+        }
+        return props;
+    }
+
+    public static synchronized String getKeyStoreFilePath() {
         if (keyStore == null || !new File(keyStore).exists()) {
-            keyStore = createTempKeyStoreFile("com/hazelcast/nio/ssl/hazelcast.keystore").getAbsolutePath();
+            keyStore = createTempFile("com/hazelcast/nio/ssl/hazelcast.keystore").getAbsolutePath();
         }
         return keyStore;
     }
 
-    public static synchronized String getWrongKeyStoreFilePath() throws IOException {
-        if (wrongKeyStore == null || !new File(wrongKeyStore).exists()) {
-            wrongKeyStore = createTempKeyStoreFile("com/hazelcast/nio/ssl/hazelcast_wrong.keystore").getAbsolutePath();
+    public static synchronized String getKeyFilePath() {
+        if (keyFile == null || !new File(keyFile).exists()) {
+            keyFile = createTempFile("com/hazelcast/nio/ssl/hazelcast-privkey.pem").getAbsolutePath();
         }
-        return wrongKeyStore;
+        return keyFile;
     }
 
-    public static synchronized String getMalformedKeyStoreFilePath() throws IOException {
-        if (malformedKeystore == null || !new File(malformedKeystore).exists()) {
-            malformedKeystore = createTempKeyStoreFile("com/hazelcast/nio/ssl/hazelcast_malformed.keystore").getAbsolutePath();
+    public static synchronized String getCertFilePath() {
+        if (certFile == null || !new File(certFile).exists()) {
+            certFile = createTempFile("com/hazelcast/nio/ssl/hazelcast.crt").getAbsolutePath();
         }
-        return malformedKeystore;
+        return certFile;
     }
 
-    public static synchronized String getTrustStoreFilePath() throws IOException {
+    public static synchronized String getTrustStoreFilePath() {
         if (trustStore == null || !new File(trustStore).exists()) {
-            trustStore = createTempKeyStoreFile("com/hazelcast/nio/ssl/hazelcast.truststore").getAbsolutePath();
+            trustStore = createTempFile("com/hazelcast/nio/ssl/hazelcast.truststore").getAbsolutePath();
         }
         return trustStore;
     }
 
-    private static File createTempKeyStoreFile(String resource) throws IOException {
-        ClassLoader cl = TestKeyStoreUtil.class.getClassLoader();
-        InputStream in = new BufferedInputStream(cl.getResourceAsStream(resource));
-        File file = File.createTempFile("hazelcast", "jks");
-        OutputStream out = new BufferedOutputStream(new FileOutputStream(file));
-        int b;
-        while ((b = in.read()) > -1) {
-            out.write(b);
+    public static synchronized String getWrongKeyStoreFilePath() {
+        if (wrongKeyStore == null || !new File(wrongKeyStore).exists()) {
+            wrongKeyStore = createTempFile("com/hazelcast/nio/ssl/hazelcast_wrong.keystore").getAbsolutePath();
         }
-        out.flush();
-        out.close();
-        in.close();
-        file.deleteOnExit();
-        logger.warning("Keystore file path: " + file.getAbsolutePath()
-                + ", length = " + file.length());
-        return file;
+        return wrongKeyStore;
     }
 
-    public static Properties createSslProperties() throws IOException {
-        Properties props = new Properties();
-        props.setProperty(JAVAX_NET_SSL_KEY_STORE, getKeyStoreFilePath());
-        props.setProperty(JAVAX_NET_SSL_TRUST_STORE, getTrustStoreFilePath());
-        props.setProperty(JAVAX_NET_SSL_KEY_STORE_PASSWORD, "123456");
-        props.setProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD, "123456");
-        return props;
+    public static synchronized String getMalformedKeyStoreFilePath() {
+        if (malformedKeystore == null || !new File(malformedKeystore).exists()) {
+            malformedKeystore = createTempFile("com/hazelcast/nio/ssl/hazelcast_malformed.keystore").getAbsolutePath();
+        }
+        return malformedKeystore;
+    }
+
+    private static File createTempFile(String resource) {
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            File file = File.createTempFile("hazelcast", "jks");
+            file.deleteOnExit();
+
+            ClassLoader cl = TestKeyStoreUtil.class.getClassLoader();
+            in = new BufferedInputStream(cl.getResourceAsStream(resource));
+            out = new BufferedOutputStream(new FileOutputStream(file));
+            int b;
+            while ((b = in.read()) > -1) {
+                out.write(b);
+            }
+            out.flush();
+
+            LOGGER.warning("Keystore file path: " + file.getAbsolutePath() + ", length: " + file.length());
+            return file;
+        } catch (IOException e) {
+            throw rethrow(e);
+        } finally {
+            closeResource(out);
+            closeResource(in);
+        }
     }
 }

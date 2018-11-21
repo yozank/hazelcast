@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.client.listeners;
 
+import com.hazelcast.collection.impl.queue.QueueService;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.core.ItemEvent;
 import com.hazelcast.core.ItemListener;
@@ -27,9 +28,14 @@ import org.junit.runner.RunWith;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-public class QueueItemListenerOnReconnectTest extends AbstractListenersOnReconnectTest{
+public class QueueItemListenerOnReconnectTest extends AbstractListenersOnReconnectTest {
 
     private IQueue<String> iQueue;
+
+    @Override
+    String getServiceName() {
+        return QueueService.SERVICE_NAME;
+    }
 
     @Override
     protected String addListener() {

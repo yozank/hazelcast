@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,11 @@ import com.hazelcast.cache.impl.HazelcastServerCachingProvider;
 import com.hazelcast.client.cache.impl.HazelcastClientCacheManager;
 import com.hazelcast.client.cache.impl.HazelcastClientCachingProvider;
 import com.hazelcast.client.config.ClientConfig;
-import com.hazelcast.client.impl.HazelcastClientProxy;
+import com.hazelcast.client.impl.clientside.HazelcastClientProxy;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.CacheConfig;
 import com.hazelcast.config.Config;
-import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.config.NearCacheConfig;
-import com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.internal.adapter.DataStructureAdapterMethod;
 import com.hazelcast.internal.adapter.ICacheCacheLoader;
@@ -40,61 +38,39 @@ import com.hazelcast.internal.nearcache.NearCacheTestContext;
 import com.hazelcast.internal.nearcache.NearCacheTestContextBuilder;
 import com.hazelcast.internal.nearcache.NearCacheTestUtils;
 import com.hazelcast.nio.serialization.Data;
-import com.hazelcast.spi.properties.GroupProperty;
-import com.hazelcast.test.HazelcastParametersRunnerFactory;
+import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
-import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
 import javax.cache.configuration.FactoryBuilder;
 import javax.cache.spi.CachingProvider;
-import java.util.Collection;
 
 import static com.hazelcast.config.EvictionConfig.MaxSizePolicy.USED_NATIVE_MEMORY_PERCENTAGE;
 import static com.hazelcast.config.EvictionPolicy.LRU;
 import static com.hazelcast.config.InMemoryFormat.NATIVE;
+import static com.hazelcast.config.NearCacheConfig.DEFAULT_LOCAL_UPDATE_POLICY;
+import static com.hazelcast.config.NearCacheConfig.DEFAULT_MEMORY_FORMAT;
+import static com.hazelcast.config.NearCacheConfig.DEFAULT_SERIALIZE_KEYS;
 import static com.hazelcast.internal.nearcache.NearCacheTestUtils.createNearCacheConfig;
-import static java.util.Arrays.asList;
+import static com.hazelcast.internal.nearcache.NearCacheTestUtils.getBaseConfig;
 
 /**
  * Basic Near Cache tests for {@link ICache} on Hazelcast clients.
  */
-@RunWith(Parameterized.class)
-@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
+@RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class ClientCacheNearCacheBasicTest extends AbstractNearCacheBasicTest<Data, String> {
 
-    @Parameter
-    public InMemoryFormat inMemoryFormat;
-
-    @Parameter(value = 1)
-    public LocalUpdatePolicy localUpdatePolicy;
-
     private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
-
-    @Parameters(name = "format:{0} localUpdatePolicy:{1}")
-    public static Collection<Object[]> parameters() {
-        return asList(new Object[][]{
-                {InMemoryFormat.BINARY, LocalUpdatePolicy.INVALIDATE},
-                {InMemoryFormat.BINARY, LocalUpdatePolicy.CACHE_ON_UPDATE},
-                {InMemoryFormat.OBJECT, LocalUpdatePolicy.INVALIDATE},
-                {InMemoryFormat.OBJECT, LocalUpdatePolicy.CACHE_ON_UPDATE},
-        });
-    }
 
     @Before
     public void setUp() {
-        nearCacheConfig = createNearCacheConfig(inMemoryFormat)
-                .setLocalUpdatePolicy(localUpdatePolicy);
+        nearCacheConfig = createNearCacheConfig(DEFAULT_MEMORY_FORMAT, DEFAULT_SERIALIZE_KEYS)
+                .setLocalUpdatePolicy(DEFAULT_LOCAL_UPDATE_POLICY);
     }
 
     @After
@@ -109,53 +85,44 @@ public class ClientCacheNearCacheBasicTest extends AbstractNearCacheBasicTest<Da
 
     @Override
     protected <K, V> NearCacheTestContext<K, V, Data, String> createContext(boolean loaderEnabled) {
-        Config config = createConfig();
-        ClientConfig clientConfig = createClientConfig();
-        CacheConfig<K, V> cacheConfig = createCacheConfig(nearCacheConfig, loaderEnabled);
+        Config config = getConfig();
+        CacheConfig<K, V> cacheConfig = getCacheConfig(nearCacheConfig, loaderEnabled);
 
         HazelcastInstance member = hazelcastFactory.newHazelcastInstance(config);
-        HazelcastClientProxy client = (HazelcastClientProxy) hazelcastFactory.newHazelcastClient(clientConfig);
-
         CachingProvider memberProvider = HazelcastServerCachingProvider.createCachingProvider(member);
         HazelcastServerCacheManager memberCacheManager = (HazelcastServerCacheManager) memberProvider.getCacheManager();
-
-        NearCacheManager nearCacheManager = client.client.getNearCacheManager();
-        CachingProvider provider = HazelcastClientCachingProvider.createCachingProvider(client);
-        HazelcastClientCacheManager cacheManager = (HazelcastClientCacheManager) provider.getCacheManager();
-        String cacheNameWithPrefix = cacheManager.getCacheNameWithPrefix(DEFAULT_NEAR_CACHE_NAME);
-
-        ICache<K, V> clientCache = cacheManager.createCache(DEFAULT_NEAR_CACHE_NAME, cacheConfig);
         ICache<K, V> memberCache = memberCacheManager.createCache(DEFAULT_NEAR_CACHE_NAME, cacheConfig);
+        ICacheDataStructureAdapter<K, V> dataAdapter = new ICacheDataStructureAdapter<K, V>(memberCache);
 
-        NearCache<Data, String> nearCache = nearCacheManager.getNearCache(cacheNameWithPrefix);
-
-        return new NearCacheTestContextBuilder<K, V, Data, String>(nearCacheConfig, client.getSerializationService())
-                .setNearCacheInstance(client)
+        NearCacheTestContextBuilder<K, V, Data, String> builder = createNearCacheContextBuilder(cacheConfig);
+        return builder
                 .setDataInstance(member)
-                .setNearCacheAdapter(new ICacheDataStructureAdapter<K, V>(clientCache))
-                .setDataAdapter(new ICacheDataStructureAdapter<K, V>(memberCache))
-                .setNearCache(nearCache)
-                .setNearCacheManager(nearCacheManager)
-                .setCacheManager(cacheManager)
+                .setDataAdapter(dataAdapter)
                 .setMemberCacheManager(memberCacheManager)
-                // FIXME: the JCache doesn't send invalidation on CREATED entries, so this will crash some tests
-                // see AbstractCacheRecordStore.doPutRecord()
-                //.setInvalidationListener(createInvalidationEventHandler(clientCache))
                 .build();
     }
 
-    protected Config createConfig() {
-        return getConfig()
-                .setProperty(GroupProperty.PARTITION_COUNT.getName(), PARTITION_COUNT);
+    @Override
+    protected <K, V> NearCacheTestContext<K, V, Data, String> createNearCacheContext() {
+        CacheConfig<K, V> cacheConfig = getCacheConfig(nearCacheConfig, false);
+        NearCacheTestContextBuilder<K, V, Data, String> builder = createNearCacheContextBuilder(cacheConfig);
+        return builder.build();
     }
 
-    protected ClientConfig createClientConfig() {
-        return new ClientConfig()
-                .addNearCacheConfig(nearCacheConfig);
+    @Override
+    protected Config getConfig() {
+        return getBaseConfig();
+    }
+
+    protected ClientConfig getClientConfig() {
+        ClientConfig clientConfig = new ClientConfig();
+        clientConfig.setProperty(NearCache.PROP_EXPIRATION_TASK_INITIAL_DELAY_SECONDS, "0");
+        clientConfig.setProperty(NearCache.PROP_EXPIRATION_TASK_PERIOD_SECONDS, "1");
+        return clientConfig.addNearCacheConfig(nearCacheConfig);
     }
 
     @SuppressWarnings("unchecked")
-    private <K, V> CacheConfig<K, V> createCacheConfig(NearCacheConfig nearCacheConfig, boolean loaderEnabled) {
+    private <K, V> CacheConfig<K, V> getCacheConfig(NearCacheConfig nearCacheConfig, boolean loaderEnabled) {
         CacheConfig<K, V> cacheConfig = new CacheConfig<K, V>()
                 .setName(DEFAULT_NEAR_CACHE_NAME)
                 .setInMemoryFormat(nearCacheConfig.getInMemoryFormat());
@@ -176,59 +143,23 @@ public class ClientCacheNearCacheBasicTest extends AbstractNearCacheBasicTest<Da
         return cacheConfig;
     }
 
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenInvokeIsUsed_thenNearCacheIsInvalidated_onNearCacheAdapter() {
-    }
+    private <K, V> NearCacheTestContextBuilder<K, V, Data, String> createNearCacheContextBuilder(CacheConfig<K, V> cacheConfig) {
+        ClientConfig clientConfig = getClientConfig();
 
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenInvokeAllIsUsed_thenNearCacheIsInvalidated_onNearCacheAdapter() {
-    }
+        HazelcastClientProxy client = (HazelcastClientProxy) hazelcastFactory.newHazelcastClient(clientConfig);
+        CachingProvider provider = HazelcastClientCachingProvider.createCachingProvider(client);
+        HazelcastClientCacheManager cacheManager = (HazelcastClientCacheManager) provider.getCacheManager();
+        ICache<K, V> clientCache = cacheManager.createCache(DEFAULT_NEAR_CACHE_NAME, cacheConfig);
 
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenRemoveAllIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
-    }
+        NearCacheManager nearCacheManager = client.client.getNearCacheManager();
+        String cacheNameWithPrefix = cacheManager.getCacheNameWithPrefix(DEFAULT_NEAR_CACHE_NAME);
+        NearCache<Data, String> nearCache = nearCacheManager.getNearCache(cacheNameWithPrefix);
 
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenRemoveAllWithKeysIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
-    }
-
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenLoadAllWithListenerIsUsed_thenNearCacheIsInvalidated_onNearCacheAdapter() {
-    }
-
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenReplaceIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
-    }
-
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenReplaceWithOldValueIsUsedWithCacheOnUpdate_thenNearCacheShouldBePopulated() {
-    }
-
-    @Test
-    @Ignore
-    @Override
-    // FIXME: test works in 3.9, so we have to see which backport is missing
-    public void whenClearIsUsed_thenNearCacheShouldBeInvalidated_onNearCacheAdapter() {
+        return new NearCacheTestContextBuilder<K, V, Data, String>(nearCacheConfig, client.getSerializationService())
+                .setNearCacheInstance(client)
+                .setNearCacheAdapter(new ICacheDataStructureAdapter<K, V>(clientCache))
+                .setNearCache(nearCache)
+                .setNearCacheManager(nearCacheManager)
+                .setCacheManager(cacheManager);
     }
 }

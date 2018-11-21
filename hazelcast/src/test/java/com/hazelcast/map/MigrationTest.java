@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,9 +34,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static com.hazelcast.test.TestPartitionUtils.getAllReplicaAddresses;
-import static com.hazelcast.test.TestPartitionUtils.getOngoingReplicaSyncRequests;
-import static com.hazelcast.test.TestPartitionUtils.getScheduledReplicaSyncRequests;
+import static com.hazelcast.internal.partition.TestPartitionUtils.getAllReplicaAddresses;
+import static com.hazelcast.internal.partition.TestPartitionUtils.getOngoingReplicaSyncRequests;
+import static com.hazelcast.internal.partition.TestPartitionUtils.getScheduledReplicaSyncRequests;
 import static java.util.Collections.singletonList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.hazelcast.internal.partition.impl;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -31,14 +32,17 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import static org.junit.Assert.assertFalse;
+import java.util.Collections;
+import java.util.Set;
+
+import static com.hazelcast.internal.partition.NonFragmentedServiceNamespace.INSTANCE;
+import static org.junit.Assert.assertNull;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class PartitionReplicaManagerTest extends HazelcastTestSupport {
 
     private static final int PARTITION_ID = 23;
-    private static final int DELAY_MILLIS = 250;
 
     private TestHazelcastInstanceFactory factory;
     private HazelcastInstance hazelcastInstance;
@@ -62,25 +66,27 @@ public class PartitionReplicaManagerTest extends HazelcastTestSupport {
         factory.terminateAll();
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = AssertionError.class)
     public void testTriggerPartitionReplicaSync_whenReplicaIndexNegative_thenThrowException() {
-        manager.triggerPartitionReplicaSync(PARTITION_ID, -1, DELAY_MILLIS);
+        Set<ServiceNamespace> namespaces = Collections.<ServiceNamespace>singleton(INSTANCE);
+        manager.triggerPartitionReplicaSync(PARTITION_ID, namespaces, -1);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = AssertionError.class)
     public void testTriggerPartitionReplicaSync_whenReplicaIndexTooLarge_thenThrowException() {
-        manager.triggerPartitionReplicaSync(PARTITION_ID, InternalPartition.MAX_REPLICA_COUNT + 1, DELAY_MILLIS);
+        Set<ServiceNamespace> namespaces = Collections.<ServiceNamespace>singleton(INSTANCE);
+        manager.triggerPartitionReplicaSync(PARTITION_ID, namespaces, InternalPartition.MAX_REPLICA_COUNT + 1);
     }
 
     @Test
     public void testCheckSyncPartitionTarget_whenPartitionOwnerIsNull_thenReturnFalse() {
-        assertFalse(manager.checkSyncPartitionTarget(PARTITION_ID, 0));
+        assertNull(manager.checkAndGetPrimaryReplicaOwner(PARTITION_ID, 0));
     }
 
     @Test
     public void testCheckSyncPartitionTarget_whenNodeIsPartitionOwner_thenReturnFalse() {
         warmUpPartitions(hazelcastInstance);
 
-        assertFalse(manager.checkSyncPartitionTarget(PARTITION_ID, 0));
+        assertNull(manager.checkAndGetPrimaryReplicaOwner(PARTITION_ID, 0));
     }
 }

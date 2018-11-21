@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.spi.discovery.DiscoveryNode;
 import com.hazelcast.spi.discovery.integration.DiscoveryService;
 
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -42,18 +40,13 @@ public class DiscoveryAddressProvider
     }
 
     @Override
-    public Collection<InetSocketAddress> loadAddresses() {
+    public Collection<Address> loadAddresses() {
         Iterable<DiscoveryNode> discoveredNodes = checkNotNull(discoveryService.discoverNodes(),
                 "Discovered nodes cannot be null!");
 
-        Collection<InetSocketAddress> possibleMembers = new ArrayList<InetSocketAddress>();
+        Collection<Address> possibleMembers = new ArrayList<Address>();
         for (DiscoveryNode discoveryNode : discoveredNodes) {
-            Address discoveredAddress = discoveryNode.getPrivateAddress();
-            try {
-                possibleMembers.add(discoveredAddress.getInetSocketAddress());
-            } catch (UnknownHostException e) {
-                logger.warning("Unresolvable host exception", e);
-            }
+            possibleMembers.add(discoveryNode.getPrivateAddress());
         }
         return possibleMembers;
     }

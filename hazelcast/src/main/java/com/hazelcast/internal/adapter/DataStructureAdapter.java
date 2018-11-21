@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,16 +21,19 @@ import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.query.Predicate;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CompletionListener;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Abstracts the Hazelcast data structures with Near Cache support for the Near Cache usage.
  */
+@SuppressWarnings("checkstyle:methodcount")
 public interface DataStructureAdapter<K, V> {
 
     int size();
@@ -41,21 +44,43 @@ public interface DataStructureAdapter<K, V> {
 
     void set(K key, V value);
 
+    ICompletableFuture<Void> setAsync(K key, V value);
+
+    ICompletableFuture<Void> setAsync(K key, V value, long ttl, TimeUnit timeunit);
+
+    ICompletableFuture<Void> setAsync(K key, V value, ExpiryPolicy expiryPolicy);
+
     V put(K key, V value);
+
+    ICompletableFuture<V> putAsync(K key, V value);
+
+    ICompletableFuture<V> putAsync(K key, V value, long ttl, TimeUnit timeunit);
+
+    ICompletableFuture<V> putAsync(K key, V value, ExpiryPolicy expiryPolicy);
+
+    void putTransient(K key, V value, long ttl, TimeUnit timeunit);
 
     boolean putIfAbsent(K key, V value);
 
     ICompletableFuture<Boolean> putIfAbsentAsync(K key, V value);
 
+    void setTtl(K key, long duration, TimeUnit timeUnit);
+
     V replace(K key, V newValue);
 
     boolean replace(K key, V oldValue, V newValue);
 
-    void remove(K key);
+    V remove(K key);
 
     boolean remove(K key, V oldValue);
 
     ICompletableFuture<V> removeAsync(K key);
+
+    void delete(K key);
+
+    ICompletableFuture<Boolean> deleteAsync(K key);
+
+    boolean evict(K key);
 
     <T> T invoke(K key, EntryProcessor<K, V, T> entryProcessor, Object... arguments) throws EntryProcessorException;
 
@@ -83,12 +108,20 @@ public interface DataStructureAdapter<K, V> {
 
     void removeAll(Set<K> keys);
 
+    void evictAll();
+
     <T> Map<K, EntryProcessorResult<T>> invokeAll(Set<? extends K> keys, EntryProcessor<K, V, T> entryProcessor,
                                                   Object... arguments);
 
     void clear();
 
+    void close();
+
     void destroy();
+
+    void setExpiryPolicy(Set<K> keys, ExpiryPolicy expiryPolicy);
+
+    boolean setExpiryPolicy(K key, ExpiryPolicy expiryPolicy);
 
     LocalMapStats getLocalMapStats();
 
@@ -100,7 +133,14 @@ public interface DataStructureAdapter<K, V> {
         GET("get", Object.class),
         GET_ASYNC("getAsync", Object.class),
         SET("set", Object.class, Object.class),
+        SET_ASYNC("setAsync", Object.class, Object.class),
+        SET_ASYNC_WITH_TTL("setAsync", Object.class, Object.class, long.class, TimeUnit.class),
+        SET_ASYNC_WITH_EXPIRY_POLICY("setAsync", Object.class, Object.class, ExpiryPolicy.class),
         PUT("put", Object.class, Object.class),
+        PUT_ASYNC("putAsync", Object.class, Object.class),
+        PUT_ASYNC_WITH_TTL("putAsync", Object.class, Object.class, long.class, TimeUnit.class),
+        PUT_ASYNC_WITH_EXPIRY_POLICY("putAsync", Object.class, Object.class, ExpiryPolicy.class),
+        PUT_TRANSIENT("putTransient", Object.class, Object.class, long.class, TimeUnit.class),
         PUT_IF_ABSENT("putIfAbsent", Object.class, Object.class),
         PUT_IF_ABSENT_ASYNC("putIfAbsentAsync", Object.class, Object.class),
         REPLACE("replace", Object.class, Object.class),
@@ -108,6 +148,9 @@ public interface DataStructureAdapter<K, V> {
         REMOVE("remove", Object.class),
         REMOVE_WITH_OLD_VALUE("remove", Object.class, Object.class),
         REMOVE_ASYNC("removeAsync", Object.class),
+        DELETE("delete", Object.class),
+        DELETE_ASYNC("deleteAsync", Object.class),
+        EVICT("evict", Object.class),
         INVOKE("invoke", Object.class, EntryProcessor.class, Object[].class),
         EXECUTE_ON_KEY("executeOnKey", Object.class, com.hazelcast.map.EntryProcessor.class),
         EXECUTE_ON_KEYS("executeOnKeys", Set.class, com.hazelcast.map.EntryProcessor.class),
@@ -121,10 +164,15 @@ public interface DataStructureAdapter<K, V> {
         PUT_ALL("putAll", Map.class),
         REMOVE_ALL("removeAll"),
         REMOVE_ALL_WITH_KEYS("removeAll", Set.class),
+        EVICT_ALL("evictAll"),
         INVOKE_ALL("invokeAll", Set.class, EntryProcessor.class, Object[].class),
         CLEAR("clear"),
+        CLOSE("close"),
         DESTROY("destroy"),
-        GET_LOCAL_MAP_STATS("getLocalMapStats");
+        GET_LOCAL_MAP_STATS("getLocalMapStats"),
+        SET_TTL("setTtl", Object.class, long.class, TimeUnit.class),
+        SET_EXPIRY_POLICY_MULTI_KEY("setExpiryPolicy", Set.class, ExpiryPolicy.class),
+        SET_EXPIRY_POLICY("setExpiryPolicy", Object.class, ExpiryPolicy.class);
 
         private final String methodName;
         private final Class<?>[] parameterTypes;

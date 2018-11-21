@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.hazelcast.internal.partition.impl;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.ExecutionCallback;
 import com.hazelcast.instance.Node;
+import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
@@ -28,6 +29,7 @@ import com.hazelcast.spi.InternalCompletableFuture;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.PartitionSpecificRunnable;
 import com.hazelcast.util.Clock;
 
 import java.util.concurrent.Semaphore;
@@ -35,12 +37,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
+import static com.hazelcast.internal.partition.impl.PartitionServiceState.FETCHING_PARTITION_TABLE;
 import static com.hazelcast.internal.partition.impl.PartitionServiceState.MIGRATION_LOCAL;
 import static com.hazelcast.internal.partition.impl.PartitionServiceState.MIGRATION_ON_MASTER;
 import static com.hazelcast.internal.partition.impl.PartitionServiceState.REPLICA_NOT_OWNED;
 import static com.hazelcast.internal.partition.impl.PartitionServiceState.REPLICA_NOT_SYNC;
 import static com.hazelcast.internal.partition.impl.PartitionServiceState.SAFE;
 import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
+import static java.lang.Thread.currentThread;
 
 /**
  * Verifies up-to-dateness of each of partition replicas owned by this member.
@@ -72,6 +76,10 @@ public class PartitionReplicaStateChecker {
     }
 
     public PartitionServiceState getPartitionServiceState() {
+        if (partitionService.isFetchMostRecentPartitionTableTaskRequired()) {
+            return FETCHING_PARTITION_TABLE;
+        }
+
         if (hasMissingReplicaOwners()) {
             return REPLICA_NOT_OWNED;
         }
@@ -148,7 +156,6 @@ public class PartitionReplicaStateChecker {
 
         ClusterServiceImpl clusterService = node.getClusterService();
         ClusterState clusterState = clusterService.getClusterState();
-        boolean isClusterNotActive = (clusterState == ClusterState.FROZEN || clusterState == ClusterState.PASSIVE);
 
         for (InternalPartition partition : partitionStateManager.getPartitions()) {
             for (int index = 0; index < replicaCount; index++) {
@@ -160,8 +167,10 @@ public class PartitionReplicaStateChecker {
                     return true;
                 }
 
+                // Checking IN_TRANSITION state is not needed,
+                // because to be able to change cluster state, we ensure that there are no ongoing/pending migrations
                 if (clusterService.getMember(address) == null
-                        && (!isClusterNotActive || !clusterService.isMemberRemovedWhileClusterIsNotActive(address))) {
+                        && (clusterState.isJoinAllowed() || !clusterService.isMemberRemovedInNotJoinableState(address))) {
 
                     if (logger.isFinestEnabled()) {
                         logger.finest("Unknown replica owner= " + address + ", partitionId="
@@ -191,6 +200,7 @@ public class PartitionReplicaStateChecker {
             //noinspection BusyWait
             Thread.sleep(sleep);
         } catch (InterruptedException ie) {
+            currentThread().interrupt();
             logger.finest("Busy wait interrupted", ie);
         }
         return timeoutInMillis - sleep;
@@ -216,6 +226,7 @@ public class PartitionReplicaStateChecker {
             boolean receivedAllResponses = semaphore.tryAcquire(permits, REPLICA_SYNC_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             return receivedAllResponses && ok.get();
         } catch (InterruptedException ignored) {
+            currentThread().interrupt();
             return false;
         }
     }
@@ -227,7 +238,6 @@ public class PartitionReplicaStateChecker {
 
         ClusterServiceImpl clusterService = node.getClusterService();
         ClusterState clusterState = clusterService.getClusterState();
-        boolean isClusterActive = clusterState == ClusterState.ACTIVE || clusterState == ClusterState.IN_TRANSITION;
 
         int ownedCount = 0;
         for (InternalPartition partition : partitionStateManager.getPartitions()) {
@@ -258,13 +268,15 @@ public class PartitionReplicaStateChecker {
                     continue;
                 }
 
-                if (!isClusterActive && clusterService.isMemberRemovedWhileClusterIsNotActive(replicaAddress)) {
+                // Checking IN_TRANSITION state is not needed,
+                // because to be able to change cluster state, we ensure that there are no ongoing/pending migrations
+                if (!clusterState.isJoinAllowed() && clusterService.isMemberRemovedInNotJoinableState(replicaAddress)) {
                     semaphore.release();
                     continue;
                 }
 
-                CheckReplicaVersionTask task = new CheckReplicaVersionTask(nodeEngine, partitionService,
-                        partition.getPartitionId(), index, callback);
+                int partitionId = partition.getPartitionId();
+                PartitionSpecificRunnable task = new CheckPartitionReplicaVersionTask(nodeEngine, partitionId, index, callback);
                 nodeEngine.getOperationService().execute(task);
             }
         }
@@ -276,9 +288,10 @@ public class PartitionReplicaStateChecker {
     }
 
     boolean hasOnGoingMigrationMaster(Level level) {
-        Address masterAddress = node.getMasterAddress();
+        ClusterService clusterService = node.getClusterService();
+        Address masterAddress = clusterService.getMasterAddress();
         if (masterAddress == null) {
-            return node.joined();
+            return clusterService.isJoined();
         }
 
         Operation operation = new HasOngoingMigration();

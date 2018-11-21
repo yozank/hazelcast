@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,13 @@ package com.hazelcast.client.heartbeat;
 
 import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.connection.ClientConnectionManager;
-import com.hazelcast.client.impl.HazelcastClientInstanceImpl;
+import com.hazelcast.client.connection.nio.ClientConnection;
+import com.hazelcast.client.impl.clientside.HazelcastClientInstanceImpl;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ClientAddPartitionLostListenerCodec;
 import com.hazelcast.client.impl.protocol.codec.ClientRemovePartitionLostListenerCodec;
 import com.hazelcast.client.spi.ClientListenerService;
 import com.hazelcast.client.spi.EventHandler;
-import com.hazelcast.client.spi.impl.ClusterListenerSupport;
-import com.hazelcast.client.spi.impl.ConnectionHeartbeatListener;
 import com.hazelcast.client.spi.impl.ListenerMessageCodec;
 import com.hazelcast.client.spi.properties.ClientProperty;
 import com.hazelcast.client.test.ClientTestSupport;
@@ -40,6 +39,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.Partition;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Connection;
+import com.hazelcast.nio.ConnectionListener;
 import com.hazelcast.spi.exception.TargetDisconnectedException;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
@@ -61,14 +61,13 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class ClientHeartbeatTest extends ClientTestSupport {
 
-    private static final int HEARTBEAT_TIMEOUT_MILLIS = 3000;
+    private static final int HEARTBEAT_TIMEOUT_MILLIS = 10000;
 
     private TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
 
@@ -81,21 +80,25 @@ public class ClientHeartbeatTest extends ClientTestSupport {
     }
 
     @Test
-    public void testHeartbeatStoppedEvent() throws InterruptedException {
+    public void testOwnerConnectionClosed_whenHeartbeatStopped() {
         HazelcastInstance instance = hazelcastFactory.newHazelcastInstance();
         HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
 
         HazelcastClientInstanceImpl clientImpl = getHazelcastClientInstanceImpl(client);
         ClientConnectionManager connectionManager = clientImpl.getConnectionManager();
         final CountDownLatch countDownLatch = new CountDownLatch(1);
-        connectionManager.addConnectionHeartbeatListener(new ConnectionHeartbeatListener() {
+        connectionManager.addConnectionListener(new ConnectionListener() {
             @Override
-            public void heartbeatResumed(Connection connection) {
+            public void connectionAdded(Connection connection) {
+
             }
 
             @Override
-            public void heartbeatStopped(Connection connection) {
-                countDownLatch.countDown();
+            public void connectionRemoved(Connection connection) {
+                ClientConnection clientConnection = (ClientConnection) connection;
+                if (clientConnection.isAuthenticatedAsOwner()) {
+                    countDownLatch.countDown();
+                }
             }
         });
 
@@ -104,43 +107,38 @@ public class ClientHeartbeatTest extends ClientTestSupport {
     }
 
     @Test
-    public void testHeartbeatResumedEvent() throws InterruptedException {
+    public void testNonOwnerConnectionClosed_whenHeartbeatStopped() {
         hazelcastFactory.newHazelcastInstance();
-        HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
-        final HazelcastInstance instance2 = hazelcastFactory.newHazelcastInstance();
-
-        // make sure client is connected to instance2
-        String keyOwnedByInstance2 = generateKeyOwnedBy(instance2);
-        IMap<String, String> map = client.getMap(randomString());
-        map.put(keyOwnedByInstance2, randomString());
+        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
+        HazelcastInstance instance = hazelcastFactory.newHazelcastInstance();
 
         HazelcastClientInstanceImpl clientImpl = getHazelcastClientInstanceImpl(client);
         final ClientConnectionManager connectionManager = clientImpl.getConnectionManager();
-        final CountDownLatch countDownLatch = new CountDownLatch(1);
-        connectionManager.addConnectionHeartbeatListener(new ConnectionHeartbeatListener() {
-            @Override
-            public void heartbeatResumed(Connection connection) {
-                assertEquals(instance2.getCluster().getLocalMember().getAddress(), connection.getEndPoint());
-                countDownLatch.countDown();
-            }
-
-            @Override
-            public void heartbeatStopped(Connection connection) {
-            }
-        });
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run()
-                    throws Exception {
-                assertNotNull(connectionManager.getConnection(instance2.getCluster().getLocalMember().getAddress()));
+            public void run() throws Exception {
+                assertEquals(2, connectionManager.getActiveConnections().size());
             }
         });
 
-        blockMessagesFromInstance(instance2, client);
-        sleepMillis(HEARTBEAT_TIMEOUT_MILLIS * 2);
-        unblockMessagesFromInstance(instance2, client);
+        final CountDownLatch countDownLatch = new CountDownLatch(1);
+        connectionManager.addConnectionListener(new ConnectionListener() {
+            @Override
+            public void connectionAdded(Connection connection) {
 
+            }
+
+            @Override
+            public void connectionRemoved(Connection connection) {
+                ClientConnection clientConnection = (ClientConnection) connection;
+                if (!clientConnection.isAuthenticatedAsOwner()) {
+                    countDownLatch.countDown();
+                }
+            }
+        });
+
+        blockMessagesFromInstance(instance, client);
         assertOpenEventually(countDownLatch);
     }
 
@@ -235,8 +233,7 @@ public class ClientHeartbeatTest extends ClientTestSupport {
         config.setProperty(ClientProperty.SHUFFLE_MEMBER_LIST.getName(), "false");
         final HazelcastInstance client = hazelcastFactory.newHazelcastClient(config);
         HazelcastClientInstanceImpl hazelcastClientInstanceImpl = getHazelcastClientInstanceImpl(client);
-        final ClusterListenerSupport clientClusterService =
-                (ClusterListenerSupport) hazelcastClientInstanceImpl.getClientClusterService();
+        final ClientConnectionManager clientConnectionManager = hazelcastClientInstanceImpl.getConnectionManager();
 
         final CountDownLatch countDownLatch = new CountDownLatch(2);
         client.getLifecycleService().addLifecycleListener(new LifecycleListener() {
@@ -263,8 +260,8 @@ public class ClientHeartbeatTest extends ClientTestSupport {
                 String uuid = instance3.getLocalEndpoint().getUuid();
                 assertEquals(uuid, getClientEngineImpl(instance3).getOwnerUuid(client.getLocalEndpoint().getUuid()));
                 assertEquals(uuid, getClientEngineImpl(instance2).getOwnerUuid(client.getLocalEndpoint().getUuid()));
-                assertEquals(uuid, clientClusterService.getPrincipal().getOwnerUuid());
-                assertEquals(instance3.getCluster().getLocalMember().getAddress(), clientClusterService.getOwnerConnectionAddress());
+                assertEquals(uuid, clientConnectionManager.getPrincipal().getOwnerUuid());
+                assertEquals(instance3.getCluster().getLocalMember().getAddress(), clientConnectionManager.getOwnerConnectionAddress());
             }
         });
 
@@ -278,8 +275,8 @@ public class ClientHeartbeatTest extends ClientTestSupport {
                 String uuid = instance3.getLocalEndpoint().getUuid();
                 assertEquals(uuid, getClientEngineImpl(instance3).getOwnerUuid(client.getLocalEndpoint().getUuid()));
                 assertEquals(uuid, getClientEngineImpl(instance2).getOwnerUuid(client.getLocalEndpoint().getUuid()));
-                assertEquals(uuid, clientClusterService.getPrincipal().getOwnerUuid());
-                assertEquals(instance3.getCluster().getLocalMember().getAddress(), clientClusterService.getOwnerConnectionAddress());
+                assertEquals(uuid, clientConnectionManager.getPrincipal().getOwnerUuid());
+                assertEquals(instance3.getCluster().getLocalMember().getAddress(), clientConnectionManager.getOwnerConnectionAddress());
             }
         });
     }
@@ -291,11 +288,7 @@ public class ClientHeartbeatTest extends ClientTestSupport {
         config.setProperty(GroupProperty.CLIENT_ENDPOINT_REMOVE_DELAY_SECONDS.getName(), String.valueOf(delaySeconds));
         HazelcastInstance hazelcastInstance = hazelcastFactory.newHazelcastInstance(config);
 
-        ClientConfig clientConfig = new ClientConfig();
-        clientConfig.setProperty(ClientProperty.HEARTBEAT_TIMEOUT.getName(), "10000");
-        clientConfig.setProperty(ClientProperty.HEARTBEAT_INTERVAL.getName(), "1000");
-
-        HazelcastInstance client = hazelcastFactory.newHazelcastClient(clientConfig);
+        HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
 
         final CountDownLatch disconnectedLatch = new CountDownLatch(1);
 
@@ -319,7 +312,7 @@ public class ClientHeartbeatTest extends ClientTestSupport {
             @Override
             public void stateChanged(LifecycleEvent event) {
                 stateChangeCount.incrementAndGet();
-                Logger.getLogger(this.getClass()).info("state event : " + event);
+                Logger.getLogger(this.getClass()).info("state event: " + event);
                 if (LifecycleEvent.LifecycleState.CLIENT_CONNECTED == event.getState()) {
                     connectedLatch.countDown();
                 }
@@ -344,27 +337,24 @@ public class ClientHeartbeatTest extends ClientTestSupport {
     public void testAddingListenerToNewConnectionFailedBecauseOfHeartbeat() throws Exception {
         hazelcastFactory.newHazelcastInstance();
 
-        ClientConfig clientConfig = new ClientConfig();
-        clientConfig.setProperty(ClientProperty.HEARTBEAT_TIMEOUT.getName(), "10000");
-        clientConfig.setProperty(ClientProperty.HEARTBEAT_INTERVAL.getName(), "1000");
-
-        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(clientConfig);
+        final HazelcastInstance client = hazelcastFactory.newHazelcastClient(getClientConfig());
 
         HazelcastClientInstanceImpl clientInstanceImpl = getHazelcastClientInstanceImpl(client);
         final ClientListenerService clientListenerService = clientInstanceImpl.getListenerService();
         final CountDownLatch blockIncoming = new CountDownLatch(1);
         final CountDownLatch heartbeatStopped = new CountDownLatch(1);
         final CountDownLatch onListenerRegister = new CountDownLatch(2);
-        clientInstanceImpl.getConnectionManager().addConnectionHeartbeatListener(new ConnectionHeartbeatListener() {
+        clientInstanceImpl.getConnectionManager().addConnectionListener(new ConnectionListener() {
             @Override
-            public void heartbeatResumed(Connection connection) {
+            public void connectionAdded(Connection connection) {
 
             }
 
             @Override
-            public void heartbeatStopped(Connection connection) {
+            public void connectionRemoved(Connection connection) {
                 heartbeatStopped.countDown();
             }
+
         });
 
         clientListenerService.registerListener(createPartitionLostListenerCodec(), new EventHandler() {
@@ -394,6 +384,8 @@ public class ClientHeartbeatTest extends ClientTestSupport {
         });
 
         HazelcastInstance hazelcastInstance2 = hazelcastFactory.newHazelcastInstance();
+
+        assertSizeEventually(2, clientInstanceImpl.getConnectionManager().getActiveConnections());
 
         blockMessagesFromInstance(hazelcastInstance2, client);
         assertOpenEventually(heartbeatStopped);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+  ~ Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -15,7 +15,11 @@
   ~ limitations under the License.
   -->
 
-<hazelcast-client xmlns="http://www.hazelcast.com/schema/client-config">
+<hazelcast-client xmlns="http://www.hazelcast.com/schema/client-config"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://www.hazelcast.com/schema/client-config
+                  http://www.hazelcast.com/schema/client-config/hazelcast-client-config-3.11.xsd">
+
     <group>
         <name>foobar</name>
         <password>dev-pass</password>
@@ -25,7 +29,7 @@
             <factory-class-name>com.hazelcast.nio.ssl.BasicSSLContextFactory</factory-class-name>
         </ssl>
         <socket-options>
-            <buffer-size>32</buffer-size>
+            <buffer-size>128</buffer-size>
             <keep-alive>false</keep-alive>
             <tcp-no-delay>false</tcp-no-delay>
             <reuse-address>false</reuse-address>

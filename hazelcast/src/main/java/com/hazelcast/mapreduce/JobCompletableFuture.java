@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,7 @@ package com.hazelcast.mapreduce;
 import com.hazelcast.core.ICompletableFuture;
 
 /**
- * This is a special version of ICompletableFuture to return the assigned job
- * id of the submit operation.
+ * This is a special version of ICompletableFuture to return the assigned job ID of the submit operation.
  *
  * @param <V> type of the resulting value
  * @since 3.2
@@ -39,5 +38,4 @@ public interface JobCompletableFuture<V>
      * @return jobId, the unique identifier for this mapreduce job
      */
     String getJobId();
-
 }

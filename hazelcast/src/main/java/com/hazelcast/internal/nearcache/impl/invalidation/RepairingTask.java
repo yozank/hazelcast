@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.spi.TaskScheduler;
 import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.spi.properties.HazelcastProperty;
+import com.hazelcast.spi.serialization.SerializationService;
+import com.hazelcast.util.ConstructorFunction;
+import com.hazelcast.util.ContextMutexFactory;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,6 +32,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.hazelcast.util.ConcurrencyUtil.getOrPutSynchronized;
 import static com.hazelcast.util.Preconditions.checkNotNegative;
 import static java.lang.String.format;
 import static java.lang.System.nanoTime;
@@ -36,30 +40,34 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
- * This task runs on near-cache-end and only one instance is created per data-structure type like imap and icache.
+ * This task runs on Near Cache side and only one instance is created per
+ * data-structure type like IMap and ICache.
+ * <p>
  * Repairing responsibilities of this task are:
  * <ul>
  * <li>
- * To scan {@link RepairingHandler}s to see if any near-cache needs to be invalidated
- * according to missed invalidation counts. Controlled via {@link RepairingTask#MAX_TOLERATED_MISS_COUNT}
+ * To scan {@link RepairingHandler}s to see if any Near Cache needs to be
+ * invalidated according to missed invalidation counts (controlled via
+ * {@link RepairingTask#MAX_TOLERATED_MISS_COUNT}).
  * </li>
  * <li>
- * To send periodic generic-operations to cluster members in order to fetch latest partition sequences and UUIDs.
- * Controlled via {@link RepairingTask#MIN_RECONCILIATION_INTERVAL_SECONDS}
+ * To send periodic generic-operations to cluster members in order to fetch
+ * latest partition sequences and UUIDs (controlled via
+ * {@link RepairingTask#MIN_RECONCILIATION_INTERVAL_SECONDS}).
  * </li>
  * </ul>
  */
 public final class RepairingTask implements Runnable {
 
-    static final HazelcastProperty MAX_TOLERATED_MISS_COUNT
+    public static final HazelcastProperty MAX_TOLERATED_MISS_COUNT
             = new HazelcastProperty("hazelcast.invalidation.max.tolerated.miss.count", 10);
-    static final HazelcastProperty RECONCILIATION_INTERVAL_SECONDS
+    public static final HazelcastProperty RECONCILIATION_INTERVAL_SECONDS
             = new HazelcastProperty("hazelcast.invalidation.reconciliation.interval.seconds", 60, SECONDS);
     // only used for testing
-    static final HazelcastProperty MIN_RECONCILIATION_INTERVAL_SECONDS
+    public static final HazelcastProperty MIN_RECONCILIATION_INTERVAL_SECONDS
             = new HazelcastProperty("hazelcast.invalidation.min.reconciliation.interval.seconds", 30, SECONDS);
 
-    static final long RESCHEDULE_FAILED_INITIALIZATION_AFTER_MILLIS = 500;
+    private static final long RESCHEDULE_FAILED_INITIALIZATION_AFTER_MILLIS = 500;
 
     final int maxToleratedMissCount;
     final long reconciliationIntervalNanos;
@@ -68,33 +76,36 @@ public final class RepairingTask implements Runnable {
     private final String localUuid;
     private final ILogger logger;
     private final TaskScheduler scheduler;
-    private final MetaDataFetcher metaDataFetcher;
+    private final InvalidationMetaDataFetcher invalidationMetaDataFetcher;
+    private final SerializationService serializationService;
     private final MinimalPartitionService partitionService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final ConcurrentMap<String, RepairingHandler> handlers = new ConcurrentHashMap<String, RepairingHandler>();
+    private final ContextMutexFactory contextMutexFactory = new ContextMutexFactory();
 
     private volatile long lastAntiEntropyRunNanos;
 
-    public RepairingTask(HazelcastProperties properties, MetaDataFetcher metaDataFetcher, TaskScheduler scheduler,
-                         MinimalPartitionService partitionService, String localUuid,
-                         ILogger logger) {
+    public RepairingTask(HazelcastProperties properties, InvalidationMetaDataFetcher invalidationMetaDataFetcher,
+                         TaskScheduler scheduler, SerializationService serializationService,
+                         MinimalPartitionService partitionService, String localUuid, ILogger logger) {
         this.reconciliationIntervalNanos = SECONDS.toNanos(getReconciliationIntervalSeconds(properties));
         this.maxToleratedMissCount = getMaxToleratedMissCount(properties);
-        this.metaDataFetcher = metaDataFetcher;
+        this.invalidationMetaDataFetcher = invalidationMetaDataFetcher;
         this.scheduler = scheduler;
+        this.serializationService = serializationService;
         this.partitionService = partitionService;
         this.partitionCount = partitionService.getPartitionCount();
         this.localUuid = localUuid;
         this.logger = logger;
     }
 
-    private static int getMaxToleratedMissCount(HazelcastProperties properties) {
+    private int getMaxToleratedMissCount(HazelcastProperties properties) {
         int maxToleratedMissCount = properties.getInteger(MAX_TOLERATED_MISS_COUNT);
         return checkNotNegative(maxToleratedMissCount,
                 format("max-tolerated-miss-count cannot be < 0 but found %d", maxToleratedMissCount));
     }
 
-    private static int getReconciliationIntervalSeconds(HazelcastProperties properties) {
+    private int getReconciliationIntervalSeconds(HazelcastProperties properties) {
         int reconciliationIntervalSeconds = properties.getInteger(RECONCILIATION_INTERVAL_SECONDS);
         int minReconciliationIntervalSeconds = properties.getInteger(MIN_RECONCILIATION_INTERVAL_SECONDS);
         if (reconciliationIntervalSeconds < 0
@@ -120,7 +131,8 @@ public final class RepairingTask implements Runnable {
     }
 
     /**
-     * Marks relevant data as stale if missed invalidation event count is above the max tolerated miss count.
+     * Marks relevant data as stale if missed invalidation event count is above
+     * the max tolerated miss count.
      */
     private void fixSequenceGaps() {
         for (RepairingHandler handler : handlers.values()) {
@@ -131,7 +143,8 @@ public final class RepairingTask implements Runnable {
     }
 
     /**
-     * Periodically sends generic operations to cluster members to get latest invalidation metadata.
+     * Periodically sends generic operations to cluster members to get latest
+     * invalidation metadata.
      */
     private void runAntiEntropyIfNeeded() {
         if (reconciliationIntervalNanos == 0) {
@@ -140,7 +153,7 @@ public final class RepairingTask implements Runnable {
 
         long sinceLastRun = nanoTime() - lastAntiEntropyRunNanos;
         if (sinceLastRun >= reconciliationIntervalNanos) {
-            metaDataFetcher.fetchMetadata(handlers);
+            invalidationMetaDataFetcher.fetchMetadata(handlers);
             lastAntiEntropyRunNanos = nanoTime();
         }
     }
@@ -155,17 +168,30 @@ public final class RepairingTask implements Runnable {
         }
     }
 
-    public <K, V> RepairingHandler registerAndGetHandler(String name, NearCache<K, V> nearCache) {
-        RepairingHandler handler = handlers.get(name);
-        if (handler == null) {
-            handler = new RepairingHandler(name, nearCache, partitionService, localUuid, logger);
+    private class HandlerConstructor<K, V> implements ConstructorFunction<String, RepairingHandler> {
+
+        private final NearCache<K, V> nearCache;
+
+        HandlerConstructor(NearCache<K, V> nearCache) {
+            this.nearCache = nearCache;
+        }
+
+        @Override
+        public RepairingHandler createNew(String dataStructureName) {
+            RepairingHandler handler = new RepairingHandler(logger, localUuid, dataStructureName,
+                    nearCache, serializationService, partitionService);
             StaleReadDetector staleReadDetector = new StaleReadDetectorImpl(handler, partitionService);
             nearCache.unwrap(DefaultNearCache.class).getNearCacheRecordStore().setStaleReadDetector(staleReadDetector);
 
             initRepairingHandler(handler);
 
-            handlers.put(name, handler);
+            return handler;
         }
+    }
+
+    public <K, V> RepairingHandler registerAndGetHandler(String dataStructureName, NearCache<K, V> nearCache) {
+        RepairingHandler handler = getOrPutSynchronized(handlers, dataStructureName,
+                contextMutexFactory, new HandlerConstructor(nearCache));
 
         if (running.compareAndSet(false, true)) {
             scheduleNextRun();
@@ -175,20 +201,21 @@ public final class RepairingTask implements Runnable {
         return handler;
     }
 
-    public void deregisterHandler(String mapName) {
-        handlers.remove(mapName);
+    public void deregisterHandler(String dataStructureName) {
+        handlers.remove(dataStructureName);
     }
 
     /**
-     * Synchronously makes initial population of partition uuids & sequences.
-     * This initialization is done for every near-cached data structure.
+     * Synchronously makes initial population of partition UUIDs & sequences.
+     * <p>
+     * This initialization is done for every data structure with a Near Cache.
      */
     private void initRepairingHandler(RepairingHandler handler) {
         logger.finest("Initializing repairing handler");
 
         boolean initialized = false;
         try {
-            metaDataFetcher.init(handler);
+            invalidationMetaDataFetcher.init(handler);
             initialized = true;
         } catch (Exception e) {
             logger.warning(e);
@@ -200,8 +227,10 @@ public final class RepairingTask implements Runnable {
     }
 
     /**
-     * Asynchronously makes initial population of partition uuids & sequences.
-     * This is the fallback operation when {@link #initRepairingHandler} is failed.
+     * Asynchronously makes initial population of partition UUIDs & sequences.
+     * <p>
+     * This is the fallback operation when {@link #initRepairingHandler}
+     * failed.
      */
     private void initRepairingHandlerAsync(final RepairingHandler handler) {
         scheduler.schedule(new Runnable() {
@@ -241,10 +270,11 @@ public final class RepairingTask implements Runnable {
         return MILLISECONDS.toNanos(totalDelayMillis);
     }
 
-
     /**
-     * Calculates number of missed invalidations and checks if repair is needed for the supplied handler.
-     * Every handler represents a single near-cache.
+     * Calculates the number of missed invalidations and checks if repair is
+     * needed for the supplied handler.
+     * <p>
+     * Every handler represents a single Near Cache.
      */
     private boolean isAboveMaxToleratedMissCount(RepairingHandler handler) {
         int partition = 0;
@@ -256,8 +286,8 @@ public final class RepairingTask implements Runnable {
 
             if (missCount > maxToleratedMissCount) {
                 if (logger.isFinestEnabled()) {
-                    logger.finest(format("%s:[map=%s,missCount=%d,maxToleratedMissCount=%d]",
-                            "Above tolerated miss count", handler.getName(), missCount, maxToleratedMissCount));
+                    logger.finest(format("Above tolerated miss count:[map=%s,missCount=%d,maxToleratedMissCount=%d]",
+                            handler.getName(), missCount, maxToleratedMissCount));
                 }
                 return true;
             }
@@ -277,12 +307,12 @@ public final class RepairingTask implements Runnable {
         }
     }
 
-    // used in tests.
-    public MetaDataFetcher getMetaDataFetcher() {
-        return metaDataFetcher;
+    // used in tests
+    public InvalidationMetaDataFetcher getInvalidationMetaDataFetcher() {
+        return invalidationMetaDataFetcher;
     }
 
-    // used in tests.
+    // used in tests
     public ConcurrentMap<String, RepairingHandler> getHandlers() {
         return handlers;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package com.hazelcast.spi.impl.operationservice.impl;
 
+import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.ReadonlyOperation;
 import com.hazelcast.spi.partition.IPartition;
 
 import static com.hazelcast.spi.ExceptionAction.THROW_EXCEPTION;
@@ -29,14 +31,29 @@ import static com.hazelcast.spi.ExceptionAction.THROW_EXCEPTION;
  */
 final class PartitionInvocation extends Invocation {
 
-    PartitionInvocation(Context context, Operation op, Runnable doneCallback, int tryCount, long tryPauseMillis,
-                        long callTimeoutMillis, boolean deserialize) {
+    final boolean failOnIndeterminateOperationState;
+
+    PartitionInvocation(Context context,
+                        Operation op,
+                        Runnable doneCallback,
+                        int tryCount,
+                        long tryPauseMillis,
+                        long callTimeoutMillis,
+                        boolean deserialize,
+                        boolean failOnIndeterminateOperationState) {
         super(context, op, doneCallback, tryCount, tryPauseMillis, callTimeoutMillis, deserialize);
+        this.failOnIndeterminateOperationState = failOnIndeterminateOperationState && !(op instanceof ReadonlyOperation);
     }
 
-    PartitionInvocation(Context context, Operation op, int tryCount, long tryPauseMillis,
-                        long callTimeoutMillis, boolean deserialize) {
-        this(context, op, null, tryCount, tryPauseMillis, callTimeoutMillis, deserialize);
+    PartitionInvocation(Context context,
+                        Operation op,
+                        int tryCount,
+                        long tryPauseMillis,
+                        long callTimeoutMillis,
+                        boolean deserialize,
+                        boolean failOnIndeterminateOperationState) {
+        this(context, op, null, tryCount, tryPauseMillis, callTimeoutMillis, deserialize,
+                failOnIndeterminateOperationState);
     }
 
     @Override
@@ -46,7 +63,16 @@ final class PartitionInvocation extends Invocation {
     }
 
     @Override
+    protected boolean shouldFailOnIndeterminateOperationState() {
+        return failOnIndeterminateOperationState;
+    }
+
+    @Override
     ExceptionAction onException(Throwable t) {
+        if (shouldFailOnIndeterminateOperationState() && (t instanceof MemberLeftException)) {
+            return THROW_EXCEPTION;
+        }
+
         ExceptionAction action = op.onInvocationException(t);
         return action != null ? action : THROW_EXCEPTION;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package com.hazelcast.client.cache.impl;
 
 import com.hazelcast.cache.HazelcastCacheManager;
-import com.hazelcast.client.impl.ClientMessageDecoder;
-import com.hazelcast.client.impl.HazelcastClientInstanceImpl;
-import com.hazelcast.client.impl.HazelcastClientProxy;
+import com.hazelcast.client.impl.clientside.ClientMessageDecoder;
+import com.hazelcast.client.impl.clientside.HazelcastClientInstanceImpl;
+import com.hazelcast.client.impl.clientside.HazelcastClientProxy;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.CacheGetCodec;
 import com.hazelcast.client.spi.impl.ClientInvocation;
@@ -110,7 +110,7 @@ public class CallbackAwareClientDelegatingFutureTest extends HazelcastTestSuppor
 
         ClientMessage getRequest = createGetRequest(1);
         ClientMessageDecoder decoder = CACHE_GET_RESPONSE_DECODER;
-        ClientInvocation invocation = new ClientInvocation(client, getRequest, 0);
+        ClientInvocation invocation = new ClientInvocation(client, getRequest, null, 0);
         ClientInvocationFuture invocationFuture = invocation.invoke();
 
         final AtomicBoolean responseCalled = new AtomicBoolean();
@@ -129,9 +129,9 @@ public class CallbackAwareClientDelegatingFutureTest extends HazelcastTestSuppor
 
         CallbackAwareClientDelegatingFuture callbackAwareInvocationFuture =
                 new CallbackAwareClientDelegatingFuture(invocationFuture,
-                                                        client.getSerializationService(),
-                                                        decoder,
-                                                        callback);
+                        client.getSerializationService(),
+                        decoder,
+                        callback);
 
         if (timeoutMillis > 0) {
             try {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,6 @@
 
 package com.hazelcast.client.map;
 
-import com.hazelcast.client.test.TestHazelcastFactory;
-import com.hazelcast.config.Config;
-import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.ReadOnly;
 import com.hazelcast.map.AbstractEntryProcessor;
@@ -30,17 +27,15 @@ import com.hazelcast.query.impl.FalsePredicate;
 import com.hazelcast.query.impl.QueryContext;
 import com.hazelcast.query.impl.QueryableEntry;
 import com.hazelcast.test.HazelcastParallelClassRunner;
-import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
@@ -48,90 +43,87 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-public class ClientEntryProcessorTest extends HazelcastTestSupport {
-
-    private static final String MAP_NAME = "default";
-
-    private HazelcastInstance client;
-
-    private HazelcastInstance member1;
-    private HazelcastInstance member2;
-
-    @Before
-    public void setUp() throws Exception {
-        Config config = getConfig();
-
-        TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
-        member1 = hazelcastFactory.newHazelcastInstance(config);
-        member2 = hazelcastFactory.newHazelcastInstance(config);
-
-        client = hazelcastFactory.newHazelcastClient();
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        client.shutdown();
-
-        member1.shutdown();
-        member2.shutdown();
-    }
+public class ClientEntryProcessorTest extends AbstractClientMapTest {
 
     @Test
     public void test_executeOnEntries_updatesValue_onOwnerAndBackupPartition() {
+        String mapName = "test_executeOnEntries_updatesValue_onOwnerAndBackupPartition";
+
         String member1Key = generateKeyOwnedBy(member1);
 
-        IMap<String, String> clientMap = client.getMap(MAP_NAME);
+        IMap<String, String> clientMap = client.getMap(mapName);
         clientMap.put(member1Key, "value");
 
         clientMap.executeOnEntries(new ValueUpdater("newValue"));
 
-        IMap<String, String> member1Map = member1.getMap(MAP_NAME);
-        String member1Value = member1Map.get(member1Key);
+        IMap<String, String> member1Map = member1.getMap(mapName);
 
-        member1.shutdown();
+        OwnerBackupValueCollector ep = new OwnerBackupValueCollector();
+        member1Map.executeOnKey(member1Key, ep);
 
-        IMap<String, String> member2Map = member2.getMap(MAP_NAME);
-        String member2Value = member2Map.get(member1Key);
+        ConcurrentLinkedQueue<String> values = OwnerBackupValueCollector.getValues();
+        assertEquals(2, values.size());
 
-        assertEquals("newValue", member1Value);
-        assertEquals("newValue", member2Value);
+        String value1 = values.poll();
+        String value2 = values.poll();
+
+        assertEquals(value1, value2);
+    }
+
+    public static class OwnerBackupValueCollector extends AbstractEntryProcessor<String, String> {
+
+        private static final ConcurrentLinkedQueue<String> values = new ConcurrentLinkedQueue<String>();
+
+        @Override
+        public Object process(Map.Entry<String, String> entry) {
+            values.add(entry.getValue());
+            return null;
+        }
+
+        public static ConcurrentLinkedQueue<String> getValues() {
+            return values;
+        }
     }
 
     @Test
     public void test_executeOnEntries_notUpdatesValue_with_FalsePredicate() {
+        String mapName = "test_executeOnEntries_notUpdatesValue_with_FalsePredicate";
+
         String member1Key = generateKeyOwnedBy(member1);
 
-        IMap<String, String> clientMap = client.getMap(MAP_NAME);
+        IMap<String, String> clientMap = client.getMap(mapName);
         clientMap.put(member1Key, "value");
 
         clientMap.executeOnEntries(new ValueUpdater("newValue"), FalsePredicate.INSTANCE);
 
-        IMap<String, String> member1Map = member1.getMap(MAP_NAME);
+        IMap<String, String> member1Map = member1.getMap(mapName);
         String member1Value = member1Map.get(member1Key);
 
         assertEquals("value", member1Value);
     }
 
-
     @Test
     public void test_executeOnEntries_updatesValue_with_TruePredicate() {
+        String mapName = "test_executeOnEntries_updatesValue_with_TruePredicate";
+
         String member1Key = generateKeyOwnedBy(member1);
 
-        IMap<String, String> clientMap = client.getMap(MAP_NAME);
+        IMap<String, String> clientMap = client.getMap(mapName);
         clientMap.put(member1Key, "value");
 
         clientMap.executeOnEntries(new ValueUpdater("newValue"), TruePredicate.INSTANCE);
 
-        IMap<String, String> member1Map = member1.getMap(MAP_NAME);
+        IMap<String, String> member1Map = member1.getMap(mapName);
         String member1Value = member1Map.get(member1Key);
 
         assertEquals("newValue", member1Value);
     }
 
-
     @Test
     public void test_executeOnEntriesWithPredicate_usesIndexes_whenIndexesAvailable() {
-        IMap<Integer, Integer> map = client.getMap("test");
+        String mapName = "test_executeOnEntriesWithPredicate_usesIndexes_whenIndexesAvailable";
+
+        IMap<Integer, Integer> map = client.getMap(mapName);
         map.addIndex("__key", true);
 
         for (int i = 0; i < 10; i++) {
@@ -141,34 +133,35 @@ public class ClientEntryProcessorTest extends HazelcastTestSupport {
         IndexedTestPredicate predicate = new IndexedTestPredicate();
         map.executeOnEntries(new EP(), predicate);
 
-
         assertTrue("isIndexed method of IndexAwarePredicate should be called", IndexedTestPredicate.INDEX_CALLED.get());
     }
 
     @Test(expected = UnsupportedOperationException.class)
     public void test_executeOnKey_readOnly_setValue() {
+        String mapName = "test_executeOnKey_readOnly_setValue";
+
         String member1Key = generateKeyOwnedBy(member1);
 
-        IMap<String, String> clientMap = client.getMap(MAP_NAME);
+        IMap<String, String> clientMap = client.getMap(mapName);
         clientMap.put(member1Key, "value");
 
         clientMap.executeOnKey(member1Key, new ValueUpdaterReadOnly("newValue"));
     }
 
     public static final class EP extends AbstractEntryProcessor {
+
         @Override
         public Object process(Map.Entry entry) {
             return null;
         }
     }
 
-
     /**
      * This predicate is used to check whether or not {@link IndexAwarePredicate#isIndexed} method is called.
      */
     private static class IndexedTestPredicate implements IndexAwarePredicate {
 
-        public static final AtomicBoolean INDEX_CALLED = new AtomicBoolean(false);
+        static final AtomicBoolean INDEX_CALLED = new AtomicBoolean(false);
 
         @Override
         public Set<QueryableEntry> filter(QueryContext queryContext) {
@@ -187,12 +180,11 @@ public class ClientEntryProcessorTest extends HazelcastTestSupport {
         }
     }
 
-
     public static class ValueUpdater extends AbstractEntryProcessor {
 
         private final String newValue;
 
-        public ValueUpdater(String newValue) {
+        ValueUpdater(String newValue) {
             this.newValue = newValue;
         }
 
@@ -207,7 +199,7 @@ public class ClientEntryProcessorTest extends HazelcastTestSupport {
 
         private final String newValue;
 
-        public ValueUpdaterReadOnly(String newValue) {
+        ValueUpdaterReadOnly(String newValue) {
             this.newValue = newValue;
         }
 
@@ -222,10 +214,4 @@ public class ClientEntryProcessorTest extends HazelcastTestSupport {
             return null;
         }
     }
-
-
-
-
-
-
 }

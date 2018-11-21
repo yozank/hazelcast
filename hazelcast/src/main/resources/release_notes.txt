@@ -1,202 +1,88 @@
+This document lists the new features, enhancements, fixed issues and, removed or deprecated features for Hazelcast IMDG 3.11 release. The numbers in the square brackets refer to the issues in Hazelcast's GitHub repositories.
 
-In this Release Notes document, you will find the new features, enhancements and fixes of the Hazelcast 3.8 release.
-The numbers in the square brackets refer to the issue number in Hazelcast’s GitHub repository. You can reach
-to the full descriptions of the issues at https://github.com/hazelcast/hazelcast/issues/<issue number>.
 
-1. New Features
+==== 3.11 ====
 
-The following are the new features introduced with 3.8 release.
+NOTE: Hazelcast IMDG 3.11 and the upcoming releases are fully compatible with JDK 9, 10 and 11. For information on the other JDK compatibility details, see the Supported Java Virtual Machines section in Hazelcast IMDG Reference Manual.
 
-Hazelcast Enterprise Features
+1. Enhancements
 
-- Rolling Member Upgrades for Minor Releases: You can upgrade your Hazelcast members to the next minor release without service interruption. Please refer to the Rolling Member Upgrades chapter.
-- Restore Hot Restart Data in a Different Cluster: You will be able to restore Hot Restart data on a completely new cluster with different IP addresses or on a cluster of machines formed by existing and new IP addresses. Since this is a removal of a restriction or limitation, nothing will change for current Hot Restart Store users. Please refer to the Moving/Copying Hot Restart Data section.
+Hazelcast IMDG Enterprise Enhancements:
 
-Hazelcast Open Source Features
+* Fine-Grained Control over WAN Replication Events: Introduced the new event type LOADED and the class EntryLoadedListener through which all the loads can be listened to. Also introduced the new configuration element persist-wan-replicated-data to specify whether to persist an incoming event over WAN replication or not. See the Configuring Consumer section.
+* License Enforcements and Warnings: Introduced a license monitor daemon that warns about expirations and instructs about the next steps. These information are also available through REST/JMX APIs. See the License Information section.
+* WAN Synchronization using Merkle Trees: Introduced WAN anti-entropy mechanism utilizing Merkle Tree to synchronize only the affected subsets for Maps, improving network and heap utilization. See the Synchronizing WAN Clusters Using Merkle Trees section.
 
-- Continuous Query Cache: With this release, the previously Enterprise feature Continuous Query Cache becomes open source. Please refer to the Continuous Query Cache section.
-- Cardinality Estimator: Cardinality Estimator data structure is implemented on top of Hazelcast to estimate cardinality. Please refer to the Cardinality Estimator Service section.
-- Scheduled Executor Service: Distributed implementation of Java's ScheduledExecutorService API. Please refer to the Scheduled Executor Service section.
-- User Code Deployment: Load your new classes to Hazelcast IMDG members dynamically without restarting all of them.
+Hazelcast IMDG Open Source Enhancements:
 
-2. Enhancements
-
-This section lists the enhancements performed for Hazelcast 3.8 and 3.8x releases.
-
-*3.8.1 Enhancements*
-
-- Mutual authentication with TLS certificates: It allows the clients also to have their keyStores and members to have their trustStores so that the members can know which clients they can trust.
-
-*3.8 Enhancements*
-
-- Fast Aggregations for Queries: Please refer to Fast Aggregations section.
-- Projections for Queries: Please refer to Projections section.
-- Eventually Consistent Near Cache: With this improvement, possible losses of invalidation events are detected and stale reads are prevented. Please refer to the Near Cache Eventual Consistency section.
-- Cluster Split-Brain Protection for Queue and Lock: Split-brain protection is now available for the queue and lock data structures. Please refer to the sections Lock Split-Brain Protection and Queue Split-Brain Protection.
-- Unified Near Cache Implementation: Different near cache implementations for JCache, map, client side and member side are unified. You can refer to the Near Cache section.
-- High Performance Near Cache: A near cache preloader is introduced to preserve the information about which keys are used in a populated near cache. You can refer to the Near Cache Preloader section.
-- `removeAll(predicate)` for Map: You can remove all map entries that match your predicate. You can refer to the Removing Bulk Map Entries with Predicates section.
-- Ringbuffer with Persistent Datastore: Implemented for the Ringbuffer which is similar to the existing queue store mechanism. Please refer to Ringbuffer with Persistent Datastore section.
-- Hazelcast Striim Hot Cache Adapter: Hot Cache functionality based on Striim's Change Data Capture (CDC) for the underlying database updates. Please note that this enhancement is available for Hazelcast Enterprise. Please refer to the Hazelcast Striim Hot Cache section.
-- One-off WAN Synchronization with Dynamically Added Endpoint: Improvement to allow copying the maps' all content to a target cluster dynamically in runtime. Please note that this enhancement is available for Hazelcast Enterprise.
-- Hot Restart Usability Improvements: When a cluster with Hot Restart enabled is restarted, it starts in the ACTIVE state. Please note that this enhancement is available for Hazelcast Enterprise. Please refer to the Hot Restart Types section.
-- Hot Restart with Incomplete Members: The restart procedure for a cluster having Hot Restart enabled is now more flexible by allowing you to do a partial start, which basically means that once the cluster is shutdown, it can be restarted with some missing members. Please note that this enhancement is available for Hazelcast Enterprise. Please refer to the Partial Start section.
-- Copy Hot Restart Store data from Source to Target: You can copy Hot Restart Store data from a running cluster to a target without shutting down the source cluster. Please note that this enhancement is available for Hazelcast Enterprise. Please refer to the Hot Backup section.
-- Improvement in WAN Queue Full Behavior: Now, Hazelcast throws an exception when the queue is full and replication is active, unless it is stopped on the Management Center. Please note that this enhancement is available for Hazelcast Enterprise. Please refer to the Queue Full Behavior section.
-
+* Ability to Set Custom TTL for Map and Cache Entries: Added a new method, setExpiryPolicy(key, expirePolicy), to allow interacting with the TTL value of an entry without updating the value. Also, the IMap interface for the operation of putting a value into a map was not clear where the resulting value of the entry's TTL is concerned. This is fixed by adding the method setTTL() on both the member and client sides.
+* Ability to Set Custom Maximum Idle Timeouts for Map Entries: Extended the put operation so that now it has a maxIdle parameter that represents the idleness seconds for specific entries. See the Evicting Specific Entries section.
+* Configurable Backoff Strategy for Client Reconnections: Introduced a highly configurable exponential backoff mechanism for the client with which you can set the duration for waiting after connection failures, upper limit for the wait, etc. See the Client Connection Retry Configuration section.
+* Map Index Statistics: Introduced statistics related to indexes. To achieve this, map statistics have been extended with per index information about indexes associated with a certain map. See the Map Index Statistics section.
+* JCache Expired Entries Disposal: Improved JCache's lazy eviction with a periodic cleanup that eventually removes all expired entries and frees up the occupied space.
+* Improved Network I/O: Enhanced network I/O to allow TLS handshake in a block-free manner and to support offloadable tasks, improving the latency and security.
+* Now, Hazelcast supports discovering members in the GCP Compute Engine environment.
 
 The following are the other improvements performed to solve the enhancement issues opened by the Hazelcast customers/team.
 
-- Tests are needed to prove that removeAll does not deserialize portables. [9474]
-- Client support for distributed scheduled executor service. [9385]
-- When a member without JCache service joins a cluster where JCache service is enabled but not used, the member should not fail. [9301]
-- It would be nice to have names assigned to all threads created by Hazelcast (and not the default ones, e.g., pool-2-thread-1, pool-2-thread-2). [9210]
-- There should be a more detailed and clarifying information in the diagnostics of PartitionIteratingOperation. [8855]
-- When there is no access to NodeEngine, the logger should be able to be used from a static context without any side effects to the logging configuration. [8760]
-- Client tasks should be bounced back when a member has not completely start yet. [8715]
-- A method size(Predicate) should be added to determine the size of predicate results. [8555]
-- Currently the property com.hazelcast.map.impl.eviction.ExpirationManager.PERIOD is hard-coded to 5 seconds. Making it a configurable property will help in tuning the eviction. [8277]
-- The method com.hazelcast.topic.impl.TopicProxy#publish serializes the message even if the message is never sent due to having no subscribers. In the case of non-global-ordering and non-client use, the implementation should defer serialization until it has established that there are subscribers. [8262]
-- Hazelcast should provide an abstract Mapper implementation which invokes the Supplier given to Aggregation#getMapper(). [7477]
-- Configuration setting for WAN replication queue should be only for primary entries. [7124]
-- Currently if you want to use Container-Managed Transactions with Hazelcast within a JEE Application Server, you need to use the provided JCA Adapter. This JCA Adapter creates a Hazelcast instance. This should be allowed: configuration of the JCA Adapter to be either Server or Client-based. [5667]
-- Currently PartitionIteratingOperation consumes a generic operation thread, while the operations for the partitions are running. This means that the generic thread pool can dry out and this can cause a lot of problems for important tasks that cannot be executed since the thread pool is empty. A PartitionIteratingService should be introduced where the system can lookup TraceableOperations. [4889]
-- Hazelcast Shutdown Hook calls the method terminate() instead of shutdown(). [4648]
-- Hazelcast should support ScheduledExecutorService. [115]
+* Added support to capture LOADED events for MapEventJournal. [#13667]
+* The method ClientCloudConfig.setEnabled() has been improved so that now it returns its own instance. [#13640]
+* The client was always constructed with an empty userContext. This has been improved by adding the method setUserContext() for the object ClientConfig. [#13398]
+* Added Java 9+ support (modularization), hence improved the user experience on Java versions 9+ which are based on Java Platform Module System. [#13182]
+* MigrationRequestOperation has been improved with the new Offload abstraction. [#11989]
+* Improved the multicast discovery strategy for clients. [#11357]
+* Removed group password from Hazelcast configuration. The password is not checked anymore during member joins. [#11667]
+* Introduced a more proper way of heap-data conversion: the method toHeapData. Before, ToHeapDataConverter was being used. [#10249]
+* The method EntryListener.entryAdded() is not called after IMap.evict() is triggered followed by the method IMap.get(). To fix this, a new entry event type has been introduced: LOADED. [#1542]
 
-3. Fixes
+2. Fixes
 
-This section lists the fixed issues for Hazelcast 3.8 and 3.8.x releases.
+* PN counters were not replicating for the following scenario: start a member, wait replication-period-millis to pass, start a second member and kill the first member. PN counter data from the first member was lost. This is fixed by removing PN counter statistics on migrations. [#13793]
+* Fixed the incorrect TCP connection probe registration in outgoing member connections. It was [null->null] instead of [address->address]. [#13768]
+* Clients were sometimes failing to reconnect to another owner member with the ExecutionException. This is fixed by making ClientReauthOperation to be retryable. [#13758]
+* Event Journal was throwing StaleSequenceException when TTL is greater than 0. This is fixed by skipping expired events in the journal during reading. [#13746]
+* Fixed the HazelcastOverloadException when trying to shutdown the cluster. It was also not performing a graceful shutdown. Now cluster state operations are marked as UrgentSystemOperation since otherwise, these operations might get rejected by backpressure. [#13730]
+* Fixed the noisy health check logging when starting Hazelcast. [#13662]
+* When an unserializableResponse is tried to be sent to the client as a response from the executor service tasks, the exception was logged on the server side and there was no response returned back to the client. This has been fixed by removing the logging and sending HazelcastSerializationException to the client. [#13639]
+* Fixed the issue where IMap entries having a max-idle-timeout were not expiring when the member shuts down. [#13630]
+* Reliable Topic was not working after the correct partition migration to previous owner member (where it was created the first time and message listener was attached); there were no exceptions or warnings. This is fixed by removing stale caching of Ringbuffer in AbstractRingBufferOperation. [#13602]
+* Fixed the repeatedly thrown IllegalAccessException when the client statistics is enabled. [#13565]
+* Fixed the accidental leakage of InternalSerializationService through DataSerializable interface. [#13505]
+* Fixed the InaccessibleObjectException which is caused by the operating system level metrics silently dropping on Java 9 when a Hazelcast member is started. [#13463]
+* SerializationServiceBuilder does not ignore the method useNativeByteOrder() anymore. [#13410]
+* Attribute extractor now falls back to the user code deployment: it was not using the user code deployment to search for the extractor implementation. [#13400]
+* Fixed the connected clients being slow when the server port is connected without receiving anything. [#13298]
+* When using the hazelcast-all artifact for 3.10.1, the version of hazelcast-hibernate included within is the one built using Hibernate 3. This is fixed by updating the default Hibernate version to 5. [#13250]
+* Built-in predicate implementations now implement the equals/hashCode. [#13245]
+* When adding a dynamic data structure configuration, Hazelcast fails fast when the same structure is already configured statically (even when both configurations are equal. This is fixed so that the submitted dynamic configuration is silently ignored when it is equal to an existing static configuration, or Hazelcast fails with a ConfigurationException when a conflicting static configuration already exists. [#13158]
+* There was a warning when Hazelcast is used on Java 10 JRE: An illegal reflective access operation has occurred. This is fixed by making Hazelcast fully compatible with Java 10. [#13151]
+* Fixed the EOFException which is thrown when using PagingPredicate with Kryo in Hazelcast 3.8.7. [#13147]
+* Fixed the exception Cannot override cache's CacheManager which is thrown when a cache is recreated after the restart of remote Hazelcast. [#12975]
+* When a member is killed, events are lost and the method QueryCache.tryRecover() is triggered in a loop even if data is not lost. This is fixed by resetting the query cache sequence numbers by the local promotions. [#12928]
+* Fixed the memory leak on NonBlockingSocketWriter when the client disconnects: the member instance was holding onto a write buffer when a client disconnects abruptly, while there is pending data to be sent. [#12353]
+* The comparison of values during the operation CacheRecordStore.merge() was incorrect. This is fixed by not firing an update event when merging values are equal. [#12175]
+* Hazelcast lacks a mechanism for the client/server recovery within Spring cache context. This is fixed by recreating the local cache configurations when the client is connecting to a restarted member. [#12128]
+* Ringbuffer.readManyAsync(): Client unwraps the ExecutionException before throwing it to the user cod; the member never does it. It also does not happen on other async proxies. This is fixed so that the client does not unwrap this exception. [#12108]
+* Removed group password based credentials check in for the client connections. [#11867]
+* When IPv6 is enabled for Hazelcast, the started member was still setting an IPv4 as a local address by default. This is fixed by improving the IPv6 bind address selection mechanism. [#11820]
+* Fixed an issue for hostname and local network interface matching in the DefaultAddressPicker. The member was picking the hostname which resolves to an IP not present locally. [#8211]
+* The method MapLoader.load() does not create an entry event, as it is essentially a get operation. But, the method MapLoader.loadAll() uses IMap.putTransient() and so it generates EntryAdded events. This was inconsistent and the latter was problematic for WAN replicated clusters. It is fixed by avoiding the invocation of MapLoader on containsKey(). [#7771]
 
-*3.8.4. Fixes*
+3. Behavioral Changes
 
-- Added timeout option for the get operation when Hazelcast is used within the Spring context. [#11001]
-- HTTP HEAD support added to the REST interface. [#11000]
-- ClientProxy gets NullPointerException from the method getClient. [#10961]
-- Added support for collecting and tracking statistics for all reliable topic proxies on a local member. The statistics are destroyed when the proxy is destroyed. [#10932]
-- The method containsKey returns "true" even the key does not exist in the map. [#10923]
-- Assuming a scenario in which invalidations are generated previously for some other near caches and then later a new near cached map is created, all entries that are near cached before the first reconciliation period will be removed. [#10913]
-- HTTP upload to Hazelcast fails. The code fails with the exception BufferOverflowException. [#10878]
-- The method MapProxyImpl.executeOnKeys() does not work when ConcurrentSkipListSet is passed and throws NullPointerException. [#10877]
+* When the TLS/SSL is configured and no trustStore property is provided, no default trusted certificates are used; neither the keystore, nor the Java provided list of trusted CA certificates. Therefore, you ALWAYS have to configure the trustStore property. See the TLS/SSL section.
+* WAN Replication:
+   ** Loaded entries were listened using EntryAddedListener. Now, a new event type for the loaded entries is introduced (LOADED) and they are listened using the new EntryLoadedListener. 
+   ** Loaded entries are not replicated to the target cluster by default anymore. 
+   ** Replicated entries were being persisted at the target cluster (in its map store). Now, they are not being persisted by default anymore. You can use the newly introduced configuration element persist-wan-replicated-data and set it to "true" (the default is "false") to make these entries to be persisted.
 
-*3.8.3 Fixes*
+* Map entries timestamps: Entry timestamps (i.e., LastAccessedTime, LastUpdatedTime, CreationTime, etc.) are now using SECONDS resolution, rather than milliseconds.
 
-- Hazelcast 3.8.1: calling replace(K, old, new) keeps the expiry time as creation time + duration. But Hazelcast doesn't seem to honor this expiration even after calling get(). [#10817]
-- When using a client side Near Cache, the cache statistics seem incorrect when asking for a key that doesn't exist. [#10806]
-- Ringbuffer is not adjusting headSeq while setting tailSeq due to capacity. [#10774]
-- Older versions of Mulesoft clash with Hazelcast Client classpath. [#10706]
-- In the case when the master node is terminated in the middle of a 2-phase transaction, the rollback for that transaction is not performed. This causes loss of data. [#10637]
-- Adding/removing listeners fails if a member is removed in the progress. [#10595]
-- When two callbacks are registered as callback to ClientDelegatingFuture, if one of them wants to deserialize the response while the other is does not, Hazelcast falsely gives null response to the one waiting a deserialized value. [#10581]
-- Eviction and max-size for less then 271 cause map to never populate. [#10179]
-- IOException at the client side must be produced only if hazelcast.client.invocation.timeout.seconds is passed. [#9696]
+4. Removed/Deprecated Features
 
-*3.8.2 Fixes*
+* The data structure IdGenerator is deprecated. Use Flake ID Generator.
 
-- Even though a CachePermission already exists, the respective PermissionType does not exist and cannot be configured programmatically or declaratively. [#10503]
-- Management Center reports incorrect values for backups. Given that there is one copy of the data across a native map, it is expected to see identical memory footprint on the entry and the backups with identical sum across a server. But it is not the case. [#10454]
-- There is a memory leak caused by ThreadGroup. [#10394]
-- Split-Brain messages still occupy the memory after recovery. [#10325]
-- When shutting down a client with a topic subscription, it logs a warning level exception which seems harmless. It is not good to log a harmless exception as warning. [#10291]
-- There is a race condition in the back pressure at the client side which causes the back pressure not to work. [#10253]
-- Ringbuffer OutOfMemoryError: GC overhead limit exceeded. [#10189]
-- ClientContext is created for every proxy and it causes unneeded resource allocations. [#10117]
-- Hazelcast terminates listeners incorrectly. [#10101]
-- When hostname is used in the Hazelcast member configuration instead of IP address, NullPointerException is thrown. [#9884]
-- When using a Hazelcast Client instance, if the redoOperation is set to true, operations which failed to be sent to the cluster are retried, but failures from executing the operation itself in the cluster are not. [#8545]
-
-*3.8.1 Fixes*
-
-- `BackupEntryProcessor` returned from `AbstractEntryProcessor` does not support `HazelcastInstanceAware`. [10083]
-- Updates performed with IMap's putTransient method should trigger EntryUpdatedListener. [10077]
-- Missing documentation for configuring log4j2 as logging framework. [9970]
-- Management Center section in the Reference Manual is misleading when it explains tool's behavior for clusters having more than two members. [9969]
-- JCache bootstrap should have a way to reconciliate the existing `HazelcastInstance`. [9958]
-- Multicast configuration's trusted-interfaces element is not handled properly on startup of the members. [9953]
-- For Hazelcast 3.7.*, MigrationListener's migrationStarted and migrationCompleted methods are called for all partitions. [9919]
-- While performing async operations test, OOME is thrown due to exceeding garbage collection overhead, at the client side. [9665]
-- Behavior of aggregators when extracted value is null should be well-documented. [9858]
-- Hazelcast Java client disconnects from the cluster with heartbeat problems. [8956]
-- Currently the near cache updates does not guarantee the order of events for a certain key. The updates are performed via asynchronous executor runs and it does not guarantee the order of updates. Furthermore, the invalidations via event service is also not ordered. [8652]
-- Client's near cache implementation uses userExecutor which is also used for other purposes such as making callbacks to lifecycle listeners. A client may block an operation of the near cache updates by a slow lifecycle listener. This needs to be addressed. [8651]
-- Client has a configurable hazelcast.client.max.concurrent.invocations property which limits the outstanding client requests. It is observed that at some cases, for async calls, it is possible that this limit may not work as expected and this may cause outstanding requests to grow which may cause OOM. [8568]
-- When using a Hazelcast Client instance, if the redoOperation is set to true, operations which failed to be sent to the cluster are retried, but failures from executing the operation itself in the cluster are not. [8545]
-- While updating the Hazelcast maps in the clustered environment, the exception TargetNotMember is thrown. [7584]
-
-*3.8 Fixes*
-
-- Ordering consistency for the the method `writePortable` should be explained in the Reference Manual. [9813]
-- A client cannot add index to map using Portable values without registering Portable classes on member. [9808]
-- Index is not updated after entry processors change values. [9801]
-- When using Entry Processor and index on a field the Entry Processor uses, wrong data is returned when executing a Predicate. [9798]
-- `NullPointerException` in `LockServiceImpl`: an NPE is thrown in `LockServiceImpl` when creating one map with a quorum configuration (which activates the `QuorumServiceImpl` for all `QuorumAware` operations) and then calling a `QuorumAware` operation on another data structure without a quorum configuration. [9792]
-- `ClusterVersion` is missing convenience methods for comparing easily. [9789]
-- When scheduling tasks with multiple executors, calling `getAllScheduled` on one of them returns tasks scheduled per member but for all executors, rather than for the one we called the `getAllScheduled` from. [9784]
-- There are too many log entries when quorum is not present. [9781]
-- When `storeAll`/`deleteAll` methods are used in the MapStore interface, it is possible that the underlying implementation has stored/deleted some entries from the supplied batch and then gets an exception on some particular entry in the middle of the batch. In order to handle this scenario properly the MapStore could remove from the supplied batch entries which were properly stored in the underlying persistent store. The only thing to improve in the `DefaultWiteBehindProcessor` is to properly synchronize the map passed to `processBatch` method with the initial `batchMap`. [9733]
-- If `hazelcast.discovery.enabled` on the client side: If neither `DiscoveryServiceProvider` nor `DiscoveryStrategyConfig` is specified, an NPE is thrown. A more helpful exception should be provided. [9722]
-- The hazelcast-all.jar, which is the one included in Hazelcast Docker, downloaded from Maven repo, contains an outdated version of hazelcast-aws library. [9698]
-- When scheduling on random partitions and trying to get all the scheduled tasks from the service, the number of tasks is wrong. The returned figure seems to match "num_of_tasks * backup_count". [9694]
-- When a scheduled Callable/Runnable throws an exception, invoking future.get() on the client side does not throw the expected ExecutionException. [9685]
-- The client is not updating listener registrations when the member restarts with a new version. [9677]
-- IScheduledExecutorService does not use HazelcastInstanceAware on local operations. [9675]
-- Near cache compatibility with 3.7 clients is broken for TTL expirations. [9674]
-- Replicated Map configured with `async-fillup` as `false` prevents further members from joining the cluster. Members are stuck in an endless loop. [9592]
-- When an exception is thrown from an `InitializingObject`'s initialize method, it is logged in WARNING level but then swallowed and the proxy object is added to the `ProxyRegistry`. Instead, the exception should result in removing the object from the `ProxyRegistry`, as it is already done for exceptions thrown from `service.createDistributedObject`. [9578]
-- Near cache pre-loader fails when invalidations are enabled. [9536]
-- There is a memory leak in `MetaDataGenerator` when (1) near cache invalidations are enabled, (2) map/cache is created and destroyed, and (3) the map name is stays referenced from `MetaDataGenerator`. [9495]
-- JCache client needs access to CacheLoader implementation to work. [9453]
-- The matching wildcard is strict, but no declaration can be found for element hz:hazelcast. [9406]
-- "Connection Reset" warning shows up in the class `CloudyUtility`. [9404]
-- Key state marking in near cached `getAll` should be improved. Instead of key based marking, partition based approach can be used. [9403]
-- Scheduled executor service tests are too slow. [9386]
-- The method getAll is not updating the localMapStats. [9373]
-- Hazelcast 3.7.3 and Spring Boot 1.4.2 get the error PortableFactory[-22] is already registered. [9353]
-- There is an issue when integrating with WebLogic 12c. Classloading logging should be added when DefaultNodeExtension is loaded by multiple classloaders. [9291]
-- The method MapLoader.loadAll(true) does not reload after reloading with new keys. [9255]
-- Problems with timeout in blocking calls. [9250]
-- Stale reads from Map inside a transaction should be guaranteed, when Near Cache and delayed MapStore are enabled. [9248]
-- Client protocol cannot handle "null"s in the collection. [9240]
-- `LifecycleState` events are not received when Hazelcast docker image is used. [9189]
-- If there is no network, multicast socket exception is thrown. [9081]
-- Hazelcast is not handling XML configuration attribute for DurableExecutorService. [9078]
-- If `DurableExecutorService.retrieveResult(long)` is run from a client for a task that does not exist, two exceptions appear at the client side. At the member side, it logs `StaleTaskIdException`. This should not be logged to the member if re-thrown to the client. [9051]
-- When retrieving data from Java Hazelcast instance, `HazelcastSerializationException` is thrown from the .NET client. [8985]
-- Callback for time to live (for map eviction) is invoked with a significant delay. [8894]
-- "Warning 2" in IMap::tryRemove method's code comments is not correct. This method returns only a boolean. [8884]
-- There are too many log messages when members of a cluster are not joined to another cluster (multicast) having a different group name in Hazelcast 3.6 and 3.7, which is already expected. [8867]
-- When clients lose connection to the members in the cluster, even after the clients are reconnected to the cluster, the Entry/Message Listeners are never fired again. [8847]
-- Nested queries on VersionedPortables with different versions cannot be performed. Hazelcast throws IllegalArgumentException. [8846]
-- Fixed max-size value behavior for Near Cache configuration. If you set 0 for the max-size, now, it is valued as Integer.MAX_VALUE as expected and documented. [8826]
-- While generating the XML string from a configuration object in ConfigXmlGenerator.generate() method, native-memory configuration is not appended to the result string. This causes the native-memory configuration for members not to be shown on the Management Center. [8825]
-- "Client heartbeat is timed out , closing connection" warning shows up indefinitely on AWS. [8777]
-- Spring XML configuration: The smart routing attribute defaults to false while the documentation says it defaults to true. [8746]
-- Distributed objects present in the cluster do not show the same values. [8743]
-- In Hazelcast 3.6.3, the error Current thread is not owner of the lock shows up when using Hazelcast client to perform the actions. [8730]
-- There is an unchecked `CancelledKeyException` when client disconnects from the cluster. [8681]
-- Bulk get operation with 100 keys fails. [8535]
-- An `IllegalThreadStateException` may be thrown sometimes on a member of a cluster with two or more members when a Hazelcast client creates a new map with configured indexes. This exception is not thrown when indexes are created programmatically. [8492]
-- Group and password attributes in Hibernate integration module should be validated. [7978]
-- There appears to be an inconsistency where JCache uses the EvictionConfig object, but IMap directly uses properties of the NearCacheConfig. [7788]
-- Topic listeners are lost after merging from a split-brain scenario. [7742]
-- Member attributes go missing after merging from a split-brain scenario. [7697]
-- There should be a User Code Deployment feature to perform distributed loading of classes so that jobs like MapReduce and Aggregate can be done more effectively. [7394]
-- MapLoader misses state updates on second load on the receiver members. [7364]
-- If the system retries an operation because a member is leaving the cluster, the invocation can be retried due to the response but also due to the "member-left" event. In most cases this should not lead to a problem, but the invocation may be executed twice. This can be a problem and can lead to a permanent inconsistent system. [7270]
-- Using Lock and Map, the heap memory on Hazelcast server keeps increasing. All the created Locks and Maps are destroyed by the method `destroy()`, but the memory cannot be destroyed by the garbage collector even via FGC. When an application runs for some time, Hazelcast server goes down. [7246]
-- Hazelcast 3.5 throws InvalidConfigurationException. [6523]
-- More granular mutexes should be used when creating and removing a set of closeable cache resources. [6273]
-- Running `PredicateBuilder` queries when nodes join causes timeouts and cluster crash. [6242]
-- The configuration schemas Hazelcast Spring XSD and Hazelcast default configuration XSD are out of sync. They must have the same elements. [5034]
-- The method setEvictionPolicy for near cache configuration wants a string argument whereas the same for map configuration wants an enum value. [2010]
-- Fix inconsistent Ringbuffer TTL defaults: when starting a HazelcastInstance without an explicit configuration (`HazelcastInstance hz = Hazelcast.newHazelcastInstance();`), the default Ringbuffer TTL was 30 seconds, instead of correct value 0. This change may break existing applications relying on the default configuration. [9610]
-
-4. Known Issues
-
-**Upgrading from 3.6.x to 3.8.x (Hazelcast IMDG Enterprise) when using `JCache`:** Due to a compatibility problem, `CacheConfig` serialization may not work if your member is 3.8.x where x < 5. Hence, you will need to use Hazelcast 3.8.5 or higher version where the problem is being fixed. This issue affects Hazelcast IMDG Enterprise only.
-
-5. Removed/Deprecated Features
-
-- Aggregators feature is deprecated. Instead, Fast-Aggregations feature should be used.
-
-
+* Following system properties are removed: 
+   ** hazelcast.master.confirmation.interval.seconds 
+   ** hazelcast.max.no.master.confirmation.seconds 
+   ** hazelcast.mc.max.visible.instance.count

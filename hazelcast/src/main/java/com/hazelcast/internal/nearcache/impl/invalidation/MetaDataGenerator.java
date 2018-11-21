@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,15 +24,15 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLongArray;
 
 import static com.hazelcast.util.ConcurrencyUtil.getOrPutIfAbsent;
-import static com.hazelcast.util.UuidUtil.newSecureUUID;
+import static com.hazelcast.util.UuidUtil.newUnsecureUUID;
 
 /**
- * Responsible for partition-sequence and partition-uuid generation.
+ * Responsible for partition-sequence and partition UUID generation.
  * Used by invalidator to generate metadata for invalidation events.
- *
+ * <p>
  * This metadata is used by {@link RepairingHandler} and {@link RepairingTask}
  * to act against possible invalidation-miss and partition-loss.
- *
+ * <p>
  * One instance per service is created. Used on member side.
  */
 public class MetaDataGenerator {
@@ -51,7 +51,7 @@ public class MetaDataGenerator {
             = new ConstructorFunction<Integer, UUID>() {
         @Override
         public UUID createNew(Integer partitionId) {
-            return newSecureUUID();
+            return newUnsecureUUID();
         }
     };
 
@@ -94,7 +94,7 @@ public class MetaDataGenerator {
     }
 
     public void removeUuidAndSequence(final int partitionId) {
-        // remove uuid.
+        // remove UUID
         uuids.remove(partitionId);
 
         // reset data-structures' sequence numbers
@@ -109,6 +109,10 @@ public class MetaDataGenerator {
 
     public void regenerateUuid(int partitionId) {
         uuids.put(partitionId, uuidConstructor.createNew(partitionId));
+    }
+
+    public void resetSequence(String name, int partitionId) {
+        sequenceGenerator(name).set(partitionId, 0);
     }
 
     // used for testing

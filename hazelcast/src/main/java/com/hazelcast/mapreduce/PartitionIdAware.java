@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,10 +29,9 @@ package com.hazelcast.mapreduce;
 public interface PartitionIdAware {
 
     /**
-     * Sets the partition id to the implementing instance it is executed against
+     * Sets the partition ID to the implementing instance it is executed against
      *
-     * @param partitionId current partitionId
+     * @param partitionId current partition ID
      */
     void setPartitionId(int partitionId);
-
 }

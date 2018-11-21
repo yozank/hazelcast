@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+  ~ Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -1794,17 +1794,17 @@
                     </xs:documentation>
                 </xs:annotation>
             </xs:element>
+            <xs:element name="password" type="xs:string">
+                <xs:annotation>
+                    <xs:documentation>
+                        Passphrase to use when generating the secret key.
+                    </xs:documentation>
+                </xs:annotation>
+            </xs:element>
             <xs:element name="salt" type="xs:string" default="thesalt">
                 <xs:annotation>
                     <xs:documentation>
                         Salt value to use when generating the secret key.
-                    </xs:documentation>
-                </xs:annotation>
-            </xs:element>
-            <xs:element name="password" type="xs:string">
-                <xs:annotation>
-                    <xs:documentation>
-                        Pass phrase to use when generating the secret key.
                     </xs:documentation>
                 </xs:annotation>
             </xs:element>
@@ -2440,7 +2440,7 @@
                         NONE (no extra eviction, time-to-live-seconds may still apply),
                         LRU (Least Recently Used),
                         LFU (Least Frequently Used).
-                        NONE is the default.
+                        LRU is the default.
                         Regardless of the eviction policy used, time-to-live-seconds will still apply.
 
                         Deprecated since 3.8, please use &lt;eviction/&gt;
@@ -2824,7 +2824,7 @@
                         entry key.
 
                         4 merge policy implementations for IMap and 2 merge policy implementations for
-                        ICache are provided out of the box.
+                        ICache are provided out-of-the-box.
 
                         IMap has the following merge policies:
                         com.hazelcast.map.merge.PutIfAbsentMapMergePolicy: Incoming entry merges from the

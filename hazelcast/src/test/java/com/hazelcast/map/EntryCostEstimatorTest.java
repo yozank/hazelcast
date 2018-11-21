@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,9 +40,9 @@ public class EntryCostEstimatorTest
         extends HazelcastTestSupport {
 
     protected TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
-    // the JVM-independent portion of the cost of Integer key + Long value record is 124 bytes
+    // the JVM-independent portion of the cost of Integer key + Long value record is 104 bytes
     // (without taking into account 8 references to key, record and value objects)
-    private static final int JVM_INDEPENDENT_ENTRY_COST_IN_BYTES = 124;
+    private static final int JVM_INDEPENDENT_ENTRY_COST_IN_BYTES = 104;
     // JVM-dependent total cost of entry
     private static final int ENTRY_COST_IN_BYTES = JVM_INDEPENDENT_ENTRY_COST_IN_BYTES + 9 * REFERENCE_COST_IN_BYTES;
 
@@ -79,7 +79,7 @@ public class EntryCostEstimatorTest
         String name = randomString();
         Config config = getConfig();
         config.getMapConfig(name).setBackupCount(1);
-        HazelcastInstance h[] = factory.newInstances(config);
+        HazelcastInstance[] h = factory.newInstances(config);
         warmUpPartitions(h);
 
         // create map
@@ -111,7 +111,7 @@ public class EntryCostEstimatorTest
 
         // costs should not be zero
         assertTrue("map1 cost should be greater than zero....: " + map1Cost, map1Cost > 0);
-        assertTrue("map2 cost should be greater than zero.... : " + map2Cost, map2Cost > 0);
+        assertTrue("map2 cost should be greater than zero....: " + map2Cost, map2Cost > 0);
 
         // one map is backup, so backup & owner cost must be same
         assertEquals(map1Cost, map2Cost);
@@ -145,7 +145,7 @@ public class EntryCostEstimatorTest
         config.getMapConfig(nearCachedMapName).setBackupCount(0).setNearCacheConfig(nearCacheConfig);
         config.getMapConfig(noNearCacheMapName).setBackupCount(0);
 
-        HazelcastInstance h[] = factory.newInstances(config);
+        HazelcastInstance[] h = factory.newInstances(config);
         warmUpPartitions(h);
 
         IMap<String, String> noNearCached = h[0].getMap(noNearCacheMapName);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import com.hazelcast.internal.nearcache.NearCache;
 import com.hazelcast.internal.nearcache.NearCacheManager;
 import com.hazelcast.monitor.NearCacheStats;
 import com.hazelcast.spi.TaskScheduler;
+import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.spi.serialization.SerializationService;
 
 import java.util.Collection;
@@ -38,23 +39,26 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class DefaultNearCacheManager implements NearCacheManager {
 
-    protected final SerializationService serializationService;
     protected final TaskScheduler scheduler;
     protected final ClassLoader classLoader;
+    protected final HazelcastProperties properties;
+    protected final SerializationService serializationService;
 
+    private final Object mutex = new Object();
     private final Queue<ScheduledFuture> preloadTaskFutures = new ConcurrentLinkedQueue<ScheduledFuture>();
     private final ConcurrentMap<String, NearCache> nearCacheMap = new ConcurrentHashMap<String, NearCache>();
-    private final Object mutex = new Object();
 
     private volatile ScheduledFuture storageTaskFuture;
 
-    public DefaultNearCacheManager(SerializationService ss, TaskScheduler es, ClassLoader classLoader) {
+    public DefaultNearCacheManager(SerializationService ss, TaskScheduler es,
+                                   ClassLoader classLoader, HazelcastProperties properties) {
         assert ss != null;
         assert es != null;
 
         this.serializationService = ss;
         this.scheduler = es;
         this.classLoader = classLoader;
+        this.properties = properties;
     }
 
     @Override
@@ -94,7 +98,8 @@ public class DefaultNearCacheManager implements NearCacheManager {
     }
 
     protected <K, V> NearCache<K, V> createNearCache(String name, NearCacheConfig nearCacheConfig) {
-        return new DefaultNearCache<K, V>(name, nearCacheConfig, serializationService, scheduler, classLoader);
+        return new DefaultNearCache<K, V>(name, nearCacheConfig, serializationService,
+                scheduler, classLoader, properties);
     }
 
     @Override
@@ -120,18 +125,25 @@ public class DefaultNearCacheManager implements NearCacheManager {
 
     @Override
     public boolean destroyNearCache(String name) {
-        NearCache nearCache = nearCacheMap.remove(name);
+        NearCache nearCache = nearCacheMap.get(name);
         if (nearCache != null) {
-            nearCache.destroy();
+            synchronized (mutex) {
+                nearCache = nearCacheMap.remove(name);
+                if (nearCache != null) {
+                    nearCache.destroy();
+                    return true;
+                }
+                return false;
+            }
         }
-        return nearCache != null;
+        return false;
     }
+
 
     @Override
     public void destroyAllNearCaches() {
         for (NearCache nearCache : new HashSet<NearCache>(nearCacheMap.values())) {
-            nearCacheMap.remove(nearCache.getName());
-            nearCache.destroy();
+            destroyNearCache(nearCache.getName());
         }
         for (ScheduledFuture preloadTaskFuture : preloadTaskFutures) {
             preloadTaskFuture.cancel(true);

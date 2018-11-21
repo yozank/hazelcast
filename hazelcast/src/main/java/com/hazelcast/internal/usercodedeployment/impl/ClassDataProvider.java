@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,12 @@ import com.hazelcast.nio.IOUtil;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 
 import static com.hazelcast.nio.IOUtil.toByteArray;
+import static com.hazelcast.util.EmptyStatement.ignore;
 
 /**
  * Provides {@link ClassData} to remote members.
@@ -35,39 +38,105 @@ public final class ClassDataProvider {
     private final UserCodeDeploymentConfig.ProviderMode providerMode;
     private final ClassLoader parent;
     private final ConcurrentMap<String, ClassSource> classSourceMap;
+    private final ConcurrentMap<String, ClassSource> clientClassSourceMap;
     private final ILogger logger;
 
     public ClassDataProvider(UserCodeDeploymentConfig.ProviderMode providerMode,
                              ClassLoader parent,
                              ConcurrentMap<String, ClassSource> classSourceMap,
+                             ConcurrentMap<String, ClassSource> clientClassSourceMap,
                              ILogger logger) {
         this.providerMode = providerMode;
         this.parent = parent;
         this.classSourceMap = classSourceMap;
+        this.clientClassSourceMap = clientClassSourceMap;
         this.logger = logger;
     }
 
     public ClassData getClassDataOrNull(String className) {
+        ClassData classData = loadBytecodesFromClientCache(className);
+        if (classData != null) {
+            return classData;
+        }
         if (providerMode == UserCodeDeploymentConfig.ProviderMode.OFF) {
             return null;
         }
-        ClassData classData = null;
-        byte[] bytecode = loadBytecodeFromParent(className);
-        if (bytecode == null && providerMode == UserCodeDeploymentConfig.ProviderMode.LOCAL_AND_CACHED_CLASSES) {
-            bytecode = loadBytecodeFromCache(className);
-        }
-        if (bytecode != null) {
-            classData = new ClassData(bytecode);
+        classData = loadBytecodesFromParent(className);
+        if (classData == null && providerMode == UserCodeDeploymentConfig.ProviderMode.LOCAL_AND_CACHED_CLASSES) {
+            classData = loadBytecodesFromCache(className);
         }
         return classData;
     }
 
-    private byte[] loadBytecodeFromCache(String className) {
-        ClassSource classSource = classSourceMap.get(className);
+    private ClassData loadBytecodesFromCache(String className) {
+        ClassSource classSource = classSourceMap.get(ClassLocator.extractMainClassName(className));
         if (classSource == null) {
             return null;
         }
-        return classSource.getBytecode();
+        return classSource.getClassData(className);
+    }
+
+    private ClassData loadBytecodesFromClientCache(String className) {
+        ClassSource classSource = clientClassSourceMap.get(ClassLocator.extractMainClassName(className));
+        if (classSource == null) {
+            return null;
+        }
+        return classSource.getClassData(className);
+    }
+
+    private ClassData loadBytecodesFromParent(String className) {
+        byte[] mainClassDefinition = loadBytecodeFromParent(className);
+        if (mainClassDefinition == null) {
+            return null;
+        }
+
+        Map<String, byte[]> innerClassDefinitions = loadInnerClasses(className);
+        innerClassDefinitions = loadAnonymousClasses(className, innerClassDefinitions);
+
+        ClassData classData = new ClassData();
+        if (innerClassDefinitions != null) {
+            classData.setInnerClassDefinitions(innerClassDefinitions);
+        }
+        classData.setMainClassDefinition(mainClassDefinition);
+        return classData;
+    }
+
+    private Map<String, byte[]> loadAnonymousClasses(String className, Map<String, byte[]> innerClassDefinitions) {
+        int i = 1;
+        while (true) {
+            try {
+                String innerClassName = className + "$" + i;
+                parent.loadClass(innerClassName);
+                byte[] innerByteCode = loadBytecodeFromParent(innerClassName);
+                if (innerClassDefinitions == null) {
+                    innerClassDefinitions = new HashMap<String, byte[]>();
+                }
+                innerClassDefinitions.put(innerClassName, innerByteCode);
+                i++;
+            } catch (ClassNotFoundException e) {
+                break;
+            }
+        }
+        return innerClassDefinitions;
+    }
+
+    private Map<String, byte[]> loadInnerClasses(String className) {
+        Map<String, byte[]> innerClassDefinitions = null;
+        try {
+            Class<?> aClass = parent.loadClass(className);
+            Class<?>[] declaredClasses = aClass.getDeclaredClasses();
+            for (Class<?> declaredClass : declaredClasses) {
+                String innerClassName = declaredClass.getName();
+                byte[] innerByteCode = loadBytecodeFromParent(innerClassName);
+                if (innerClassDefinitions == null) {
+                    innerClassDefinitions = new HashMap<String, byte[]>();
+                }
+                innerClassDefinitions.put(innerClassName, innerByteCode);
+            }
+        } catch (ClassNotFoundException e) {
+            ignore(e);
+        }
+        return innerClassDefinitions;
     }
 
     private byte[] loadBytecodeFromParent(String className) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,14 @@ package com.hazelcast.internal.ascii;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.JoinConfig;
+import com.hazelcast.config.PermissionConfig;
 import com.hazelcast.config.WanReplicationConfig;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.internal.management.dto.WanReplicationConfigDTO;
+import com.hazelcast.internal.management.request.UpdatePermissionConfigRequest;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -37,6 +39,8 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.net.HttpURLConnection.HTTP_BAD_REQUEST;
@@ -109,7 +113,7 @@ public class RestTest extends HazelcastTestSupport {
 
     @Test
     public void testMapPutGet_chunked() throws Exception {
-        communicator.setChunkedStreamingLength(32);
+        communicator.enableChunkedStreaming();
         testMapPutGet0();
     }
 
@@ -224,13 +228,23 @@ public class RestTest extends HazelcastTestSupport {
     }
 
     @Test
+    public void updatePermissions() throws Exception {
+        Set<PermissionConfig> permissionConfigs = new HashSet<PermissionConfig>();
+        permissionConfigs.add(new PermissionConfig(PermissionConfig.PermissionType.MAP, "test", "*"));
+        UpdatePermissionConfigRequest request = new UpdatePermissionConfigRequest(permissionConfigs);
+        String result = communicator.updatePermissions(config.getGroupConfig().getName(),
+                config.getGroupConfig().getPassword(), request.toJson().toString());
+        assertEquals("{\"status\":\"forbidden\"}", result);
+    }
+
+    @Test
     public void testMap_PutGet_withLargeValue() throws IOException {
         testMap_PutGet_withLargeValue0();
     }
 
     @Test
     public void testMap_PutGet_withLargeValue_chunked() throws IOException {
-        communicator.setChunkedStreamingLength(1024);
+        communicator.enableChunkedStreaming();
         testMap_PutGet_withLargeValue0();
     }
 
@@ -258,7 +272,7 @@ public class RestTest extends HazelcastTestSupport {
 
     @Test
     public void testMap_PutGet_withLargeKey_chunked() throws IOException {
-        communicator.setChunkedStreamingLength(1024);
+        communicator.enableChunkedStreaming();
         testMap_PutGet_withLargeKey0();
     }
 

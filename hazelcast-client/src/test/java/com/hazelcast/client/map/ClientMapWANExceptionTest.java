@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ public class ClientMapWANExceptionTest extends HazelcastTestSupport {
 
     @Override
     protected Config getConfig() {
-        Config config = new Config();
+        Config config = super.getConfig();
         WanReplicationConfig wanConfig = new WanReplicationConfig();
         wanConfig.setName("dummyWan");
 
@@ -96,4 +96,3 @@ public class ClientMapWANExceptionTest extends HazelcastTestSupport {
         return target;
     }
 }
-

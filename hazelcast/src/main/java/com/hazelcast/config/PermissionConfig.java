@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.config;
 
 import java.util.HashSet;
 import java.util.Set;
+
 /**
  * Contains the configuration for a permission.
  */
@@ -26,8 +27,8 @@ public class PermissionConfig {
     private PermissionType type;
     private String name;
     private String principal;
-    private Set<String> endpoints;
-    private Set<String> actions;
+    private Set<String> endpoints = new HashSet<String>();
+    private Set<String> actions = new HashSet<String>();
 
     public PermissionConfig() {
     }
@@ -36,6 +37,18 @@ public class PermissionConfig {
         this.type = type;
         this.name = name;
         this.principal = principal;
+    }
+
+    public PermissionConfig(PermissionConfig permissionConfig) {
+        this.type = permissionConfig.type;
+        this.name = permissionConfig.getName();
+        this.principal = permissionConfig.getPrincipal();
+        for (String endpoint : permissionConfig.getEndpoints()) {
+            this.endpoints.add(endpoint);
+        }
+        for (String action : permissionConfig.getActions()) {
+            this.actions.add(action);
+        }
     }
 
     /**
@@ -70,6 +83,10 @@ public class PermissionConfig {
          * ID generator
          */
         ID_GENERATOR("id-generator-permission"),
+        /**
+         * Flake ID generator
+         */
+        FLAKE_ID_GENERATOR("flake-id-generator-permission"),
         /**
          * Lock
          */
@@ -111,9 +128,21 @@ public class PermissionConfig {
          */
         CACHE("cache-permission"),
         /**
+         * User code deployment
+         */
+        USER_CODE_DEPLOYMENT("user-code-deployment-permission"),
+        /**
          * All
          */
-        ALL("all-permissions");
+        ALL("all-permissions"),
+        /**
+         * Configuration permission
+         */
+        CONFIG("config-permission"),
+        /**
+         * CRDT PN Counter
+         */
+        PN_COUNTER("pn-counter-permission");
 
         private final String nodeName;
 
@@ -136,17 +165,11 @@ public class PermissionConfig {
     }
 
     public PermissionConfig addEndpoint(String endpoint) {
-        if (endpoints == null) {
-            endpoints = new HashSet<String>();
-        }
         endpoints.add(endpoint);
         return this;
     }
 
     public PermissionConfig addAction(String action) {
-        if (actions == null) {
-            actions = new HashSet<String>();
-        }
         actions.add(action);
         return this;
     }
@@ -164,16 +187,10 @@ public class PermissionConfig {
     }
 
     public Set<String> getEndpoints() {
-        if (endpoints == null) {
-            endpoints = new HashSet<String>();
-        }
         return endpoints;
     }
 
     public Set<String> getActions() {
-        if (actions == null) {
-            actions = new HashSet<String>();
-        }
         return actions;
     }
 
@@ -200,6 +217,43 @@ public class PermissionConfig {
     public PermissionConfig setEndpoints(Set<String> endpoints) {
         this.endpoints = endpoints;
         return this;
+    }
+
+    @Override
+    @SuppressWarnings("checkstyle:npathcomplexity")
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof PermissionConfig)) {
+            return false;
+        }
+
+        PermissionConfig that = (PermissionConfig) o;
+
+        if (type != that.type) {
+            return false;
+        }
+        if (name != null ? !name.equals(that.name) : that.name != null) {
+            return false;
+        }
+        if (principal != null ? !principal.equals(that.principal) : that.principal != null) {
+            return false;
+        }
+        if (endpoints != null ? !endpoints.equals(that.endpoints) : that.endpoints != null) {
+            return false;
+        }
+        return actions != null ? actions.equals(that.actions) : that.actions == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = type.hashCode();
+        result = 31 * result + (name != null ? name.hashCode() : 0);
+        result = 31 * result + (principal != null ? principal.hashCode() : 0);
+        result = 31 * result + (endpoints != null ? endpoints.hashCode() : 0);
+        result = 31 * result + (actions != null ? actions.hashCode() : 0);
+        return result;
     }
 
     @Override

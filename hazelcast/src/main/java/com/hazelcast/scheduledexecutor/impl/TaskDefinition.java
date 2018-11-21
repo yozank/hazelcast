@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
@@ -29,9 +30,7 @@ public class TaskDefinition<V>
 
     public enum Type {
 
-        SINGLE_RUN(0),
-
-        AT_FIXED_RATE(1);
+        SINGLE_RUN(0), AT_FIXED_RATE(1);
 
         private final byte id;
 
@@ -49,28 +48,21 @@ public class TaskDefinition<V>
                     return as;
                 }
             }
-            throw new IllegalArgumentException("Unsupported id value");
+            throw new IllegalArgumentException("Unsupported ID value");
         }
-
     }
 
     private Type type;
-
     private String name;
-
     private Callable<V> command;
-
     private long initialDelay;
-
     private long period;
-
     private TimeUnit unit;
 
     public TaskDefinition() {
     }
 
-    public TaskDefinition(Type type, String name, Callable<V> command, long delay,
-                          TimeUnit unit) {
+    public TaskDefinition(Type type, String name, Callable<V> command, long delay, TimeUnit unit) {
         this.type = type;
         this.name = name;
         this.command = command;
@@ -78,8 +70,7 @@ public class TaskDefinition<V>
         this.unit = unit;
     }
 
-    public TaskDefinition(Type type, String name, Callable<V> command, long initialDelay,
-                          long period, TimeUnit unit) {
+    public TaskDefinition(Type type, String name, Callable<V> command, long initialDelay, long period, TimeUnit unit) {
         this.type = type;
         this.name = name;
         this.command = command;
@@ -145,8 +136,32 @@ public class TaskDefinition<V>
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        TaskDefinition<?> that = (TaskDefinition<?>) o;
+        return initialDelay == that.initialDelay && period == that.period && type == that.type && name.equals(that.name)
+                && unit == that.unit;
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(new Object[]{type, name, initialDelay, period, unit});
+    }
+
+    @Override
     public String toString() {
-        return "TaskDefinition{" + "type=" + type + ", name='" + name + '\'' + ", command=" + command + ", initialDelay="
-                + initialDelay + ", period=" + period + ", unit=" + unit + '}';
+        return "TaskDefinition{"
+                + "type=" + type
+                + ", name='" + name + '\''
+                + ", command=" + command
+                + ", initialDelay=" + initialDelay
+                + ", period=" + period
+                + ", unit=" + unit
+                + '}';
     }
 }

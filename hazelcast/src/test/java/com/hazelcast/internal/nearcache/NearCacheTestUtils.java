@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.nearcache;
 
+import com.hazelcast.config.Config;
 import com.hazelcast.config.EvictionConfig;
 import com.hazelcast.config.EvictionConfig.MaxSizePolicy;
 import com.hazelcast.config.EvictionPolicy;
@@ -31,6 +32,8 @@ import com.hazelcast.internal.adapter.ReplicatedMapDataStructureAdapter;
 import com.hazelcast.internal.nearcache.impl.DefaultNearCache;
 import com.hazelcast.internal.nearcache.impl.record.NearCacheDataRecord;
 import com.hazelcast.internal.nearcache.impl.record.NearCacheObjectRecord;
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.map.impl.MapService;
 import com.hazelcast.map.impl.nearcache.MapNearCacheManager;
 import com.hazelcast.monitor.NearCacheStats;
@@ -49,11 +52,15 @@ import static com.hazelcast.config.InMemoryFormat.BINARY;
 import static com.hazelcast.config.InMemoryFormat.OBJECT;
 import static com.hazelcast.config.NearCacheConfig.LocalUpdatePolicy.CACHE_ON_UPDATE;
 import static com.hazelcast.internal.nearcache.NearCacheRecord.READ_PERMITTED;
+import static com.hazelcast.spi.properties.GroupProperty.CACHE_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MAP_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS;
 import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeThat;
 import static org.junit.Assume.assumeTrue;
@@ -65,6 +72,14 @@ import static org.junit.Assume.assumeTrue;
 public final class NearCacheTestUtils extends HazelcastTestSupport {
 
     private NearCacheTestUtils() {
+    }
+
+    public static Config getBaseConfig() {
+        return smallInstanceConfig()
+                .setProperty(CACHE_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS.getName(), "1")
+                .setProperty(MAP_INVALIDATION_MESSAGE_BATCH_FREQUENCY_SECONDS.getName(), "1")
+                .setProperty(NearCache.PROP_EXPIRATION_TASK_INITIAL_DELAY_SECONDS, "0")
+                .setProperty(NearCache.PROP_EXPIRATION_TASK_PERIOD_SECONDS, "1");
     }
 
     /**
@@ -89,12 +104,14 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
      * Creates a {@link NearCacheConfig} with a given {@link InMemoryFormat}.
      *
      * @param inMemoryFormat the {@link InMemoryFormat} to set
+     * @param serializeKeys  defines if Near Caches keys should be serialized
      * @return the {@link NearCacheConfig}
      */
-    public static NearCacheConfig createNearCacheConfig(InMemoryFormat inMemoryFormat) {
+    public static NearCacheConfig createNearCacheConfig(InMemoryFormat inMemoryFormat, boolean serializeKeys) {
         NearCacheConfig nearCacheConfig = new NearCacheConfig()
                 .setName(AbstractNearCacheBasicTest.DEFAULT_NEAR_CACHE_NAME + "*")
                 .setInMemoryFormat(inMemoryFormat)
+                .setSerializeKeys(serializeKeys)
                 .setInvalidateOnChange(false);
 
         if (inMemoryFormat == InMemoryFormat.NATIVE) {
@@ -140,9 +157,10 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
      * @return the key in the Near Cache format
      */
     public static Object getNearCacheKey(NearCacheTestContext<?, ?, ?, ?> context, Object key) {
-        // the ReplicatedMap already uses keys by-reference
+        boolean serializeKeys = context.nearCacheConfig.isSerializeKeys();
         boolean isReplicatedMap = context.nearCacheAdapter instanceof ReplicatedMapDataStructureAdapter;
-        return isReplicatedMap ? key : context.serializationService.toData(key);
+        // the ReplicatedMap already uses keys by-reference
+        return (serializeKeys && !isReplicatedMap) ? context.serializationService.toData(key) : key;
     }
 
     /**
@@ -182,6 +200,16 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
      */
     static boolean isCacheOnUpdate(NearCacheConfig nearCacheConfig) {
         return nearCacheConfig != null && nearCacheConfig.getLocalUpdatePolicy() == CACHE_ON_UPDATE;
+    }
+
+    /**
+     * Checks if the {@link NearCacheConfig#isInvalidateOnChange()} of a {@link NearCacheConfig} is {@code true}.
+     *
+     * @param nearCacheConfig the {@link NearCacheConfig} to check
+     * @return {@code true} if the {@code LocalUpdatePolicy} is {@code CACHE_ON_UPDATE}, {@code false} otherwise
+     */
+    static boolean isInvalidateOnChange(NearCacheConfig nearCacheConfig) {
+        return nearCacheConfig != null && nearCacheConfig.isInvalidateOnChange();
     }
 
     /**
@@ -244,6 +272,22 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
     }
 
     /**
+     * Asserts that the Near Cache contains the same reference than the given value, when in-memory-format is OBJECT.
+     *
+     * @param context the {@link NearCacheTestContext} to retrieve the Near Cache from
+     * @param key     the key to check the value reference for
+     * @param value   the value reference to compare with the Near Cache reference
+     */
+    public static void assertNearCacheReference(NearCacheTestContext<?, ?, ?, ?> context, int key, Object value) {
+        if (context.nearCacheConfig.getInMemoryFormat() != InMemoryFormat.OBJECT) {
+            return;
+        }
+        Object nearCacheKey = getNearCacheKey(context, key);
+        Object nearCacheValue = getValueFromNearCache(context, nearCacheKey);
+        assertSame(value, nearCacheValue);
+    }
+
+    /**
      * Asserts the state and class of a {@link NearCacheRecord} and its value.
      *
      * @param record         the {@link NearCacheRecord}
@@ -285,6 +329,8 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
                         format("Value of NearCacheRecord for key %d should be Data, but was %s", key, recordValueClass),
                         Data.class.isAssignableFrom(recordValueClass));
                 break;
+            default:
+                fail("Unsupported in-memory format");
         }
     }
 
@@ -302,19 +348,61 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
     /**
      * Asserts the number of Near Cache invalidations.
      *
-     * @param context       the given {@link NearCacheTestContext} to retrieve the {@link NearCacheInvalidationListener} from
-     * @param invalidations the given number of Near Cache invalidations to wait for
+     * @param context          the given {@link NearCacheTestContext} to retrieve the {@link NearCacheStats} from
+     * @param minInvalidations lower bound of Near Cache invalidations to wait for
+     * @param maxInvalidations upper bound of Near Cache invalidations to wait for
      */
-    public static void assertNearCacheInvalidations(final NearCacheTestContext<?, ?, ?, ?> context, final int invalidations) {
-        if (context.nearCacheConfig.isInvalidateOnChange() && context.invalidationListener != null && invalidations > 0) {
+    public static void assertNearCacheInvalidationsBetween(final NearCacheTestContext<?, ?, ?, ?> context,
+                                                           final int minInvalidations, final int maxInvalidations) {
+        if (context.nearCacheConfig.isInvalidateOnChange() && minInvalidations > 0) {
             assertTrueEventually(new AssertTask() {
                 @Override
-                public void run() throws Exception {
-                    assertEqualsFormat("Expected %d Near Cache invalidations, but found %d (%s)",
-                            invalidations, context.invalidationListener.getInvalidationCount(), context.stats);
+                public void run() {
+                    long invalidationCount = context.stats.getInvalidations();
+                    assertTrue(format("Expected between %d and %d Near Cache invalidations, but found %d (%s)",
+                            minInvalidations, maxInvalidations, invalidationCount, context.stats),
+                            minInvalidations <= invalidationCount && invalidationCount <= maxInvalidations);
                 }
             });
-            context.invalidationListener.resetInvalidationCount();
+            context.stats.resetInvalidationEvents();
+        }
+    }
+
+    /**
+     * Asserts the number of Near Cache invalidations.
+     *
+     * @param context       the given {@link NearCacheTestContext} to retrieve the {@link NearCacheStats} from
+     * @param invalidations the given number of Near Cache invalidations to wait for
+     */
+    public static void assertNearCacheInvalidations(final NearCacheTestContext<?, ?, ?, ?> context, final long invalidations) {
+        if (context.nearCacheConfig.isInvalidateOnChange() && invalidations > 0) {
+            assertTrueEventually(new AssertTask() {
+                @Override
+                public void run() {
+                    assertEqualsFormat("Expected %d Near Cache invalidations, but found %d (%s)",
+                            invalidations, context.stats.getInvalidations(), context.stats);
+                }
+            });
+        }
+    }
+
+    /**
+     * Asserts the number of Near Cache invalidation requests (triggered invalidation events and local invalidations).
+     *
+     * @param context              the given {@link NearCacheTestContext} to retrieve the {@link NearCacheStats} from
+     * @param invalidationRequests the given number of Near Cache invalidation requests to wait for
+     */
+    public static void assertNearCacheInvalidationRequests(final NearCacheTestContext<?, ?, ?, ?> context,
+                                                           final long invalidationRequests) {
+        if (context.nearCacheConfig.isInvalidateOnChange() && invalidationRequests > 0 && context.stats != null) {
+            assertTrueEventually(new AssertTask() {
+                @Override
+                public void run() {
+                    assertEqualsFormat("Expected %d received Near Cache invalidations, but found %d (%s)",
+                            invalidationRequests, context.stats.getInvalidationRequests(), context.stats);
+                }
+            });
+            context.stats.resetInvalidationEvents();
         }
     }
 
@@ -357,9 +445,16 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
     public static void assertNearCacheSize(NearCacheTestContext<?, ?, ?, ?> context, long expectedSize, String... messages) {
         String message = messages.length > 0 ? messages[0] + " " : "";
 
-        long nearCacheSize = context.nearCache.size();
-        assertEquals(format("%sNear Cache size didn't reach the desired value (%d vs. %d) (%s)",
-                message, expectedSize, nearCacheSize, context.stats), expectedSize, nearCacheSize);
+        try {
+            // if near cache is destroyed, it will not be available for size check.
+            long nearCacheSize = context.nearCache.size();
+            assertEquals(format("%sNear Cache size didn't reach the desired value (%d vs. %d) (%s)",
+                    message, expectedSize, nearCacheSize, context.stats), expectedSize, nearCacheSize);
+        } catch (IllegalStateException e) {
+            ILogger logger = Logger.getLogger(NearCacheTestUtils.class);
+            logger.info(format("Size check cannot be done on '%s' named Near Cache because it was destroyed",
+                    context.nearCache.getName()));
+        }
 
         long ownedEntryCount = context.stats.getOwnedEntryCount();
         assertEquals(format("%sNear Cache owned entry count didn't reach the desired value (%d vs. %d) (%s)",
@@ -441,7 +536,7 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
     public static void assertThatMemoryCostsAreZero(NearCacheTestContext<?, ?, ?, ?> context) {
         // these asserts will work in all scenarios, since the default value should be 0 if no costs are calculated
         long ownedEntryMemoryCost = context.stats.getOwnedEntryMemoryCost();
-        assertEqualsFormat("Expected %d owned entry memory costs, but found %d (%s)", 0, ownedEntryMemoryCost, context.stats);
+        assertEqualsFormat("Expected %d owned entry memory costs, but found %d (%s)", 0L, ownedEntryMemoryCost, context.stats);
 
         boolean hasLocalMapStats = isMethodAvailable(context.nearCacheAdapter, DataStructureMethods.GET_LOCAL_MAP_STATS);
         if (hasLocalMapStats) {
@@ -450,7 +545,11 @@ public final class NearCacheTestUtils extends HazelcastTestSupport {
         }
     }
 
-    private static void assertEqualsFormat(String message, long expected, long actual, NearCacheStats stats) {
+    static void assertEqualsFormat(String message, long expected, long actual, NearCacheStats stats) {
+        assertEquals(format(message, expected, actual, stats), expected, actual);
+    }
+
+    static void assertEqualsFormat(String message, String expected, String actual, NearCacheStats stats) {
         assertEquals(format(message, expected, actual, stats), expected, actual);
     }
 }

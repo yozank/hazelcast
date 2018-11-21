@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.config.ListenerConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
+import com.hazelcast.internal.partition.impl.MigrationCommitTest.DelayMigrationStart;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -32,6 +33,7 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 import static org.junit.Assert.assertEquals;
 
@@ -46,6 +48,10 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
         final Config config1 = new Config();
         config1.setProperty(GroupProperty.PARTITION_COUNT.getName(), String.valueOf(PARTITION_COUNT));
 
+        // hold the migrations until all nodes join so that there will be no retries / failed migrations etc.
+        final CountDownLatch migrationStartLatch = new CountDownLatch(1);
+        config1.addListenerConfig(new ListenerConfig(new DelayMigrationStart(migrationStartLatch)));
+
         final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
         warmUpPartitions(hz1);
@@ -56,6 +62,8 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
         config2.addListenerConfig(new ListenerConfig(listener));
         final HazelcastInstance hz2 = factory.newHazelcastInstance(config2);
 
+        migrationStartLatch.countDown();
+
         waitAllForSafeState(hz1, hz2);
 
         final List<Integer> hz2PartitionIds = getNodeEngineImpl(hz2).getPartitionService().getMemberPartitions(getAddress(hz2));
@@ -63,8 +71,10 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
 
         final List<MigrationProgressNotification> notifications = listener.getNotifications();
 
-        int partition0Events = 0, partition1Events = 0;
-        assertEquals(6, notifications.size());
+        int partition0Events = 0;
+        int partition1Events = 0;
+        // 3 event for migration = START -> COMPLETE -> COMMIT/ROLLBACK
+        assertEquals("Migration Notifications: " + notifications, PARTITION_COUNT * 3, notifications.size());
 
         for (MigrationProgressNotification n : notifications) {
             if (n.migrationInfo.getPartitionId() == 0) {
@@ -110,12 +120,12 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
 
         @Override
         public String toString() {
-            return "MigrationProgressNotification{" +
-                    "event=" + event +
-                    ", participant=" + participant +
-                    ", migrationInfo=" + migrationInfo +
-                    ", success=" + success +
-                    '}';
+            return "MigrationProgressNotification{"
+                    + "event=" + event
+                    + ", participant=" + participant
+                    + ", migrationInfo=" + migrationInfo
+                    + ", success=" + success
+                    + '}';
         }
     }
 
@@ -132,8 +142,8 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
         @Override
         public synchronized void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo,
                                                      boolean success) {
-            notifications
-                    .add(new MigrationProgressNotification(MigrationProgressEvent.COMPLETE, participant, migrationInfo, success));
+            notifications.add(
+                    new MigrationProgressNotification(MigrationProgressEvent.COMPLETE, participant, migrationInfo, success));
         }
 
         @Override
@@ -149,7 +159,5 @@ public class InternalMigrationListenerTest extends HazelcastTestSupport {
         public synchronized List<MigrationProgressNotification> getNotifications() {
             return new ArrayList<MigrationProgressNotification>(notifications);
         }
-
     }
-
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ public class ClientMapTryLockConcurrentTests {
         map.put(upKey, 0);
         map.put(downKey, 0);
 
-        Thread threads[] = new Thread[maxThreads];
+        Thread[] threads = new Thread[maxThreads];
         for (int i = 0; i < threads.length; i++) {
 
             Thread t;
@@ -140,8 +140,10 @@ public class ClientMapTryLockConcurrentTests {
         }
     }
 
-    static abstract class TestHelper extends Thread {
+    abstract static class TestHelper extends Thread {
+
         protected static final int ITERATIONS = 1000 * 10;
+
         protected final Random random = new Random();
         protected final IMap<String, Integer> map;
         protected final String upKey;

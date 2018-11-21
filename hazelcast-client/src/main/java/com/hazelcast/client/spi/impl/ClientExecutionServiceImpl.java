@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,10 @@
 package com.hazelcast.client.spi.impl;
 
 import com.hazelcast.client.spi.ClientExecutionService;
+import com.hazelcast.internal.metrics.MetricsProvider;
+import com.hazelcast.internal.metrics.MetricsRegistry;
+import com.hazelcast.internal.metrics.Probe;
+import com.hazelcast.internal.util.RuntimeAvailableProcessors;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.LoggingService;
 import com.hazelcast.spi.properties.HazelcastProperties;
@@ -35,12 +39,16 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-public final class ClientExecutionServiceImpl implements ClientExecutionService {
+import static com.hazelcast.internal.metrics.ProbeLevel.MANDATORY;
+import static com.hazelcast.spi.properties.GroupProperty.TASK_SCHEDULER_REMOVE_ON_CANCEL;
+import static java.lang.Thread.currentThread;
+
+public final class ClientExecutionServiceImpl implements ClientExecutionService, MetricsProvider {
 
     public static final HazelcastProperty INTERNAL_EXECUTOR_POOL_SIZE
             = new HazelcastProperty("hazelcast.client.internal.executor.pool.size", 3);
 
-    private static final long TERMINATE_TIMEOUT_SECONDS = 30;
+    public static final long TERMINATE_TIMEOUT_SECONDS = 30;
 
     private final ILogger logger;
     private final ExecutorService userExecutor;
@@ -54,11 +62,12 @@ public final class ClientExecutionServiceImpl implements ClientExecutionService 
         }
         int executorPoolSize = poolSize;
         if (executorPoolSize <= 0) {
-            executorPoolSize = Runtime.getRuntime().availableProcessors();
+            executorPoolSize = RuntimeAvailableProcessors.get();
         }
         logger = loggingService.getLogger(ClientExecutionService.class);
         internalExecutor = new LoggingScheduledExecutor(logger, internalPoolSize,
                 new PoolExecutorThreadFactory(name + ".internal-", classLoader),
+                properties.getBoolean(TASK_SCHEDULER_REMOVE_ON_CANCEL),
                 new RejectedExecutionHandler() {
                     public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
                         String message = "Internal executor rejected task: " + r + ", because client is shutting down...";
@@ -103,6 +112,11 @@ public final class ClientExecutionServiceImpl implements ClientExecutionService 
         return userExecutor;
     }
 
+    @Probe (level = MANDATORY)
+    public int getUserExecutorQueueSize() {
+        return ((ThreadPoolExecutor) userExecutor).getQueue().size();
+    }
+
     public void shutdown() {
         shutdownExecutor("user", userExecutor, logger);
         shutdownExecutor("internal", internalExecutor, logger);
@@ -117,7 +131,13 @@ public final class ClientExecutionServiceImpl implements ClientExecutionService 
                         + " seconds");
             }
         } catch (InterruptedException e) {
+            currentThread().interrupt();
             logger.warning(name + " executor await termination is interrupted", e);
         }
+    }
+
+    @Override
+    public void provideMetrics(MetricsRegistry registry) {
+        registry.scanAndRegister(this, "executionService");
     }
 }

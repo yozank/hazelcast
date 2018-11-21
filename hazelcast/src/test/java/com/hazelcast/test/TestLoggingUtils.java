@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,12 @@ package com.hazelcast.test;
 
 import org.apache.logging.log4j.ThreadContext;
 
+import static com.hazelcast.test.JenkinsDetector.isOnJenkins;
+
 public final class TestLoggingUtils {
-    private static String LOGGING_TYPE_PROP_NAME = "hazelcast.logging.type";
-    private static String LOGGING_CLASS_PROP_NAME = "hazelcast.logging.class";
+
+    private static final String LOGGING_TYPE_PROP_NAME = "hazelcast.logging.type";
+    private static final String LOGGING_CLASS_PROP_NAME = "hazelcast.logging.class";
 
     private static final boolean IS_LOG4J2_AVAILABLE = isClassAvailable("org.apache.logging.log4j.Logger");
 
@@ -36,18 +39,19 @@ public final class TestLoggingUtils {
         }
     }
 
-    static void setThreadLocalTestMethodName(String methodName) {
+    public static void setThreadLocalTestMethodName(String methodName) {
         if (IS_LOG4J2_AVAILABLE) {
             ThreadContext.put("test-name", methodName);
         }
     }
 
-    static void removeThreadLocalTestMethodName() {
+    public static void removeThreadLocalTestMethodName() {
         if (IS_LOG4J2_AVAILABLE) {
             ThreadContext.remove("test-name");
         }
     }
 
+    @SuppressWarnings("SameParameterValue")
     private static boolean isClassAvailable(String classname) {
         try {
             Class.forName(classname);
@@ -61,7 +65,7 @@ public final class TestLoggingUtils {
         if (!IS_LOG4J2_AVAILABLE) {
             return false;
         }
-        if (JenkinsDetector.isOnJenkins()) {
+        if (isOnJenkins()) {
             return true;
         }
         if (System.getProperty(LOGGING_TYPE_PROP_NAME) == null && System.getProperty(LOGGING_CLASS_PROP_NAME) == null) {
@@ -69,6 +73,4 @@ public final class TestLoggingUtils {
         }
         return false;
     }
-
-
 }

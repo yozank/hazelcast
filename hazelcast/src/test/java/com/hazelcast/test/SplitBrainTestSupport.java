@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,41 +18,58 @@ package com.hazelcast.test;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.HazelcastInstanceNotActiveException;
+import com.hazelcast.core.LifecycleEvent;
+import com.hazelcast.core.LifecycleListener;
 import com.hazelcast.instance.HazelcastInstanceImpl;
 import com.hazelcast.instance.HazelcastInstanceProxy;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
 import com.hazelcast.nio.Address;
-import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.tcp.FirewallingConnectionManager;
+import com.hazelcast.spi.merge.MergingValue;
+import com.hazelcast.spi.merge.SplitBrainMergePolicy;
 import com.hazelcast.spi.properties.GroupProperty;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+
+import static com.hazelcast.test.starter.ReflectionUtils.getFieldValueReflectively;
+import static com.hazelcast.test.starter.ReflectionUtils.isInstanceOf;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * A support class for high-level split-brain tests.
- * It will form a cluster, create a split-brain situation and then heal the cluster again.
- *
- * Tests are supposed to subclass this class and use its hooks to be notified about state transitions.
+ * <p>
+ * Forms a cluster, creates a split-brain situation and then heals the cluster again.
+ * <p>
+ * Implementing tests are supposed to subclass this class and use its hooks to be notified about state transitions.
  * See {@link #onBeforeSplitBrainCreated(HazelcastInstance[])},
  * {@link #onAfterSplitBrainCreated(HazelcastInstance[], HazelcastInstance[])}
  * and {@link #onAfterSplitBrainHealed(HazelcastInstance[])}
- *
- * The current implementation always isolate the 1st member of the cluster, but it should be simple to customize this
+ * <p>
+ * The current implementation always isolates the first member of the cluster, but it should be simple to customize this
  * class to support mode advanced split-brain scenarios.
- *
+ * <p>
  * See {@link SplitBrainTestSupportTest} for an example test.
- *
  */
+@SuppressWarnings({"RedundantThrows", "WeakerAccess"})
 public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
 
     protected TestHazelcastInstanceFactory factory;
 
-    private static final int[] DEFAULT_BRAINS = new int[]{1, 2};
+    // per default the second half should merge into the first half
+    private static final int[] DEFAULT_BRAINS = new int[]{2, 1};
     private static final int DEFAULT_ITERATION_COUNT = 1;
     private HazelcastInstance[] instances;
     private int[] brains;
@@ -93,44 +110,18 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
     @Before
     public final void setUpInternals() {
         onBeforeSetup();
-        final Config config = config();
 
         brains = brains();
         validateBrainsConfig(brains);
+
+        Config config = config();
         int clusterSize = getClusterSize();
         instances = startInitialCluster(config, clusterSize);
     }
 
-    /**
-     * Override this for custom Hazelcast configuration
-     *
-     * @return
-     */
-    protected Config config() {
-        final Config config = new Config();
-        config.setProperty(GroupProperty.MERGE_FIRST_RUN_DELAY_SECONDS.getName(), "5");
-        config.setProperty(GroupProperty.MERGE_NEXT_RUN_DELAY_SECONDS.getName(), "5");
-        return config;
-    }
-
-    /**
-     * Override this to create a custom brain sizes
-     *
-     * @return
-     */
-    protected int[] brains() {
-        return DEFAULT_BRAINS;
-    }
-
-
-    /**
-     * Override this to create the split-brain situation multiple-times. The test will use
-     * the same members for all iterations.
-     *
-     * @return
-     */
-    protected int iterations() {
-        return DEFAULT_ITERATION_COUNT;
+    @After
+    public final void tearDown() {
+        onTearDown();
     }
 
     /**
@@ -138,7 +129,48 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
      * first method executed by {@code @Before SplitBrainTestSupport.setupInternals}.
      */
     protected void onBeforeSetup() {
+    }
 
+    /**
+     * Override this method to execute clean up that may be required after finishing the test. This is the
+     * first method executed by {@code @After SplitBrainTestSupport.tearDown}.
+     */
+    protected void onTearDown() {
+    }
+
+    /**
+     * Override this method to create a custom brain sizes
+     *
+     * @return the default number of brains
+     */
+    protected int[] brains() {
+        return DEFAULT_BRAINS;
+    }
+
+    /**
+     * Override this method to create a custom Hazelcast configuration.
+     *
+     * @return the default Hazelcast configuration
+     */
+    protected Config config() {
+        return smallInstanceConfig()
+                .setProperty(GroupProperty.MERGE_FIRST_RUN_DELAY_SECONDS.getName(), "5")
+                .setProperty(GroupProperty.MERGE_NEXT_RUN_DELAY_SECONDS.getName(), "5");
+    }
+
+    protected final Config getConfig() {
+        return super.getConfig();
+    }
+
+    /**
+     * Override this method to create the split-brain situation multiple-times.
+     * <p>
+     * The test will use the same members for all iterations.
+     *
+     * @return the default number of iterations
+     */
+    protected int iterations() {
+        return DEFAULT_ITERATION_COUNT;
     }
 
     /**
@@ -147,15 +179,12 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
      * @param instances all Hazelcast instances in your cluster
      */
     protected void onBeforeSplitBrainCreated(HazelcastInstance[] instances) throws Exception {
-
     }
 
     /**
      * Called just after a split brain situation was created
-     *
      */
     protected void onAfterSplitBrainCreated(HazelcastInstance[] firstBrain, HazelcastInstance[] secondBrain) throws Exception {
-
     }
 
     /**
@@ -164,17 +193,16 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
      * @param instances all Hazelcast instances in your cluster
      */
     protected void onAfterSplitBrainHealed(HazelcastInstance[] instances) throws Exception {
-
     }
 
     /**
      * Indicates whether test should fail when cluster does not include all original members after communications are unblocked.
-     *
+     * <p>
      * Override this method when it is expected that after communications are unblocked some members will not rejoin the cluster.
      * When overriding this method, it may be desirable to add some wait time to allow the split brain handler to execute.
      *
      * @return {@code true} if the test should fail when not all original members rejoin after split brain is
-     *         healed, otherwise {@code false}.
+     * healed, otherwise {@code false}.
      */
     protected boolean shouldAssertAllNodesRejoined() {
         return true;
@@ -213,9 +241,9 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
      *
      * @param brain index of brain to start a new instance in (0 to start instance in first brain or 1 to start instance in
      *              second brain)
-     * @return      a HazelcastInstance whose {@code MockJoiner} has blacklisted the other brain's members and its connection
-     *              manager blocks connections to other brain's members
-     * @see         TestHazelcastInstanceFactory#newHazelcastInstance(Address, Config, Address[])
+     * @return a HazelcastInstance whose {@code MockJoiner} has blacklisted the other brain's members and its connection
+     * manager blocks connections to other brain's members
+     * @see TestHazelcastInstanceFactory#newHazelcastInstance(Address, Config, Address[])
      */
     protected HazelcastInstance createHazelcastInstanceInBrain(int brain) {
         Address newMemberAddress = factory.nextAddress();
@@ -223,17 +251,19 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
         HazelcastInstance[] instancesToBlock = brain == 1 ? brains.firstHalf : brains.secondHalf;
 
         List<Address> addressesToBlock = new ArrayList<Address>(instancesToBlock.length);
-        for (int i=0; i < instancesToBlock.length; i++) {
-            if (isInstanceActive(instancesToBlock[i])) {
-                addressesToBlock.add(getAddress(instancesToBlock[i]));
+        for (HazelcastInstance hz : instancesToBlock) {
+            if (isInstanceActive(hz)) {
+                addressesToBlock.add(getAddress(hz));
                 // block communication from these instances to the new address
-                getFireWalledConnectionManager(instancesToBlock[i]).block(newMemberAddress);
+                FirewallingConnectionManager connectionManager = getFireWalledConnectionManager(hz);
+                connectionManager.blockNewConnection(newMemberAddress);
+                connectionManager.closeActiveConnection(newMemberAddress);
             }
         }
-        // indicate we need to unblacklist addresses from joiner when split-brain will be healed
+        // indicate that we need to unblacklist addresses from the joiner when split-brain will be healed
         unblacklistHint = true;
         // create a new Hazelcast instance which has blocked addresses blacklisted in its joiner
-        return factory.newHazelcastInstance(config(), addressesToBlock.toArray(new Address[addressesToBlock.size()]));
+        return factory.newHazelcastInstance(config(), addressesToBlock.toArray(new Address[0]));
     }
 
     private void validateBrainsConfig(int[] clusterTopology) {
@@ -278,16 +308,21 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
     }
 
     private void healSplitBrain() {
-        unblockCommunication();
-        if (unblacklistHint) {
-            unblacklistMembers();
-        }
-        if (shouldAssertAllNodesRejoined()) {
-            for (HazelcastInstance hz : instances) {
-                assertClusterSizeEventually(instances.length, hz);
+        MergeBarrier mergeBarrier = new MergeBarrier(instances);
+        try {
+            unblockCommunication();
+            if (unblacklistHint) {
+                unblacklistMembers();
             }
+            if (shouldAssertAllNodesRejoined()) {
+                for (HazelcastInstance hz : instances) {
+                    assertClusterSizeEventually(instances.length, hz);
+                }
+            }
+            waitAllForSafeState(instances);
+        } finally {
+            mergeBarrier.awaitNoMergeInProgressAndClose();
         }
-        waitAllForSafeState(instances);
     }
 
     private void unblockCommunication() {
@@ -298,8 +333,9 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
         applyOnBrains(UNBLACKLIST_MEMBERS);
     }
 
-    private static FirewallingMockConnectionManager getFireWalledConnectionManager(HazelcastInstance hz) {
-        return (FirewallingMockConnectionManager) getNode(hz).getConnectionManager();
+    private static FirewallingConnectionManager getFireWalledConnectionManager(HazelcastInstance hz) {
+        Node node = getNode(hz);
+        return (FirewallingConnectionManager) node.getConnectionManager();
     }
 
     protected Brains getBrains() {
@@ -336,37 +372,36 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
     }
 
     private static boolean isInstanceActive(HazelcastInstance instance) {
-        if (instance instanceof HazelcastInstanceProxy) {
+        if (isInstanceOf(instance, HazelcastInstanceProxy.class)) {
             try {
-                ((HazelcastInstanceProxy) instance).getOriginal();
-                return true;
+                return getFieldValueReflectively(instance, "original") != null;
+            } catch (IllegalAccessException e) {
+                throw new AssertionError("Could not get original field from HazelcastInstanceProxy: " + e.getMessage());
             }
-            catch (HazelcastInstanceNotActiveException exception) {
-                return false;
-            }
-        } else if (instance instanceof HazelcastInstanceImpl) {
+        } else if (isInstanceOf(instance, HazelcastInstanceImpl.class)) {
             return getNode(instance).getState() == NodeState.ACTIVE;
-        } else {
-            throw new AssertionError("Unsupported HazelcastInstance type");
         }
+        throw new AssertionError("Unsupported HazelcastInstance type: " + instance.getClass().getName());
     }
 
     public static void blockCommunicationBetween(HazelcastInstance h1, HazelcastInstance h2) {
-        FirewallingMockConnectionManager h1CM = getFireWalledConnectionManager(h1);
-        FirewallingMockConnectionManager h2CM = getFireWalledConnectionManager(h2);
-        Node h1Node = getNode(h1);
-        Node h2Node = getNode(h2);
-        h1CM.block(h2Node.getThisAddress());
-        h2CM.block(h1Node.getThisAddress());
+        FirewallingConnectionManager cm1 = getFireWalledConnectionManager(h1);
+        FirewallingConnectionManager cm2 = getFireWalledConnectionManager(h2);
+        Node node1 = getNode(h1);
+        Node node2 = getNode(h2);
+        cm1.blockNewConnection(node2.getThisAddress());
+        cm2.blockNewConnection(node1.getThisAddress());
+        cm1.closeActiveConnection(node2.getThisAddress());
+        cm2.closeActiveConnection(node1.getThisAddress());
     }
 
     public static void unblockCommunicationBetween(HazelcastInstance h1, HazelcastInstance h2) {
-        FirewallingMockConnectionManager h1CM = getFireWalledConnectionManager(h1);
-        FirewallingMockConnectionManager h2CM = getFireWalledConnectionManager(h2);
-        Node h1Node = getNode(h1);
-        Node h2Node = getNode(h2);
-        h1CM.unblock(h2Node.getThisAddress());
-        h2CM.unblock(h1Node.getThisAddress());
+        FirewallingConnectionManager cm1 = getFireWalledConnectionManager(h1);
+        FirewallingConnectionManager cm2 = getFireWalledConnectionManager(h2);
+        Node node1 = getNode(h1);
+        Node node2 = getNode(h2);
+        cm1.unblock(node2.getThisAddress());
+        cm2.unblock(node1.getThisAddress());
     }
 
     private static void unblacklistJoinerBetween(HazelcastInstance h1, HazelcastInstance h2) {
@@ -376,11 +411,43 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
         h2Node.getJoiner().unblacklist(h1Node.getThisAddress());
     }
 
+    public static String toString(Collection collection) {
+        StringBuilder sb = new StringBuilder("[");
+        String delimiter = "";
+        for (Object item : collection) {
+            sb.append(delimiter).append(item);
+            delimiter = ", ";
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    public static void assertPi(Object value) {
+        assertInstanceOf(Double.class, value);
+        assertEquals("Expected the value to be PI", Math.PI, (Double) value, 0.00000001d);
+    }
+
+    public static void assertPiCollection(Collection<Object> collection) {
+        assertEquals("Expected the collection to be a PI collection",
+                collection.size(), ReturnPiCollectionMergePolicy.PI_COLLECTION.size());
+        assertTrue("Expected the collection to be a PI collection",
+                collection.containsAll(ReturnPiCollectionMergePolicy.PI_COLLECTION));
+    }
+
+    public static void assertPiSet(Collection<Object> collection) {
+        assertEquals("Expected the collection to be a PI set", collection.size(), ReturnPiCollectionMergePolicy.PI_SET.size());
+        assertTrue("Expected the collection to be a PI set", collection.containsAll(ReturnPiCollectionMergePolicy.PI_SET));
+    }
+
     private interface SplitBrainAction {
         void apply(HazelcastInstance h1, HazelcastInstance h2);
     }
 
-    protected class Brains {
+    /**
+     * Contains the {@link HazelcastInstance} from the both sub-clusters (first and second brain).
+     */
+    protected static class Brains {
+
         private final HazelcastInstance[] firstHalf;
         private final HazelcastInstance[] secondHalf;
 
@@ -395,6 +462,170 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
 
         public HazelcastInstance[] getSecondHalf() {
             return secondHalf;
+        }
+    }
+
+    /**
+     * Listener to wait for the split-brain healing to be finished.
+     */
+    protected static class MergeLifecycleListener implements LifecycleListener {
+
+        private final CountDownLatch latch;
+
+        public MergeLifecycleListener(int mergingClusterSize) {
+            latch = new CountDownLatch(mergingClusterSize);
+        }
+
+        @Override
+        public void stateChanged(LifecycleEvent event) {
+            if (event.getState() == LifecycleEvent.LifecycleState.MERGED) {
+                latch.countDown();
+            }
+        }
+
+        public void await() {
+            assertOpenEventually(latch);
+        }
+    }
+
+    /**
+     * Always returns {@code null} as merged value.
+     * <p>
+     * Used to test the removal of all values from a data structure.
+     */
+    protected static class RemoveValuesMergePolicy implements SplitBrainMergePolicy<Object, MergingValue<Object>> {
+
+        @Override
+        public Object merge(MergingValue<Object> mergingValue, MergingValue<Object> existingValue) {
+            return null;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) {
+        }
+    }
+
+    /**
+     * Always returns {@link Math#PI} as merged value.
+     * <p>
+     * Used to test that data structures can deal with user created data in OBJECT format.
+     */
+    protected static class ReturnPiMergePolicy implements SplitBrainMergePolicy<Object, MergingValue<Object>> {
+
+        @Override
+        public Object merge(MergingValue<Object> mergingValue, MergingValue<Object> existingValue) {
+            return Math.PI;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) {
+        }
+    }
+
+    /**
+     * Always returns a collection of {@link Math#PI} digits as merged value.
+     * <p>
+     * Used to test that data structures can deal with user created data in OBJECT format.
+     */
+    protected static class ReturnPiCollectionMergePolicy
+            implements SplitBrainMergePolicy<Collection<Object>, MergingValue<Collection<Object>>> {
+
+        private static final Collection<Object> PI_COLLECTION;
+        private static final Set<Object> PI_SET;
+
+        static {
+            PI_COLLECTION = new ArrayList<Object>(5);
+            PI_COLLECTION.add(3);
+            PI_COLLECTION.add(1);
+            PI_COLLECTION.add(4);
+            PI_COLLECTION.add(1);
+            PI_COLLECTION.add(5);
+            PI_SET = new HashSet<Object>(PI_COLLECTION);
+        }
+
+        @Override
+        public Collection<Object> merge(MergingValue<Collection<Object>> mergingValue,
+                                        MergingValue<Collection<Object>> existingValue) {
+            return PI_COLLECTION;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) {
+        }
+    }
+
+    /**
+     * Merges only {@link Integer} values of the given values (preferring the merging value).
+     * <p>
+     * Used to test the deserialization of values.
+     */
+    protected static class MergeIntegerValuesMergePolicy<V, T extends MergingValue<V>> implements SplitBrainMergePolicy<V, T> {
+
+        @Override
+        public V merge(T mergingValue, T existingValue) {
+            if (mergingValue.getDeserializedValue() instanceof Integer) {
+                return mergingValue.getValue();
+            }
+            if (existingValue != null && existingValue.getDeserializedValue() instanceof Integer) {
+                return existingValue.getValue();
+            }
+            return null;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) {
+        }
+    }
+
+    /**
+     * Merges only {@link Integer} values of the given collections.
+     * <p>
+     * Used to test the deserialization of values.
+     */
+    protected static class MergeCollectionOfIntegerValuesMergePolicy
+            implements SplitBrainMergePolicy<Collection<Object>, MergingValue<Collection<Object>>> {
+
+        @Override
+        public Collection<Object> merge(MergingValue<Collection<Object>> mergingValue,
+                                        MergingValue<Collection<Object>> existingValue) {
+            Collection<Object> result = new ArrayList<Object>();
+            for (Object value : mergingValue.<Collection<Object>>getDeserializedValue()) {
+                if (value instanceof Integer) {
+                    result.add(value);
+                }
+            }
+            if (existingValue != null) {
+                for (Object value : existingValue.<Collection<Object>>getDeserializedValue()) {
+                    if (value instanceof Integer) {
+                        result.add(value);
+                    }
+                }
+            }
+            return result;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) {
         }
     }
 }

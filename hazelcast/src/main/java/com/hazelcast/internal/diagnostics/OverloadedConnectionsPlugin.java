@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package com.hazelcast.internal.diagnostics;
 
-import com.hazelcast.internal.networking.nonblocking.NonBlockingSocketWriter;
-import com.hazelcast.internal.networking.spinning.SpinningSocketWriter;
+import com.hazelcast.internal.networking.OutboundFrame;
+import com.hazelcast.internal.networking.nio.NioChannel;
+import com.hazelcast.internal.networking.nio.NioOutboundPipeline;
 import com.hazelcast.nio.ConnectionManager;
-import com.hazelcast.nio.OutboundFrame;
 import com.hazelcast.nio.Packet;
 import com.hazelcast.nio.tcp.TcpIpConnection;
 import com.hazelcast.nio.tcp.TcpIpConnectionManager;
@@ -44,23 +44,24 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * The OverloadedConnectionsPlugin checks all the connections and samples the content of the packet
- * queues if the size is above a certain threshold. This is very useful to figure out when huge
- * amount of memory is consumed due to pending packets.
- *
- * Currently the sampling has a lot of overhead since the value needs to be deserialized. That is why this
- * plugin is disabled by default.
+ * queues if the size is above a certain threshold.
+ * <p>
+ * This is very useful to figure out when huge amount of memory is consumed due to pending packets.
+ * <p>
+ * Currently the sampling has a lot of overhead since the value needs to be deserialized.
+ * That is why this plugin is disabled by default.
  */
 public class OverloadedConnectionsPlugin extends DiagnosticsPlugin {
 
     /**
      * The period in seconds this plugin runs.
-     *
+     * <p>
      * With the OverloadedConnectionsPlugin one can see what is going on inside a connection with a huge
      * number of pending packets. It makes use of sampling to give some impression of the content.
-     *
+     * <p>
      * This plugin can be very expensive to use and should only be used as a debugging aid; should not be
      * used in production due to the fact that packets could be deserialized.
-     *
+     * <p>
      * If set to 0, the plugin is disabled.
      */
     public static final HazelcastProperty PERIOD_SECONDS
@@ -150,12 +151,10 @@ public class OverloadedConnectionsPlugin extends DiagnosticsPlugin {
     }
 
     private Queue<OutboundFrame> getOutboundQueue(TcpIpConnection connection, boolean priority) {
-        if (connection.getSocketWriter() instanceof NonBlockingSocketWriter) {
-            NonBlockingSocketWriter writer = (NonBlockingSocketWriter) connection.getSocketWriter();
-            return priority ? writer.urgentWriteQueue : writer.writeQueue;
-        } else if (connection.getSocketWriter() instanceof SpinningSocketWriter) {
-            SpinningSocketWriter writer = (SpinningSocketWriter) connection.getSocketWriter();
-            return priority ? writer.urgentWriteQueue : writer.writeQueue;
+        if (connection.getChannel() instanceof NioChannel) {
+            NioChannel nioChannel = (NioChannel) connection.getChannel();
+            NioOutboundPipeline outboundPipeline = nioChannel.outboundPipeline();
+            return priority ? outboundPipeline.priorityWriteQueue : outboundPipeline.writeQueue;
         } else {
             return EMPTY_QUEUE;
         }
@@ -194,13 +193,11 @@ public class OverloadedConnectionsPlugin extends DiagnosticsPlugin {
     /**
      * Samples the queue.
      *
-     * @param q the queue to sample.
-     * @return the number of samples. If there were not sufficient samples, -1 is returned.
+     * @param q the queue to sample
+     * @return the number of samples (if there were not sufficient samples, -1 is returned)
      */
     private int sample(Queue<OutboundFrame> q) {
-        for (OutboundFrame frame : q) {
-            packets.add(frame);
-        }
+        packets.addAll(q);
 
         if (packets.size() < threshold) {
             return -1;

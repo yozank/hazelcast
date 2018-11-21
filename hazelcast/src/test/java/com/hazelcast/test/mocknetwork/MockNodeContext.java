@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import com.hazelcast.instance.NodeExtensionFactory;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ConnectionManager;
 import com.hazelcast.nio.NodeIOService;
-import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
+import com.hazelcast.nio.tcp.FirewallingConnectionManager;
 import com.hazelcast.test.TestEnvironment;
 import com.hazelcast.test.compatibility.SamplingNodeExtension;
 
@@ -37,6 +37,7 @@ import java.util.Set;
 
 import static com.hazelcast.util.ExceptionUtil.rethrow;
 
+@SuppressWarnings("WeakerAccess")
 public class MockNodeContext implements NodeContext {
 
     private final TestNodeRegistry registry;
@@ -44,7 +45,7 @@ public class MockNodeContext implements NodeContext {
     private final Set<Address> initiallyBlockedAddresses;
 
     protected MockNodeContext(TestNodeRegistry registry, Address thisAddress) {
-        this(registry, thisAddress, Collections.EMPTY_SET);
+        this(registry, thisAddress, Collections.<Address>emptySet());
     }
 
     protected MockNodeContext(TestNodeRegistry registry, Address thisAddress, Set<Address> initiallyBlockedAddresses) {
@@ -62,24 +63,29 @@ public class MockNodeContext implements NodeContext {
         }
     }
 
+    @Override
     public AddressPicker createAddressPicker(Node node) {
         return new StaticAddressPicker(thisAddress);
     }
 
+    @Override
     public Joiner createJoiner(Node node) {
         return new MockJoiner(node, registry, initiallyBlockedAddresses);
     }
 
+    @Override
     public ConnectionManager createConnectionManager(Node node, ServerSocketChannel serverSocketChannel) {
         NodeIOService ioService = new NodeIOService(node, node.nodeEngine);
-        return new FirewallingMockConnectionManager(ioService, node, registry, initiallyBlockedAddresses);
+        ConnectionManager delegate = new MockConnectionManager(ioService, node, registry);
+        return new FirewallingConnectionManager(delegate, initiallyBlockedAddresses);
     }
 
     /**
      * @return {@code NodeExtension} suitable for sampling serialized objects in OSS or EE environment
      */
+    @SuppressWarnings("unchecked")
     private NodeExtension constructSamplingNodeExtension(Node node) {
-        if (BuildInfoProvider.BUILD_INFO.isEnterprise()) {
+        if (BuildInfoProvider.getBuildInfo().isEnterprise()) {
             try {
                 Class<? extends NodeExtension> klass = (Class<? extends NodeExtension>)
                         Class.forName("com.hazelcast.test.compatibility.SamplingEnterpriseNodeExtension");

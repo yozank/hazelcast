@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,17 @@
 
 package com.hazelcast.client.impl.protocol.task;
 
-import com.hazelcast.client.AuthenticationException;
-import com.hazelcast.client.ClientEndpoint;
-import com.hazelcast.client.ClientEndpointManager;
+import com.hazelcast.client.impl.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpointImpl;
+import com.hazelcast.client.impl.ClientEndpointManager;
 import com.hazelcast.client.impl.ClientEngineImpl;
+import com.hazelcast.client.impl.StubAuthenticationException;
 import com.hazelcast.client.impl.client.SecureRequest;
-import com.hazelcast.client.impl.protocol.ClientExceptionFactory;
+import com.hazelcast.client.impl.protocol.ClientExceptions;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
+import com.hazelcast.core.MemberLeftException;
+import com.hazelcast.instance.BuildInfo;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.logging.ILogger;
@@ -32,26 +35,30 @@ import com.hazelcast.security.Credentials;
 import com.hazelcast.security.SecurityContext;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
-import com.hazelcast.util.ExceptionUtil;
 
 import java.security.Permission;
-import java.util.logging.Level;
+import java.util.Arrays;
+import java.util.List;
+
+import static com.hazelcast.util.ExceptionUtil.peel;
 
 /**
  * Base Message task.
  */
 public abstract class AbstractMessageTask<P> implements MessageTask, SecureRequest {
 
-    protected final ClientMessage clientMessage;
+    private static final List<Class<? extends Throwable>> NON_PEELABLE_EXCEPTIONS =
+            Arrays.asList(Error.class, MemberLeftException.class);
 
+    protected final ClientMessage clientMessage;
     protected final Connection connection;
     protected final ClientEndpoint endpoint;
     protected final NodeEngineImpl nodeEngine;
     protected final InternalSerializationService serializationService;
     protected final ILogger logger;
-    protected final ClientEndpointManager endpointManager;
     protected final ClientEngineImpl clientEngine;
     protected P parameters;
+    final ClientEndpointManager endpointManager;
     private final Node node;
 
     protected AbstractMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
@@ -63,7 +70,7 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
         this.connection = connection;
         this.clientEngine = node.clientEngine;
         this.endpointManager = clientEngine.getEndpointManager();
-        this.endpoint = getEndpoint();
+        this.endpoint = initEndpoint();
     }
 
     @SuppressWarnings("unchecked")
@@ -71,12 +78,12 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
         return (S) node.nodeEngine.getService(serviceName);
     }
 
-    protected ClientEndpoint getEndpoint() {
-        return endpointManager.getEndpoint(connection);
-    }
-
-    protected int getClientVersion() {
-        return getEndpoint().getClientVersion();
+    private ClientEndpoint initEndpoint() {
+        ClientEndpoint endpoint = endpointManager.getEndpoint(connection);
+        if (endpoint != null) {
+            return endpoint;
+        }
+        return new ClientEndpointImpl(clientEngine, nodeEngine, connection);
     }
 
     protected abstract P decodeClientMessage(ClientMessage clientMessage);
@@ -89,30 +96,23 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
     }
 
     @Override
-    public void run() {
+    public final void run() {
         try {
-            if (isAuthenticationMessage()) {
-                initializeAndProcessMessage();
-            } else {
-                ClientEndpoint endpoint = getEndpoint();
-                if (endpoint == null) {
-                    handleMissingEndpoint();
-                } else if (!endpoint.isAuthenticated()) {
-                    handleAuthenticationFailure();
-                } else {
-                    initializeAndProcessMessage();
-                }
-            }
+            doRun();
         } catch (Throwable e) {
             handleProcessingFailure(e);
         }
     }
 
-    protected boolean isAuthenticationMessage() {
-        return false;
+    protected void doRun() throws Throwable {
+        if (!endpoint.isAuthenticated()) {
+            handleAuthenticationFailure();
+        } else {
+            initializeAndProcessMessage();
+        }
     }
 
-    private void initializeAndProcessMessage() throws Throwable {
+    void initializeAndProcessMessage() throws Throwable {
         if (!node.getNodeExtension().isStartCompleted()) {
             throw new HazelcastInstanceNotActiveException("Hazelcast instance is not ready yet!");
         }
@@ -129,7 +129,7 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
         if (nodeEngine.isRunning()) {
             String message = "Client " + endpoint + " must authenticate before any operation.";
             logger.severe(message);
-            exception = new RetryableHazelcastException(new AuthenticationException(message));
+            exception = new RetryableHazelcastException(new StubAuthenticationException(message));
         } else {
             exception = new HazelcastInstanceNotActiveException();
         }
@@ -137,22 +137,12 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
         connection.close("Authentication failed. " + exception.getMessage(), null);
     }
 
-    private void handleMissingEndpoint() {
-        if (connection.isAlive()) {
-            logger.severe("Dropping: " + parameters + " -> no endpoint found for live connection.");
-        } else {
-            if (logger.isFinestEnabled()) {
-                logger.finest("Dropping: " + parameters + " -> no endpoint found for dead connection.");
-            }
-        }
-    }
-
     private void logProcessingFailure(Throwable throwable) {
-        if (logger.isLoggable(Level.FINEST)) {
+        if (logger.isFinestEnabled()) {
             if (parameters == null) {
-                logger.log(Level.FINEST, throwable.getMessage(), throwable);
+                logger.finest(throwable.getMessage(), throwable);
             } else {
-                logger.log(Level.FINEST, "While executing request: " + parameters + " -> " + throwable.getMessage(), throwable);
+                logger.finest("While executing request: " + parameters + " -> " + throwable.getMessage(), throwable);
             }
         }
     }
@@ -195,8 +185,12 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
     protected abstract void processMessage() throws Throwable;
 
     protected void sendResponse(Object response) {
-        ClientMessage clientMessage = encodeResponse(response);
-        sendClientMessage(clientMessage);
+        try {
+            ClientMessage clientMessage = encodeResponse(response);
+            sendClientMessage(clientMessage);
+        } catch (Exception e) {
+            handleProcessingFailure(e);
+        }
     }
 
     protected void sendClientMessage(ClientMessage resultClientMessage) {
@@ -204,6 +198,9 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
         resultClientMessage.addFlag(ClientMessage.BEGIN_AND_END_FLAGS);
         resultClientMessage.setVersion(ClientMessage.VERSION);
         //TODO framing not implemented yet, should be split into frames before writing to connection
+        // PETER: There is no point in chopping it up in frames and in 1 go write all these frames because it still will
+        // not allow any interleaving with operations. It will only slow down the system. Framing should be done inside
+        // the io system; not outside.
         connection.write(resultClientMessage);
     }
 
@@ -214,8 +211,8 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
     }
 
     protected void sendClientMessage(Throwable throwable) {
-        ClientExceptionFactory exceptionFactory = clientEngine.getClientExceptionFactory();
-        ClientMessage exception = exceptionFactory.createExceptionMessage(ExceptionUtil.peel(throwable));
+        ClientExceptions exceptionFactory = clientEngine.getClientExceptions();
+        ClientMessage exception = exceptionFactory.createExceptionMessage(peelIfNeeded(throwable));
         sendClientMessage(exception);
     }
 
@@ -234,4 +231,22 @@ public abstract class AbstractMessageTask<P> implements MessageTask, SecureReque
 
     @Override
     public abstract Object[] getParameters();
+
+    protected final BuildInfo getMemberBuildInfo() {
+        return node.getBuildInfo();
+    }
+
+    private Throwable peelIfNeeded(Throwable t) {
+        if (t == null) {
+            return null;
+        }
+
+        for (Class<? extends Throwable> clazz : NON_PEELABLE_EXCEPTIONS) {
+            if (clazz.isAssignableFrom(t.getClass())) {
+                return t;
+            }
+        }
+
+        return peel(t);
+    }
 }

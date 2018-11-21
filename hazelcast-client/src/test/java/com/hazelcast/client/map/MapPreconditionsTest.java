@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import com.hazelcast.query.Predicate;
 import com.hazelcast.query.TruePredicate;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastParallelClassRunner;
+import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
@@ -51,21 +52,19 @@ import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-public class MapPreconditionsTest {
+public class MapPreconditionsTest extends HazelcastTestSupport {
 
     private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
 
-    private HazelcastInstance client;
-    private HazelcastInstance server;
     private IMap<Object, Object> map;
 
     @Before
-    public void setUp() throws Exception {
-        Config config = new Config();
+    public void setUp() {
+        Config config = getConfig();
         // Default minimum is 100000 * 1.5f
         config.setProperty(GroupProperty.QUERY_RESULT_SIZE_LIMIT.getName(), "1");
-        server = hazelcastFactory.newHazelcastInstance(config);
-        client = hazelcastFactory.newHazelcastClient();
+        hazelcastFactory.newHazelcastInstance(config);
+        HazelcastInstance client = hazelcastFactory.newHazelcastClient();
 
         map = client.getMap("trial");
     }
@@ -635,36 +634,30 @@ public class MapPreconditionsTest {
         int mapClearedCalled;
         int mapEvictedCalled;
 
-
         @Override
         public void entryAdded(EntryEvent event) {
             entryAddedCalled++;
         }
-
 
         @Override
         public void entryEvicted(EntryEvent event) {
             entryEvictedCalled++;
         }
 
-
         @Override
         public void entryRemoved(EntryEvent event) {
             entryRemovedCalled++;
         }
-
 
         @Override
         public void entryUpdated(EntryEvent event) {
             entryUpdatedCalled++;
         }
 
-
         @Override
         public void mapCleared(MapEvent event) {
             mapClearedCalled++;
         }
-
 
         @Override
         public void mapEvicted(MapEvent event) {

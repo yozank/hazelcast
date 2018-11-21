@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.impl.protocol.task.map;
 
-import com.hazelcast.client.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ContinuousQueryAddListenerCodec;
 import com.hazelcast.client.impl.protocol.task.AbstractCallableMessageTask;
@@ -35,7 +35,7 @@ import com.hazelcast.spi.impl.eventservice.impl.TrueEventFilter;
 import java.security.Permission;
 
 /**
- * Client Protocol Task for handling messages with type id:
+ * Client Protocol Task for handling messages with type ID:
  * {@link com.hazelcast.client.impl.protocol.codec.ContinuousQueryMessageType#CONTINUOUSQUERY_ADDLISTENER}
  */
 public class MapAddListenerMessageTask
@@ -48,7 +48,6 @@ public class MapAddListenerMessageTask
 
     @Override
     protected Object call() throws Exception {
-        ClientEndpoint endpoint = getEndpoint();
         return registerListener(endpoint, this);
     }
 

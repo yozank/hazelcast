@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,28 @@
 
 package com.hazelcast.internal.management.request;
 
-import com.eclipsesource.json.JsonObject;
 import com.hazelcast.cache.CacheEntryView;
 import com.hazelcast.cache.ICache;
+import com.hazelcast.cache.impl.CacheDataSerializerHook;
 import com.hazelcast.cache.impl.CacheEntryProcessorEntry;
 import com.hazelcast.cache.impl.record.CacheRecord;
+import com.hazelcast.core.ReadOnly;
 import com.hazelcast.instance.HazelcastInstanceCacheManager;
 import com.hazelcast.internal.management.ManagementCenterService;
 import com.hazelcast.internal.serialization.InternalSerializationService;
+import com.hazelcast.internal.json.JsonObject;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.nio.serialization.impl.Versioned;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.MutableEntry;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.io.IOException;
 
+import static com.hazelcast.cache.impl.record.AbstractCacheRecord.EXPIRY_POLICY_VERSION;
 import static com.hazelcast.util.JsonUtil.getString;
 
 /**
@@ -59,29 +65,18 @@ public class GetCacheEntryRequest implements ConsoleRequest {
     }
 
     @Override
-    public Object readResponse(JsonObject in) {
-        Map<String, String> properties = new LinkedHashMap<String, String>();
-        final Iterator<JsonObject.Member> iterator = in.iterator();
-        while (iterator.hasNext()) {
-            final JsonObject.Member property = iterator.next();
-            properties.put(property.getName(), property.getValue().asString());
-        }
-        return properties;
-    }
-
-    @Override
-    public void writeResponse(ManagementCenterService mcs, JsonObject root) throws Exception {
+    public void writeResponse(ManagementCenterService mcs, JsonObject root) {
         InternalSerializationService serializationService = mcs.getHazelcastInstance().getSerializationService();
         HazelcastInstanceCacheManager cacheManager = mcs.getHazelcastInstance().getCacheManager();
         ICache<Object, Object> cache = cacheManager.getCache(cacheName);
         CacheEntryView cacheEntry = null;
 
         if ("string".equals(type)) {
-            cacheEntry = cache.invoke(key, ENTRY_PROCESSOR, cacheEntry);
+            cacheEntry = cache.invoke(key, ENTRY_PROCESSOR);
         } else if ("long".equals(type)) {
-            cacheEntry = cache.invoke(Long.valueOf(key), ENTRY_PROCESSOR, cacheEntry);
+            cacheEntry = cache.invoke(Long.valueOf(key), ENTRY_PROCESSOR);
         } else if ("integer".equals(type)) {
-            cacheEntry = cache.invoke(Integer.valueOf(key), ENTRY_PROCESSOR, cacheEntry);
+            cacheEntry = cache.invoke(Integer.valueOf(key), ENTRY_PROCESSOR);
         }
         JsonObject result = new JsonObject();
         if (cacheEntry != null) {
@@ -97,57 +92,132 @@ public class GetCacheEntryRequest implements ConsoleRequest {
     }
 
     @Override
-    public JsonObject toJson() {
-        JsonObject root = new JsonObject();
-        root.add("cacheName", cacheName);
-        root.add("type", type);
-        root.add("key", key);
-        return root;
-    }
-
-    @Override
     public void fromJson(JsonObject json) {
         cacheName = getString(json, "cacheName");
         type = getString(json, "type");
         key = getString(json, "key");
     }
 
-    private static class GetCacheEntryViewEntryProcessor implements EntryProcessor<Object, Object, CacheEntryView> {
+    public static class GetCacheEntryViewEntryProcessor implements EntryProcessor<Object, Object, CacheEntryView>,
+            IdentifiedDataSerializable, ReadOnly {
         @Override
         public CacheEntryView process(MutableEntry mutableEntry, Object... objects) throws EntryProcessorException {
-            final CacheEntryProcessorEntry entry = (CacheEntryProcessorEntry) mutableEntry;
-            final CacheRecord record = entry.getRecord();
-            CacheEntryView<Object, Object> cacheEntryView = new CacheEntryView<Object, Object>() {
-                //Key is defined by Management Center user
-                @Override
-                public String getKey() {
-                    return null;
-                }
-                @Override
-                public Object getValue() {
-                    return record.getValue();
-                }
-                @Override
-                public long getExpirationTime() {
-                    return record.getExpirationTime();
-                }
+            CacheEntryProcessorEntry entry = (CacheEntryProcessorEntry) mutableEntry;
+            if (entry.getRecord() == null) {
+                return null;
+            }
 
-                @Override
-                public long getCreationTime() {
-                    return record.getCreationTime();
-                }
+            return new CacheBrowserEntryView(entry);
+        }
 
-                @Override
-                public long getLastAccessTime() {
-                    return record.getLastAccessTime();
-                }
+        @Override
+        public int getFactoryId() {
+            return CacheDataSerializerHook.F_ID;
+        }
 
-                @Override
-                public long getAccessHit() {
-                    return record.getAccessHit();
-                }
-            };
-            return cacheEntryView;
+        @Override
+        public int getId() {
+            return CacheDataSerializerHook.GET_CACHE_ENTRY_VIEW_PROCESSOR;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) throws IOException {
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) throws IOException {
+        }
+    }
+
+    public static class CacheBrowserEntryView implements CacheEntryView<Object, Object>, IdentifiedDataSerializable, Versioned {
+        private Object value;
+        private long expirationTime;
+        private long creationTime;
+        private long lastAccessTime;
+        private long accessHit;
+        private ExpiryPolicy expiryPolicy;
+
+        public CacheBrowserEntryView() {
+        }
+
+        CacheBrowserEntryView(CacheEntryProcessorEntry entry) {
+            this.value = entry.getValue();
+
+            CacheRecord<Object, ExpiryPolicy> record = entry.getRecord();
+            this.expirationTime = record.getExpirationTime();
+            this.creationTime = record.getCreationTime();
+            this.lastAccessTime = record.getLastAccessTime();
+            this.accessHit = record.getAccessHit();
+            this.expiryPolicy = record.getExpiryPolicy();
+        }
+
+        @Override
+        public Object getKey() {
+            return null;
+        }
+
+        @Override
+        public Object getValue() {
+            return value;
+        }
+
+        @Override
+        public long getExpirationTime() {
+            return expirationTime;
+        }
+
+        @Override
+        public long getCreationTime() {
+            return creationTime;
+        }
+
+        @Override
+        public long getLastAccessTime() {
+            return lastAccessTime;
+        }
+
+        @Override
+        public long getAccessHit() {
+            return accessHit;
+        }
+
+        @Override
+        public ExpiryPolicy getExpiryPolicy() {
+            return expiryPolicy;
+        }
+
+        @Override
+        public int getFactoryId() {
+            return CacheDataSerializerHook.F_ID;
+        }
+
+        @Override
+        public int getId() {
+            return CacheDataSerializerHook.CACHE_BROWSER_ENTRY_VIEW;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) throws IOException {
+            out.writeObject(value);
+            out.writeLong(expirationTime);
+            out.writeLong(creationTime);
+            out.writeLong(lastAccessTime);
+            out.writeLong(accessHit);
+            if (out.getVersion().isGreaterOrEqual(EXPIRY_POLICY_VERSION)) {
+                out.writeObject(expiryPolicy);
+            }
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) throws IOException {
+            value = in.readObject();
+            expirationTime = in.readLong();
+            creationTime = in.readLong();
+            lastAccessTime = in.readLong();
+            accessHit = in.readLong();
+            if (in.getVersion().isGreaterOrEqual(EXPIRY_POLICY_VERSION)) {
+                expiryPolicy = in.readObject();
+            }
         }
     }
 }

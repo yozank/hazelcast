@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import com.hazelcast.core.IFunction;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MembershipAdapter;
 import com.hazelcast.core.MembershipEvent;
-import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.map.impl.querycache.QueryCacheContext;
 import com.hazelcast.map.impl.querycache.QueryCacheScheduler;
 import com.hazelcast.map.impl.querycache.accumulator.AccumulatorInfo;
@@ -144,7 +144,7 @@ public class DefaultPublisherContext implements PublisherContext {
     private PartitionAccumulatorRegistry removePartitionAccumulatorRegistry(PartitionAccumulatorRegistry registry) {
         AccumulatorInfo info = registry.getInfo();
         String mapName = info.getMapName();
-        String cacheName = info.getCacheName();
+        String cacheId = info.getCacheId();
 
         MapPublisherRegistry mapPublisherRegistry = getMapPublisherRegistry();
         PublisherRegistry publisherRegistry = mapPublisherRegistry.getOrNull(mapName);
@@ -152,7 +152,7 @@ public class DefaultPublisherContext implements PublisherContext {
             return null;
         }
 
-        return publisherRegistry.remove(cacheName);
+        return publisherRegistry.remove(cacheId);
     }
 
     private void startRemovalTask(final Collection<PartitionAccumulatorRegistry> removalCandidates, String uuid) {
@@ -182,7 +182,7 @@ public class DefaultPublisherContext implements PublisherContext {
     }
 
     private void handleSubscriberAddRemove() {
-        ClusterServiceImpl clusterService = (ClusterServiceImpl) nodeEngine.getClusterService();
+        ClusterService clusterService = nodeEngine.getClusterService();
         clusterService.addMembershipListener(new MembershipAdapter() {
             @Override
             public void memberRemoved(MembershipEvent membershipEvent) {

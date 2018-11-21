@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,9 +43,9 @@ public class MessageFlyweight {
     private static final short SHORT_MASK = 0x00FF;
 
     protected ClientProtocolBuffer buffer;
-    //initialized in wrap method by user , does not change.
+    //initialized in wrap method by user, does not change.
     private int offset;
-    //starts from zero, incremented each tome something set to buffer
+    //starts from zero, incremented each time something set to buffer
     private int index;
 
     public MessageFlyweight() {
@@ -103,8 +103,10 @@ public class MessageFlyweight {
     }
 
     public MessageFlyweight set(Data data) {
-        final byte[] bytes = data.toByteArray();
-        set(bytes);
+        int length = data.totalSize();
+        set(length);
+        data.copyTo(buffer.byteArray(), index);
+        index += length;
         return this;
     }
 

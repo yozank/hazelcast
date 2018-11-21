@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,14 @@ package com.hazelcast.client.config;
 import com.hazelcast.config.AwsConfig;
 
 /**
- * The AWSConfig contains the configuration for client
- * to connect to nodes in aws environment.
+ * The AWSConfig contains the configuration for client to connect to nodes in aws environment.
+ *
+ * @deprecated Use {@link AwsConfig} instead.
  */
-public class ClientAwsConfig extends AwsConfig {
-    private boolean insideAws;
+@Deprecated
+public class ClientAwsConfig
+        extends AwsConfig {
+    private static final String INSIDE_AWS_PROPERTY = "inside-aws";
 
     /**
      * If client is inside aws, it will use private ip addresses directly,
@@ -32,8 +35,9 @@ public class ClientAwsConfig extends AwsConfig {
      *
      * @return boolean true if client is inside aws environment.
      */
+    @Deprecated
     public boolean isInsideAws() {
-        return insideAws;
+        return !isUsePublicIp();
     }
 
     /**
@@ -42,8 +46,28 @@ public class ClientAwsConfig extends AwsConfig {
      *
      * @param insideAws isInsideAws
      */
+    @Deprecated
     public ClientAwsConfig setInsideAws(boolean insideAws) {
-        this.insideAws = insideAws;
+        setUsePublicIp(!insideAws);
+        return this;
+    }
+
+    /**
+     * Sets the property understood by the AWS SPI Discovery Strategy.
+     * <p>
+     * Note that it interprets the "inside-aws" property and maps it to the contrary of the generic "use-public-ip" property.
+     *
+     * @param name  property name
+     * @param value property value
+     * @return the updated Client Aws Config
+     */
+    @Override
+    public ClientAwsConfig setProperty(String name, String value) {
+        if (INSIDE_AWS_PROPERTY.equals(name)) {
+            setInsideAws(Boolean.parseBoolean(value));
+        } else {
+            super.setProperty(name, value);
+        }
         return this;
     }
 }

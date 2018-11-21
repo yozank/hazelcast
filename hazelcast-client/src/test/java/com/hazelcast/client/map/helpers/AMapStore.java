@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package com.hazelcast.client.map.helpers;
 
-
 import com.hazelcast.core.MapStore;
 
 import java.util.Collection;
@@ -26,9 +25,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AMapStore implements MapStore<Object, Object> {
+
     public final Map store = new ConcurrentHashMap();
 
-    public AMapStore(){}
+    public AMapStore() {
+    }
 
     @Override
     public void store(Object key, Object value) {

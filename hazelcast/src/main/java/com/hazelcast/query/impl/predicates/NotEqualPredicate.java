@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.query.impl.predicates;
 
-import com.hazelcast.nio.serialization.impl.BinaryInterface;
+import com.hazelcast.nio.serialization.BinaryInterface;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.query.impl.QueryContext;
 import com.hazelcast.query.impl.QueryableEntry;
@@ -29,6 +29,9 @@ import java.util.Set;
  */
 @BinaryInterface
 public final class NotEqualPredicate extends EqualPredicate {
+
+    private static final long serialVersionUID = 1L;
+
     public NotEqualPredicate() {
     }
 
@@ -64,5 +67,35 @@ public final class NotEqualPredicate extends EqualPredicate {
     @Override
     public int getId() {
         return PredicateDataSerializerHook.NOTEQUAL_PREDICATE;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        if (!(o instanceof NotEqualPredicate)) {
+            return false;
+        }
+
+        NotEqualPredicate that = (NotEqualPredicate) o;
+        if (!that.canEqual(this)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean canEqual(Object other) {
+        return (other instanceof NotEqualPredicate);
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
     }
 }

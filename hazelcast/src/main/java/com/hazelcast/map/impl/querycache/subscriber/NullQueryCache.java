@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import java.util.Set;
 /**
  * Object for neutral {@code InternalQueryCache} implementation.
  */
+@SuppressWarnings("checkstyle:methodcount")
 public final class NullQueryCache implements InternalQueryCache {
 
     /**
@@ -40,15 +41,21 @@ public final class NullQueryCache implements InternalQueryCache {
     }
 
     @Override
-    public void setInternal(Object key, Object value, boolean callDelegate, EntryEventType eventType) {
+    public void set(Object key, Object value, EntryEventType eventType) {
     }
 
     @Override
-    public void deleteInternal(Object key, boolean callDelegate, EntryEventType eventType) {
+    public void prepopulate(Object key, Object value) {
+
     }
 
     @Override
-    public void clearInternal(EntryEventType eventType) {
+    public void delete(Object key, EntryEventType eventType) {
+    }
+
+    @Override
+    public int removeEntriesOf(int partitionId) {
+        return 0;
     }
 
     @Override
@@ -68,6 +75,16 @@ public final class NullQueryCache implements InternalQueryCache {
     @Override
     public void setPublisherListenerId(String publisherListenerId) {
 
+    }
+
+    @Override
+    public String getCacheId() {
+        return null;
+    }
+
+    @Override
+    public boolean reachedMaxCapacity() {
+        return false;
     }
 
     @Override

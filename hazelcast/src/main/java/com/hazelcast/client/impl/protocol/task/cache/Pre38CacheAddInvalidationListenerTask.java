@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.hazelcast.client.impl.protocol.task.cache;
 
 import com.hazelcast.cache.impl.CacheContext;
 import com.hazelcast.cache.impl.CacheService;
-import com.hazelcast.client.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.CacheAddInvalidationListenerCodec;
 import com.hazelcast.client.impl.protocol.task.AbstractCallableMessageTask;
@@ -40,11 +40,12 @@ public class Pre38CacheAddInvalidationListenerTask
 
     @Override
     protected Object call() {
-        ClientEndpoint endpoint = getEndpoint();
         CacheService cacheService = getService(CacheService.SERVICE_NAME);
         CacheContext cacheContext = cacheService.getOrCreateCacheContext(parameters.name);
+        String uuid = nodeEngine.getLocalMember().getUuid();
+        long correlationId = clientMessage.getCorrelationId();
         Pre38NearCacheInvalidationListener listener
-                = new Pre38NearCacheInvalidationListener(endpoint, cacheContext, nodeEngine.getLocalMember().getUuid());
+                = new Pre38NearCacheInvalidationListener(endpoint, cacheContext, uuid, correlationId);
         String registrationId =
                 cacheService.addInvalidationListener(parameters.name, listener, parameters.localOnly);
         endpoint.addListenerDestroyAction(CacheService.SERVICE_NAME, parameters.name, registrationId);
@@ -53,24 +54,25 @@ public class Pre38CacheAddInvalidationListenerTask
 
     /**
      * This listener is here to be used with server versions < 3.8.
-     * Because new improvements for near cache eventual consistency cannot work with server versions < 3.8.
+     * Because new improvements for Near Cache eventual consistency cannot work with server versions < 3.8.
      */
     private final class Pre38NearCacheInvalidationListener extends AbstractCacheClientNearCacheInvalidationListener {
 
-        Pre38NearCacheInvalidationListener(ClientEndpoint endpoint, CacheContext cacheContext, String localMemberUuid) {
-            super(endpoint, cacheContext, localMemberUuid);
+        Pre38NearCacheInvalidationListener(ClientEndpoint endpoint, CacheContext cacheContext,
+                                           String localMemberUuid, long correlationId) {
+            super(endpoint, cacheContext, localMemberUuid, correlationId);
         }
 
         @Override
         protected ClientMessage encodeBatchInvalidation(String name, List<Data> keys, List<String> sourceUuids,
-                                              List<UUID> partitionUuids, List<Long> sequences) {
+                                                        List<UUID> partitionUuids, List<Long> sequences) {
             return CacheAddInvalidationListenerCodec.encodeCacheBatchInvalidationEvent(name, keys, sourceUuids,
                     partitionUuids, sequences);
         }
 
         @Override
         protected ClientMessage encodeSingleInvalidation(String name, Data key, String sourceUuid,
-                                               UUID partitionUuid, long sequence) {
+                                                         UUID partitionUuid, long sequence) {
             return CacheAddInvalidationListenerCodec.encodeCacheInvalidationEvent(name, key, sourceUuid,
                     partitionUuid, sequence);
         }

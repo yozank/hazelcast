@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,21 @@
 
 package com.hazelcast.internal.partition.impl;
 
+import com.hazelcast.internal.partition.NonFragmentedServiceNamespace;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
+import com.hazelcast.internal.partition.ReplicaFragmentMigrationState;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
-import com.hazelcast.internal.partition.operation.CheckReplicaVersion;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
 import com.hazelcast.internal.partition.operation.MigrationCommitOperation;
 import com.hazelcast.internal.partition.operation.MigrationOperation;
 import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
+import com.hazelcast.internal.partition.operation.PartitionBackupReplicaAntiEntropyOperation;
+import com.hazelcast.internal.partition.operation.PartitionReplicaSyncRequest;
+import com.hazelcast.internal.partition.operation.PartitionReplicaSyncResponse;
+import com.hazelcast.internal.partition.operation.PartitionReplicaSyncRetryResponse;
 import com.hazelcast.internal.partition.operation.PartitionStateOperation;
 import com.hazelcast.internal.partition.operation.PromotionCommitOperation;
-import com.hazelcast.internal.partition.operation.ReplicaSyncRequest;
-import com.hazelcast.internal.partition.operation.ReplicaSyncResponse;
-import com.hazelcast.internal.partition.operation.ReplicaSyncRetryResponse;
 import com.hazelcast.internal.partition.operation.SafeStateCheckOperation;
 import com.hazelcast.internal.partition.operation.ShutdownRequestOperation;
 import com.hazelcast.internal.partition.operation.ShutdownResponseOperation;
@@ -48,12 +50,11 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
 
     public static final int PARTITION_RUNTIME_STATE = 1;
     public static final int ASSIGN_PARTITIONS = 2;
-    public static final int CHECK_REPLICA_VERSION = 3;
+    public static final int PARTITION_BACKUP_REPLICA_ANTI_ENTROPY = 3;
     public static final int FETCH_PARTITION_STATE = 4;
     public static final int HAS_ONGOING_MIGRATION = 5;
     public static final int MIGRATION_COMMIT = 6;
-    public static final int MIGRATION = 7;
-    public static final int MIGRATION_REQUEST = 8;
+    // LegacyMigrationOperation and LegacyMigrationRequestOperation were assigned to 7th and 8th indices. Now they are gone.
     public static final int PARTITION_STATE_OP = 9;
     public static final int PROMOTION_COMMIT = 10;
     public static final int REPLICA_SYNC_REQUEST = 11;
@@ -62,8 +63,12 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
     public static final int SAFE_STATE_CHECK = 14;
     public static final int SHUTDOWN_REQUEST = 15;
     public static final int SHUTDOWN_RESPONSE = 16;
+    public static final int REPLICA_FRAGMENT_MIGRATION_STATE = 17;
+    public static final int MIGRATION = 18;
+    public static final int MIGRATION_REQUEST = 19;
+    public static final int NON_FRAGMENTED_SERVICE_NAMESPACE = 20;
 
-    private static final int LEN = SHUTDOWN_RESPONSE + 1;
+    private static final int LEN = NON_FRAGMENTED_SERVICE_NAMESPACE + 1;
 
     @Override
     public int getFactoryId() {
@@ -84,9 +89,9 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
                 return new AssignPartitions();
             }
         };
-        constructors[CHECK_REPLICA_VERSION] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+        constructors[PARTITION_BACKUP_REPLICA_ANTI_ENTROPY] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new CheckReplicaVersion();
+                return new PartitionBackupReplicaAntiEntropyOperation();
             }
         };
         constructors[FETCH_PARTITION_STATE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
@@ -104,16 +109,6 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
                 return new MigrationCommitOperation();
             }
         };
-        constructors[MIGRATION] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
-            public IdentifiedDataSerializable createNew(Integer arg) {
-                return new MigrationOperation();
-            }
-        };
-        constructors[MIGRATION_REQUEST] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
-            public IdentifiedDataSerializable createNew(Integer arg) {
-                return new MigrationRequestOperation();
-            }
-        };
         constructors[PARTITION_STATE_OP] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return new PartitionStateOperation();
@@ -126,17 +121,17 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
         };
         constructors[REPLICA_SYNC_REQUEST] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new ReplicaSyncRequest();
+                return new PartitionReplicaSyncRequest();
             }
         };
         constructors[REPLICA_SYNC_RESPONSE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new ReplicaSyncResponse();
+                return new PartitionReplicaSyncResponse();
             }
         };
         constructors[REPLICA_SYNC_RETRY_RESPONSE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new ReplicaSyncRetryResponse();
+                return new PartitionReplicaSyncRetryResponse();
             }
         };
         constructors[SAFE_STATE_CHECK] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
@@ -154,7 +149,29 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
                 return new ShutdownResponseOperation();
             }
         };
-
+        constructors[REPLICA_FRAGMENT_MIGRATION_STATE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new ReplicaFragmentMigrationState();
+            }
+        };
+        constructors[MIGRATION] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MigrationOperation();
+            }
+        };
+        constructors[MIGRATION_REQUEST] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MigrationRequestOperation();
+            }
+        };
+        constructors[NON_FRAGMENTED_SERVICE_NAMESPACE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return NonFragmentedServiceNamespace.INSTANCE;
+            }
+        };
         return new ArrayDataSerializableFactory(constructors);
     }
 }

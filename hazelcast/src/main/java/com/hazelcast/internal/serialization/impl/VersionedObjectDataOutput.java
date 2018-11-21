@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,11 +34,12 @@ abstract class VersionedObjectDataOutput extends OutputStream implements ObjectD
     /**
      * If the serializer supports versioning it may set the version to use for the serialization on this object.
      *
-     * @param version
+     * @param version version to set
      */
     public void setVersion(Version version) {
         this.version = version;
     }
+
 
     /**
      * If the serializer supports versioning it may set the version to use for the serialization on this object.

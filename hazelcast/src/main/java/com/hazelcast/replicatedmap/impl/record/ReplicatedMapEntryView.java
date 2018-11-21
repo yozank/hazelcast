@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,15 @@ import com.hazelcast.nio.IOUtil;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.nio.serialization.impl.Versioned;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapDataSerializerHook;
 
 import java.io.IOException;
 
-public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSerializable {
+import static com.hazelcast.internal.cluster.Versions.V3_11;
+
+public class ReplicatedMapEntryView<K, V>
+        implements EntryView, IdentifiedDataSerializable, Versioned {
 
     private static final int NOT_AVAILABLE = -1;
 
@@ -36,11 +40,7 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
     private long lastAccessTime;
     private long lastUpdateTime;
     private long ttl;
-
-    public ReplicatedMapEntryView(K key, V value) {
-        this.key = key;
-        this.value = value;
-    }
+    private long maxIdle;
 
     public ReplicatedMapEntryView() {
     }
@@ -50,8 +50,9 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return key;
     }
 
-    public void setKey(K key) {
+    public ReplicatedMapEntryView<K, V> setKey(K key) {
         this.key = key;
+        return this;
     }
 
     @Override
@@ -59,8 +60,9 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return value;
     }
 
-    public void setValue(V value) {
+    public ReplicatedMapEntryView<K, V> setValue(V value) {
         this.value = value;
+        return this;
     }
 
     @Override
@@ -73,8 +75,9 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return creationTime;
     }
 
-    public void setCreationTime(long creationTime) {
+    public ReplicatedMapEntryView<K, V> setCreationTime(long creationTime) {
         this.creationTime = creationTime;
+        return this;
     }
 
     @Override
@@ -82,14 +85,14 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return NOT_AVAILABLE;
     }
 
-
     @Override
     public long getHits() {
         return hits;
     }
 
-    public void setHits(long hits) {
+    public ReplicatedMapEntryView<K, V> setHits(long hits) {
         this.hits = hits;
+        return this;
     }
 
     @Override
@@ -97,8 +100,9 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return lastAccessTime;
     }
 
-    public void setLastAccessTime(long lastAccessTime) {
+    public ReplicatedMapEntryView<K, V> setLastAccessTime(long lastAccessTime) {
         this.lastAccessTime = lastAccessTime;
+        return this;
     }
 
     @Override
@@ -106,14 +110,14 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return NOT_AVAILABLE;
     }
 
-
     @Override
     public long getLastUpdateTime() {
         return lastUpdateTime;
     }
 
-    public void setLastUpdateTime(long lastUpdateTime) {
+    public ReplicatedMapEntryView<K, V> setLastUpdateTime(long lastUpdateTime) {
         this.lastUpdateTime = lastUpdateTime;
+        return this;
     }
 
     @Override
@@ -126,8 +130,14 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         return ttl;
     }
 
-    public void setTtl(long ttl) {
+    @Override
+    public Long getMaxIdle() {
+        return maxIdle;
+    }
+
+    public ReplicatedMapEntryView<K, V> setTtl(long ttl) {
         this.ttl = ttl;
+        return this;
     }
 
     @Override
@@ -139,6 +149,10 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         out.writeLong(lastAccessTime);
         out.writeLong(lastUpdateTime);
         out.writeLong(ttl);
+        //RU_COMPAT_3_10
+        if (out.getVersion().isGreaterOrEqual(V3_11)) {
+            out.writeLong(maxIdle);
+        }
     }
 
     @Override
@@ -150,6 +164,10 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
         lastAccessTime = in.readLong();
         lastUpdateTime = in.readLong();
         ttl = in.readLong();
+        //RU_COMPAT_3_10
+        if (in.getVersion().isGreaterOrEqual(V3_11)) {
+            maxIdle = in.readLong();
+        }
     }
 
     @Override
@@ -161,7 +179,6 @@ public class ReplicatedMapEntryView<K, V> implements EntryView, IdentifiedDataSe
     public int getId() {
         return ReplicatedMapDataSerializerHook.ENTRY_VIEW;
     }
-
 
     @Override
     public String toString() {

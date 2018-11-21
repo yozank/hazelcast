@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationFactory;
+import com.hazelcast.spi.impl.operationservice.impl.operations.PartitionAwareOperationFactory;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -82,23 +83,25 @@ public class OperationServiceImpl_invokeOnPartitionsTest extends HazelcastTestSu
         }
     }
 
+    @Test
+    public void testPartitionScopeIsRespectedForPartitionAwareFactories() throws Exception {
+        Config config = new Config().setProperty(PARTITION_COUNT.getName(), "" + 100);
+        config.getSerializationConfig()
+              .addDataSerializableFactory(321, new PartitionAwareOperationFactoryDataSerializableFactory());
+        HazelcastInstance hz = createHazelcastInstance(config);
+        OperationServiceImpl opService = getOperationServiceImpl(hz);
+
+        Map<Integer, Object> result = opService
+                .invokeOnPartitions(null, new PartitionAwareOperationFactoryImpl(new int[]{0, 1, 2}), new int[]{1});
+
+        assertEquals(1, result.size());
+        assertEquals(2, result.values().iterator().next());
+    }
+
     private static class OperationFactoryImpl extends AbstractOperationFactor {
         @Override
         public Operation createOperation() {
-            return new Operation() {
-
-                private int response;
-
-                @Override
-                public void run() throws Exception {
-                    response = getPartitionId() * 2;
-                }
-
-                @Override
-                public Object getResponse() {
-                    return response;
-                }
-            };
+            return new OperationImpl();
         }
 
         @Override
@@ -115,21 +118,7 @@ public class OperationServiceImpl_invokeOnPartitionsTest extends HazelcastTestSu
     private static class SlowOperationFactoryImpl extends AbstractOperationFactor {
         @Override
         public Operation createOperation() {
-            return new Operation() {
-
-                private int response;
-
-                @Override
-                public void run() throws Exception {
-                    sleepSeconds(5);
-                    response = getPartitionId() * 2;
-                }
-
-                @Override
-                public Object getResponse() {
-                    return response;
-                }
-            };
+            return new SlowOperation();
         }
 
         @Override
@@ -159,4 +148,75 @@ public class OperationServiceImpl_invokeOnPartitionsTest extends HazelcastTestSu
         public void readData(ObjectDataInput in) throws IOException {
         }
     }
+
+    private static class OperationImpl extends Operation {
+        private int response;
+
+        @Override
+        public void run() {
+            response = getPartitionId() * 2;
+        }
+
+        @Override
+        public Object getResponse() {
+            return response;
+        }
+    }
+
+    private static class SlowOperation extends Operation {
+        private int response;
+
+        @Override
+        public void run() {
+            sleepSeconds(5);
+            response = getPartitionId() * 2;
+        }
+
+        @Override
+        public Object getResponse() {
+            return response;
+        }
+    }
+
+    private static class PartitionAwareOperationFactoryImpl extends PartitionAwareOperationFactory {
+        public PartitionAwareOperationFactoryImpl(int[] partitions) {
+            this.partitions = partitions;
+        }
+
+        public PartitionAwareOperationFactoryImpl() {
+        }
+
+        @Override
+        public Operation createPartitionOperation(int partition) {
+            return new OperationImpl();
+        }
+
+        @Override
+        public int getFactoryId() {
+            return 321;
+        }
+
+        @Override
+        public int getId() {
+            return 654;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out) throws IOException {
+            out.writeIntArray(partitions);
+        }
+
+        @Override
+        public void readData(ObjectDataInput in) throws IOException {
+            this.partitions = in.readIntArray();
+        }
+    }
+
+    private static class PartitionAwareOperationFactoryDataSerializableFactory implements DataSerializableFactory {
+        @Override
+        public IdentifiedDataSerializable create(int typeId) {
+            return new PartitionAwareOperationFactoryImpl();
+        }
+    }
+
 }

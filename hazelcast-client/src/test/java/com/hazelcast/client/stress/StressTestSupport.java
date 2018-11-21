@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -159,7 +159,7 @@ public abstract class StressTestSupport extends HazelcastTestSupport {
         assertNoErrors(threads);
     }
 
-    public final static AtomicLong ID_GENERATOR = new AtomicLong(1);
+    public static final AtomicLong ID_GENERATOR = new AtomicLong(1);
 
     public abstract class TestThread extends Thread {
         private volatile Throwable error;
@@ -210,4 +210,3 @@ public abstract class StressTestSupport extends HazelcastTestSupport {
         }
     }
 }
-

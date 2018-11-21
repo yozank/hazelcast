@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.spi.impl.operationexecutor.impl;
 
+import com.hazelcast.spi.Operation;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.QuickTest;
@@ -56,10 +57,11 @@ public class OperationExecutorImpl_BasicTest extends OperationExecutorImpl_Abstr
     public void test_getRunningOperationCount() {
         initExecutor();
 
-        executor.execute(new DummyOperation(GENERIC_PARTITION_ID).durationMs(2000));
-        executor.execute(new DummyOperation(GENERIC_PARTITION_ID).durationMs(2000));
+        CountDownLatch completionLatch = new CountDownLatch(1);
 
-        executor.execute(new DummyOperation(0).durationMs(2000));
+        executor.execute(new LongRunningOperation(GENERIC_PARTITION_ID, completionLatch));
+        executor.execute(new LongRunningOperation(GENERIC_PARTITION_ID, completionLatch));
+        executor.execute(new LongRunningOperation(0, completionLatch));
 
         assertTrueEventually(new AssertTask() {
             @Override
@@ -69,6 +71,22 @@ public class OperationExecutorImpl_BasicTest extends OperationExecutorImpl_Abstr
                 assertEquals(3, runningOperationCount);
             }
         });
+
+        completionLatch.countDown();
+    }
+
+    class LongRunningOperation extends Operation {
+        private CountDownLatch completionLatch;
+
+        public LongRunningOperation(int partitionId, CountDownLatch completionLatch) {
+            this.completionLatch = completionLatch;
+            setPartitionId(partitionId);
+        }
+
+        @Override
+        public void run() throws Exception {
+            completionLatch.await();
+        }
     }
 
     @Test
@@ -135,36 +153,6 @@ public class OperationExecutorImpl_BasicTest extends OperationExecutorImpl_Abstr
             }
         });
 
-        awaitBarrier(barrier);
-    }
-
-    @Test
-    public void test_interruptAllPartitionThreads() throws Exception {
-        initExecutor();
-
-        int threadCount = executor.getPartitionThreadCount();
-        final CyclicBarrier barrier = new CyclicBarrier(threadCount + 1);
-
-        executor.executeOnPartitionThreads(new Runnable() {
-            @Override
-            public void run() {
-                // current thread must be a PartitionOperationThread
-                if (Thread.currentThread() instanceof PartitionOperationThread) {
-                    try {
-                        Thread.sleep(Long.MAX_VALUE);
-                    } catch (InterruptedException ignored) {
-                    } finally {
-                        try {
-                            awaitBarrier(barrier);
-                        } catch (Exception ex) {
-                            ex.printStackTrace();
-                        }
-                    }
-                }
-            }
-        });
-
-        executor.interruptPartitionThreads();
         awaitBarrier(barrier);
     }
 

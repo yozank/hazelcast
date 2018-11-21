@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,12 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -94,6 +97,13 @@ public class ConcurrencyUtilTest extends HazelcastTestSupport {
     }
 
     @Test
+    public void testSetIfEqualOrGreaterThan() {
+        assertTrue(ConcurrencyUtil.setIfEqualOrGreaterThan(new AtomicLong(1), 1));
+        assertTrue(ConcurrencyUtil.setIfEqualOrGreaterThan(new AtomicLong(1), 2));
+        assertFalse(ConcurrencyUtil.setIfEqualOrGreaterThan(new AtomicLong(2), 1));
+    }
+
+    @Test
     public void testGetOrPutIfAbsent() {
         int result = ConcurrencyUtil.getOrPutIfAbsent(map, 5, constructorFunction);
         assertEquals(1005, result);
@@ -104,9 +114,9 @@ public class ConcurrencyUtilTest extends HazelcastTestSupport {
         assertEquals(1, constructorFunction.getConstructions());
     }
 
-    private final static class LongValue {
+    private static final class LongValue {
 
-        final static AtomicLongFieldUpdater UPDATER = AtomicLongFieldUpdater.newUpdater(LongValue.class, "value");
+        static final AtomicLongFieldUpdater UPDATER = AtomicLongFieldUpdater.newUpdater(LongValue.class, "value");
 
         volatile long value;
     }

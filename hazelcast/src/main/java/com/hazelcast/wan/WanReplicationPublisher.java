@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,10 +41,17 @@ public interface WanReplicationPublisher {
      */
     void publishReplicationEventBackup(String serviceName, ReplicationEventObject eventObject);
 
+    /**
+     * Publishes the {@code wanReplicationEvent} on this publisher. This can be used to forward received events
+     * on the target cluster.
+     *
+     * @param wanReplicationEvent the WAN event to publish
+     */
     void publishReplicationEvent(WanReplicationEvent wanReplicationEvent);
 
     /**
-     * Check the capacity of the WAN replication queues.
+     * Checks the size of the WAN replication queue and throws an
+     * exception if it has been reached or crossed.
      *
      * @throws WANReplicationQueueFullException if queue capacity has been reached and
      *                                          {@link WanPublisherConfig#getQueueFullBehavior()} is

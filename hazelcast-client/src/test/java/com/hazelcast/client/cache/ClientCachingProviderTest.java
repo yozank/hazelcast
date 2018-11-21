@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.hazelcast.client.cache;
 
 import com.hazelcast.cache.CachingProviderTest;
 import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.HazelcastClientManager;
 import com.hazelcast.client.cache.impl.HazelcastClientCachingProvider;
 import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.config.XmlClientConfigBuilder;
@@ -34,35 +35,35 @@ import org.junit.runner.RunWith;
 import javax.cache.spi.CachingProvider;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+
+import static com.hazelcast.cache.jsr.JsrTestUtil.clearCachingProviderRegistry;
+import static com.hazelcast.cache.jsr.JsrTestUtil.clearSystemProperties;
+import static org.junit.Assert.assertNotNull;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(QuickTest.class)
 public class ClientCachingProviderTest extends CachingProviderTest {
 
+    private static final String CONFIG_CLASSPATH_LOCATION = "test-hazelcast-jcache.xml";
     private final List<HazelcastInstance> instances = new ArrayList<HazelcastInstance>();
 
     @Before
     public void setup() {
         // start a member
         Config config = new Config();
-        config.getGroupConfig().setName("test-group1");
-        config.getGroupConfig().setPassword("test-pass1");
         HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
         instances.add(instance);
         // start two client instances
         instance1 = createHazelcastInstance(INSTANCE_1_NAME);
         instance2 = createHazelcastInstance(INSTANCE_2_NAME);
         try {
-            instance3 = HazelcastClient.newHazelcastClient(
-                    new XmlClientConfigBuilder(CONFIG_CLASSPATH_LOCATION).build());
+            instance3 = HazelcastClient.newHazelcastClient(new XmlClientConfigBuilder(CONFIG_CLASSPATH_LOCATION).build());
         } catch (IOException e) {
-            throw new AssertionError("Could not construct named hazelcast client instance: " +
-                    e.getMessage());
+            throw new AssertionError("Could not construct named hazelcast client instance: " + e.getMessage());
         }
-        instances.add(instance1);
-        instances.add(instance2);
         instances.add(instance3);
         cachingProvider = createCachingProvider(instance1);
     }
@@ -73,8 +74,6 @@ public class ClientCachingProviderTest extends CachingProviderTest {
         // we are using real instances.
         ClientConfig clientConfig = new ClientConfig();
         clientConfig.setInstanceName(instanceName);
-        clientConfig.getGroupConfig().setName("test-group1");
-        clientConfig.getGroupConfig().setPassword("test-pass1");
         HazelcastInstance instance = HazelcastClient.newHazelcastClient(clientConfig);
         instances.add(instance);
         return instance;
@@ -83,6 +82,24 @@ public class ClientCachingProviderTest extends CachingProviderTest {
     @Override
     protected CachingProvider createCachingProvider(HazelcastInstance defaultInstance) {
         return HazelcastClientCachingProvider.createCachingProvider(defaultInstance);
+    }
+
+    @Override
+    protected void assertInstanceStarted(String instanceName) {
+        HazelcastInstance otherInstance = HazelcastClient.getHazelcastClientByName(instanceName);
+        assertNotNull(otherInstance);
+        otherInstance.getLifecycleService().terminate();
+    }
+
+    @Override
+    protected Collection<HazelcastInstance> getStartedInstances() {
+        return HazelcastClient.getAllHazelcastClients();
+    }
+
+    @Override
+    protected void cleanupForDefaultCacheManagerTest() {
+        clearSystemProperties();
+        clearCachingProviderRegistry();
     }
 
     @After
@@ -98,6 +115,7 @@ public class ClientCachingProviderTest extends CachingProviderTest {
                 iter.remove();
             }
         }
+        HazelcastClientManager.shutdownAll();
     }
 
 }

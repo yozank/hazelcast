@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.hazelcast.ringbuffer.impl;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.RingbufferStore;
 import com.hazelcast.internal.diagnostics.StoreLatencyPlugin;
+import com.hazelcast.spi.ObjectNamespace;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -36,25 +37,27 @@ import static org.mockito.Mockito.when;
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class LatencyTrackingRingbufferStoreTest extends HazelcastTestSupport {
-    private static final String NAME = "somerb";
 
-    private HazelcastInstance hz;
+    private static final String NAME = "LatencyTrackingRingbufferStoreTest";
+    private static final ObjectNamespace NAMESPACE = RingbufferService.getRingbufferNamespace(NAME);
+
     private StoreLatencyPlugin plugin;
     private RingbufferStore<String> delegate;
     private LatencyTrackingRingbufferStore<String> ringbufferStore;
 
     @Before
     public void setup() {
-        hz = createHazelcastInstance();
+        HazelcastInstance hz = createHazelcastInstance();
         plugin = new StoreLatencyPlugin(getNodeEngineImpl(hz));
         delegate = mock(RingbufferStore.class);
-        ringbufferStore = new LatencyTrackingRingbufferStore<String>(delegate, plugin, NAME);
+        ringbufferStore = new LatencyTrackingRingbufferStore<String>(delegate, plugin,
+                NAMESPACE);
     }
 
     @Test
     public void load() {
         long sequence = 1L;
-        String value = "somevalue";
+        String value = "someValue";
 
         when(delegate.load(sequence)).thenReturn(value);
 
@@ -97,7 +100,7 @@ public class LatencyTrackingRingbufferStoreTest extends HazelcastTestSupport {
     }
 
     public void assertProbeCalledOnce(String methodName) {
-        assertEquals(1, plugin.count(LatencyTrackingRingbufferStore.KEY, NAME, methodName));
+        assertEquals(1, plugin.count(LatencyTrackingRingbufferStore.KEY,
+                NAMESPACE.getServiceName() + ":" + NAMESPACE.getObjectName(), methodName));
     }
 }
-

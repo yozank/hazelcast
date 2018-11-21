@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.impl.protocol.task.map;
 
-import com.hazelcast.client.ClientEndpoint;
+import com.hazelcast.client.impl.ClientEndpoint;
 import com.hazelcast.internal.nearcache.impl.invalidation.AbstractBaseNearCacheInvalidationListener;
 import com.hazelcast.internal.nearcache.impl.invalidation.Invalidation;
 import com.hazelcast.map.impl.nearcache.invalidation.InvalidationListener;
@@ -29,8 +29,9 @@ abstract class AbstractMapClientNearCacheInvalidationListener
 
     private final ClientEndpoint endpoint;
 
-    AbstractMapClientNearCacheInvalidationListener(ClientEndpoint endpoint, String localMemberUuid) {
-        super(localMemberUuid);
+    AbstractMapClientNearCacheInvalidationListener(ClientEndpoint endpoint,
+                                                   String localMemberUuid, long correlationId) {
+        super(localMemberUuid, correlationId);
         this.endpoint = endpoint;
     }
 

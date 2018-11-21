@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,8 +55,8 @@ public class LoggingServiceImpl implements LoggingService {
     public LoggingServiceImpl(String groupName, String loggingType, BuildInfo buildInfo) {
         this.loggerFactory = Logger.newLoggerFactory(loggingType);
         JetBuildInfo jetBuildInfo = buildInfo.getJetBuildInfo();
-        versionMessage = "[" + groupName + "]" + (jetBuildInfo != null ? " [" + jetBuildInfo.getVersion() + "]" : "")
-                + " [" + buildInfo.getVersion() + "] ";
+        versionMessage = "[" + groupName + "] ["
+                + (jetBuildInfo != null ?  jetBuildInfo.getVersion() : buildInfo.getVersion()) + "] ";
     }
 
     public void setThisMember(MemberImpl thisMember) {

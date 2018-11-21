@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.Assert.assertEquals;
@@ -70,5 +71,20 @@ public class ExceptionUtilTest extends HazelcastTestSupport {
 
         assertTrue(result instanceof HazelcastException);
         assertEquals(exception, result.getCause());
+    }
+
+    @Test
+    public void testPeel_whenThrowableIsExecutionExceptionWithCustomFactory_thenReturnCustomException() {
+        IOException expectedException = new IOException();
+        RuntimeException result = (RuntimeException) ExceptionUtil.peel(new ExecutionException(expectedException),
+                null, null, new ExceptionUtil.RuntimeExceptionFactory() {
+                    @Override
+                    public RuntimeException create(Throwable throwable, String message) {
+                        return new IllegalStateException(message, throwable);
+                    }
+                });
+
+        assertEquals(result.getClass(), IllegalStateException.class);
+        assertEquals(result.getCause(), expectedException);
     }
 }

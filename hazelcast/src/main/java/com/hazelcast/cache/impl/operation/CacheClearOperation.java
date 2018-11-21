@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,9 @@ import com.hazelcast.cache.impl.CacheService;
 import com.hazelcast.cache.impl.ICacheRecordStore;
 import com.hazelcast.cache.impl.ICacheService;
 import com.hazelcast.spi.BackupAwareOperation;
+import com.hazelcast.spi.ObjectNamespace;
 import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.ServiceNamespaceAware;
 import com.hazelcast.spi.impl.MutatingOperation;
 import com.hazelcast.spi.partition.IPartitionService;
 
@@ -35,7 +37,7 @@ import static com.hazelcast.cache.impl.AbstractCacheRecordStore.SOURCE_NOT_AVAIL
  */
 public class CacheClearOperation
         extends PartitionWideCacheOperation
-        implements BackupAwareOperation, MutatingOperation {
+        implements BackupAwareOperation, ServiceNamespaceAware, MutatingOperation {
 
     private transient ICacheRecordStore cache;
 
@@ -69,12 +71,15 @@ public class CacheClearOperation
     public void afterRun() throws Exception {
         super.afterRun();
 
+        CacheService cacheService = getService();
+        int partitionId = getPartitionId();
+
         IPartitionService partitionService = getNodeEngine().getPartitionService();
-        if (partitionService.getPartitionId(name) == getPartitionId()) {
-            CacheService cacheService = getService();
+        if (partitionService.getPartitionId(name) == partitionId) {
             cacheService.sendInvalidationEvent(name, null, SOURCE_NOT_AVAILABLE);
         }
 
+        cacheService.getCacheEventHandler().resetPartitionMetaData(name, partitionId);
     }
 
     @Override
@@ -102,4 +107,13 @@ public class CacheClearOperation
         return new CacheClearBackupOperation(name);
     }
 
+    @Override
+    public ObjectNamespace getServiceNamespace() {
+        ICacheRecordStore recordStore = cache;
+        if (recordStore == null) {
+            ICacheService service = getService();
+            recordStore = service.getOrCreateRecordStore(name, getPartitionId());
+        }
+        return recordStore.getObjectNamespace();
+    }
 }

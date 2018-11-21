@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,25 +25,25 @@ import com.hazelcast.config.QueryCacheConfig;
 public interface QueryCacheConfigurator {
 
     /**
-     * Returns {@link QueryCacheConfig} for the requested query cache with cacheName.
+     * Returns {@link QueryCacheConfig} for the requested {@code cacheName}
      *
      * @param mapName   underlying IMap name for query cache.
      * @param cacheName query cache name.
-     * @return {@link QueryCacheConfig} for the requested #cacheName.
+     * @return {@link QueryCacheConfig} for the requested {@code cacheName}.
      */
-    QueryCacheConfig getOrCreateConfiguration(String mapName, String cacheName);
+    QueryCacheConfig getOrCreateConfiguration(String mapName, String cacheName, String cacheId);
 
     /**
-     * Returns {@link QueryCacheConfig} for the requested query cache with cacheName or null.
+     * Returns {@link QueryCacheConfig} for the requested {@code cacheName} or null
      *
      * @param mapName   underlying IMap name for query cache.
      * @param cacheName query cache name.
-     * @return {@link QueryCacheConfig} for the requested #cacheName.
+     * @return {@link QueryCacheConfig} for the requested {@code cacheName}.
      */
-    QueryCacheConfig getOrNull(String mapName, String cacheName);
+    QueryCacheConfig getOrNull(String mapName, String cacheName, String cacheId);
 
     /**
-     * Removes corresponding configuration for the supplied cache name.
+     * Removes corresponding configuration for the supplied {@code cacheName}
      *
      * @param mapName   underlying IMap name for query cache.
      * @param cacheName query cache name.

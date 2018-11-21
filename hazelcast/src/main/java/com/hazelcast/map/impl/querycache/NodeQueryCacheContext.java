@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,8 +36,10 @@ import com.hazelcast.map.impl.querycache.subscriber.NodeSubscriberContext;
 import com.hazelcast.map.impl.querycache.subscriber.SubscriberContext;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.nio.serialization.SerializableByConvention;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.util.ContextMutexFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,11 +55,12 @@ import static com.hazelcast.core.LifecycleEvent.LifecycleState.SHUTTING_DOWN;
 public class NodeQueryCacheContext implements QueryCacheContext {
 
     private final NodeEngine nodeEngine;
+    private final InvokerWrapper invokerWrapper;
     private final MapServiceContext mapServiceContext;
+    private final QueryCacheScheduler queryCacheScheduler;
     private final QueryCacheEventService queryCacheEventService;
     private final QueryCacheConfigurator queryCacheConfigurator;
-    private final QueryCacheScheduler queryCacheScheduler;
-    private final InvokerWrapper invokerWrapper;
+    private final ContextMutexFactory lifecycleMutexFactory = new ContextMutexFactory();
 
     // these fields are not final for testing purposes
     private PublisherContext publisherContext;
@@ -67,18 +70,13 @@ public class NodeQueryCacheContext implements QueryCacheContext {
         this.nodeEngine = mapServiceContext.getNodeEngine();
         this.mapServiceContext = mapServiceContext;
         this.queryCacheScheduler = new NodeQueryCacheScheduler(mapServiceContext);
-        this.queryCacheEventService = new NodeQueryCacheEventService(mapServiceContext);
+        this.queryCacheEventService = new NodeQueryCacheEventService(mapServiceContext, lifecycleMutexFactory);
         this.queryCacheConfigurator = new NodeQueryCacheConfigurator(nodeEngine.getConfig(),
                 nodeEngine.getConfigClassLoader(), queryCacheEventService);
         this.invokerWrapper = new NodeInvokerWrapper(nodeEngine.getOperationService());
         // init these in the end
         this.subscriberContext = new NodeSubscriberContext(this);
-        this.publisherContext = new DefaultPublisherContext(this, nodeEngine, new IFunction<String, String>() {
-            @Override
-            public String apply(String mapName) {
-                return registerLocalIMapListener(mapName);
-            }
-        });
+        this.publisherContext = new DefaultPublisherContext(this, nodeEngine, new RegisterMapListenerFunction());
         flushPublishersOnNodeShutdown();
     }
 
@@ -163,6 +161,11 @@ public class NodeQueryCacheContext implements QueryCacheContext {
     }
 
     @Override
+    public int getPartitionCount() {
+        return nodeEngine.getPartitionService().getPartitionCount();
+    }
+
+    @Override
     public InvokerWrapper getInvokerWrapper() {
         return invokerWrapper;
     }
@@ -172,12 +175,30 @@ public class NodeQueryCacheContext implements QueryCacheContext {
         return mapServiceContext.toObject(obj);
     }
 
-    private String registerLocalIMapListener(String mapName) {
+    @Override
+    public ContextMutexFactory getLifecycleMutexFactory() {
+        return lifecycleMutexFactory;
+    }
+
+    private String registerLocalIMapListener(final String name) {
         return mapServiceContext.addLocalListenerAdapter(new ListenerAdapter<IMapEvent>() {
             @Override
             public void onEvent(IMapEvent event) {
                 // NOP
             }
-        }, mapName);
+
+            @Override
+            public String toString() {
+                return "Local IMap listener for the map '" + name + "'";
+            }
+        }, name);
+    }
+
+    @SerializableByConvention
+    private class RegisterMapListenerFunction implements IFunction<String, String> {
+        @Override
+        public String apply(String name) {
+            return registerLocalIMapListener(name);
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,11 @@
 
 package com.hazelcast.nio;
 
+import com.hazelcast.internal.networking.OutboundFrame;
 import com.hazelcast.internal.serialization.impl.HeapData;
 import com.hazelcast.spi.annotation.PrivateApi;
 
-import java.nio.ByteBuffer;
-
-import static com.hazelcast.nio.Bits.BYTE_SIZE_IN_BYTES;
-import static com.hazelcast.nio.Bits.INT_SIZE_IN_BYTES;
-import static com.hazelcast.nio.Bits.SHORT_SIZE_IN_BYTES;
+import static com.hazelcast.nio.PacketIOHelper.HEADER_SIZE;
 
 /**
  * A Packet is a piece of data sent over the wire. The Packet is used for member to member communication.
@@ -52,7 +49,9 @@ public final class Packet extends HeapData implements OutboundFrame {
 
     // 1. URGENT flag
 
-    /** Marks the packet as Urgent  */
+    /**
+     * Marks the packet as Urgent
+     */
     public static final int FLAG_URGENT = 1 << 4;
 
 
@@ -65,45 +64,49 @@ public final class Packet extends HeapData implements OutboundFrame {
     // These are given below. The enum Packet.Type should be used to encode/decode the type from the
     // header flags bitfield.
 
-    /** Packet type bit 0. Historically the OPERATION type flag. */
+    /**
+     * Packet type bit 0. Historically the OPERATION type flag.
+     */
     private static final int FLAG_TYPE0 = 1 << 0;
-    /** Packet type bit 1. Historically the EVENT type flag. */
+    /**
+     * Packet type bit 1. Historically the EVENT type flag.
+     */
     private static final int FLAG_TYPE1 = 1 << 2;
-    /** Packet type bit 2. Historically the BIND type flag. */
+    /**
+     * Packet type bit 2. Historically the BIND type flag.
+     */
     private static final int FLAG_TYPE2 = 1 << 5;
 
     // 3. Type-specific flags. Same bits can be reused within each type
 
     // 3.a Operation packet flags
 
-    /** Marks an Operation packet as Response */
+    /**
+     * Marks an Operation packet as Response
+     */
     public static final int FLAG_OP_RESPONSE = 1 << 1;
-    /** Marks an Operation packet as Operation control (like invocation-heartbeats) */
+    /**
+     * Marks an Operation packet as Operation control (like invocation-heartbeats)
+     */
     public static final int FLAG_OP_CONTROL = 1 << 6;
 
 
     // 3.b Jet packet flags
 
-    /** Marks a Jet packet as Flow control */
+    /**
+     * Marks a Jet packet as Flow control
+     */
     public static final int FLAG_JET_FLOW_CONTROL = 1 << 1;
 
 
     //            END OF HEADER FLAG SECTION
 
 
-
-    private static final int HEADER_SIZE = BYTE_SIZE_IN_BYTES + SHORT_SIZE_IN_BYTES + INT_SIZE_IN_BYTES + INT_SIZE_IN_BYTES;
-
     // char is a 16-bit unsigned integer. Here we use it as a bitfield.
     private char flags;
 
     private int partitionId;
     private transient Connection conn;
-
-    // These 3 fields are only used during read/write. Otherwise they have no meaning.
-    private int valueOffset;
-    private int size;
-    private boolean headerComplete;
 
     public Packet() {
     }
@@ -201,9 +204,9 @@ public final class Packet extends HeapData implements OutboundFrame {
     }
 
     /**
-     * Returns the partition id of this packet. If this packet is not for a particular partition, -1 is returned.
+     * Returns the partition ID of this packet. If this packet is not for a particular partition, -1 is returned.
      *
-     * @return the partition id.
+     * @return the partition ID.
      */
     public int getPartitionId() {
         return partitionId;
@@ -214,137 +217,8 @@ public final class Packet extends HeapData implements OutboundFrame {
         return isFlagRaised(FLAG_URGENT);
     }
 
-    /**
-     * The methods {@link #readFrom(ByteBuffer)} and {@link #writeTo(ByteBuffer)} do not complete their I/O operation
-     * within a single call, and between calls there is some progress state to keep within this instance.
-     * Calling this method resets the state back to "no bytes read/written yet".
-     */
-    public void reset() {
-        headerComplete = false;
-        valueOffset = 0;
-    }
-
-    /**
-     * Writes the packet data to the supplied {@code ByteBuffer}, up to the buffer's limit. If it returns {@code false},
-     * it should be called again to write the remaining data.
-     * @param dst the destination byte buffer
-     * @return {@code true} if all the packet's data is now written out; {@code false} otherwise.
-     */
-    public boolean writeTo(ByteBuffer dst) {
-        if (!headerComplete) {
-            if (dst.remaining() < HEADER_SIZE) {
-                return false;
-            }
-
-            dst.put(VERSION);
-            dst.putChar(flags);
-            dst.putInt(partitionId);
-            size = totalSize();
-            dst.putInt(size);
-            headerComplete = true;
-        }
-
-        return writeValue(dst);
-    }
-
-    /**
-     * Reads the packet data from the supplied {@code ByteBuffer}. The buffer may not contain the complete packet.
-     * If this method returns {@code false}, it should be called again to read more packet data.
-     * @param src the source byte buffer
-     * @return {@code true} if all the packet's data is now read; {@code false} otherwise.
-     */
-    public boolean readFrom(ByteBuffer src) {
-        if (!headerComplete) {
-            if (src.remaining() < HEADER_SIZE) {
-                return false;
-            }
-
-            byte version = src.get();
-            if (VERSION != version) {
-                throw new IllegalArgumentException("Packet versions are not matching! Expected -> "
-                        + VERSION + ", Incoming -> " + version);
-            }
-
-            flags = src.getChar();
-            partitionId = src.getInt();
-            size = src.getInt();
-            headerComplete = true;
-        }
-
-        return readValue(src);
-    }
-
-    // ========================= value =================================================
-
-    private boolean readValue(ByteBuffer src) {
-        if (payload == null) {
-            payload = new byte[size];
-        }
-
-        if (size > 0) {
-            int bytesReadable = src.remaining();
-
-            int bytesNeeded = size - valueOffset;
-
-            boolean done;
-            int bytesRead;
-            if (bytesReadable >= bytesNeeded) {
-                bytesRead = bytesNeeded;
-                done = true;
-            } else {
-                bytesRead = bytesReadable;
-                done = false;
-            }
-
-            // read the data from the byte-buffer into the bytes-array.
-            src.get(payload, valueOffset, bytesRead);
-            valueOffset += bytesRead;
-
-            if (!done) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private boolean writeValue(ByteBuffer dst) {
-        if (size > 0) {
-            // the number of bytes that can be written to the bb.
-            int bytesWritable = dst.remaining();
-
-            // the number of bytes that need to be written.
-            int bytesNeeded = size - valueOffset;
-
-            int bytesWrite;
-            boolean done;
-            if (bytesWritable >= bytesNeeded) {
-                // All bytes for the value are available.
-                bytesWrite = bytesNeeded;
-                done = true;
-            } else {
-                // Not all bytes for the value are available. So lets write as much as is available.
-                bytesWrite = bytesWritable;
-                done = false;
-            }
-
-            byte[] byteArray = toByteArray();
-            dst.put(byteArray, valueOffset, bytesWrite);
-            valueOffset += bytesWrite;
-
-            if (!done) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Returns an estimation of the packet, including its payload, in bytes.
-     *
-     * @return the size of the packet.
-     */
-    public int packetSize() {
+    @Override
+    public int getFrameLength() {
         return (payload != null ? totalSize() : 0) + HEADER_SIZE;
     }
 
@@ -379,9 +253,10 @@ public final class Packet extends HeapData implements OutboundFrame {
 
     @Override
     public String toString() {
-        final Type type = getPacketType();
+        Type type = getPacketType();
         return "Packet{"
                 + "partitionId=" + partitionId
+                + ", frameLength=" + getFrameLength()
                 + ", conn=" + conn
                 + ", rawFlags=" + Integer.toBinaryString(flags)
                 + ", isUrgent=" + isUrgent()
@@ -455,12 +330,14 @@ public final class Packet extends HeapData implements OutboundFrame {
 
         final char headerEncoding;
 
+        private static final Type[] VALUES = values();
+
         Type() {
             headerEncoding = (char) encodeOrdinal();
         }
 
         public static Type fromFlags(int flags) {
-            return values()[headerDecode(flags)];
+            return VALUES[headerDecode(flags)];
         }
 
         public String describeFlags(char flags) {
@@ -472,15 +349,15 @@ public final class Packet extends HeapData implements OutboundFrame {
             final int ordinal = ordinal();
             assert ordinal < 8 : "Ordinal out of range for member " + name() + ": " + ordinal;
             return (ordinal & 0x01)
-                 | (ordinal & 0x02) << 1
-                 | (ordinal & 0x04) << 3;
+                    | (ordinal & 0x02) << 1
+                    | (ordinal & 0x04) << 3;
         }
 
         @SuppressWarnings("checkstyle:booleanexpressioncomplexity")
         private static int headerDecode(int flags) {
             return (flags & FLAG_TYPE0)
-                 | (flags & FLAG_TYPE1) >> 1
-                 | (flags & FLAG_TYPE2) >> 3;
+                    | (flags & FLAG_TYPE1) >> 1
+                    | (flags & FLAG_TYPE2) >> 3;
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,8 +62,7 @@ public class SplitMergeTest extends HazelcastTestSupport {
 
         // merge back
         mergeBack(h2, getAddress(h1));
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         String currentUuid_H1 = getNode(h1).getThisUuid();
         String currentUuid_H2 = getNode(h2).getThisUuid();
@@ -91,15 +90,12 @@ public class SplitMergeTest extends HazelcastTestSupport {
         // create split
         closeConnectionBetween(h1, h3);
         closeConnectionBetween(h2, h3);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
         assertClusterSizeEventually(1, h3);
 
         // merge back
         mergeBack(h3, getAddress(h1));
-        assertClusterSizeEventually(3, h1);
-        assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
+        assertClusterSizeEventually(3, h1, h2, h3);
 
         // all partitions are assigned and all migrations & promotions are completed
         waitAllForSafeState(h1, h2, h3);
@@ -120,8 +116,7 @@ public class SplitMergeTest extends HazelcastTestSupport {
 
         // merge back
         mergeBack(h2, getAddress(h1));
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         lifecycleListener.assertStates(LifecycleState.MERGING, LifecycleState.MERGED);
     }
@@ -130,18 +125,18 @@ public class SplitMergeTest extends HazelcastTestSupport {
     public void test_lifecycleEvents_whenMergeFailed() throws Exception {
         final HazelcastInstance h1 = factory.newHazelcastInstance(newConfig());
         final HazelcastInstance h2 = factory.newHazelcastInstance(newConfig()
-            .setProperty(GroupProperty.MAX_JOIN_SECONDS.getName(), "5"));
+                .setProperty(GroupProperty.MAX_JOIN_SECONDS.getName(), "5"));
 
         MergeLifecycleListener lifecycleListener = new MergeLifecycleListener();
         h2.getLifecycleService().addLifecycleListener(lifecycleListener);
+
+        // block comm to prevent rejoin
+        blockCommunicationBetween(h1, h2);
 
         // create split
         closeConnectionBetween(h1, h2);
         assertClusterSizeEventually(1, h1);
         assertClusterSizeEventually(1, h2);
-
-        // block comm to prevent rejoin
-        blockCommunicationBetween(h1, h2);
 
         // try merge back
         mergeBack(h2, getAddress(h1));

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 
 package com.hazelcast.client.txn;
 
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.test.TestHazelcastFactory;
+import com.hazelcast.config.Config;
+import com.hazelcast.config.NearCacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.TransactionalMap;
-import com.hazelcast.nio.ObjectDataInput;
-import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.DataSerializable;
-import com.hazelcast.query.SampleObjects;
+import com.hazelcast.query.SampleTestObjects;
 import com.hazelcast.query.SqlPredicate;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -39,7 +39,6 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +48,7 @@ import static com.hazelcast.test.HazelcastTestSupport.assertTrueEventually;
 import static com.hazelcast.test.HazelcastTestSupport.randomString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -72,9 +72,10 @@ public class ClientTxnMapTest {
     @Before
     public void setup() {
         hazelcastFactory.newHazelcastInstance();
-        client = hazelcastFactory.newHazelcastClient();
+        final ClientConfig clientConfig = new ClientConfig();
+        clientConfig.getNetworkConfig().setConnectionAttemptLimit(Integer.MAX_VALUE);
+        client = hazelcastFactory.newHazelcastClient(clientConfig);
     }
-
 
     @Test
     public void testUnlockAfterRollback() {
@@ -254,7 +255,7 @@ public class ClientTxnMapTest {
                     tryPutResult.set(result);
 
                     afterTryPutResult.countDown();
-                } catch (Exception e) {
+                } catch (InterruptedException e) {
                 }
             }
         };
@@ -267,7 +268,7 @@ public class ClientTxnMapTest {
                     txMap.getForUpdate(key);
                     getKeyForUpdateLatch.countDown();
                     afterTryPutResult.await(30, TimeUnit.SECONDS);
-                } catch (Exception e) {
+                } catch (InterruptedException e) {
                 }
                 return true;
             }
@@ -305,8 +306,8 @@ public class ClientTxnMapTest {
         final String mapName = randomString();
         IMap map = client.getMap(mapName);
 
-        final SampleObjects.Employee emp1 = new SampleObjects.Employee("abc-123-xvz", 34, true, 10D);
-        final SampleObjects.Employee emp2 = new SampleObjects.Employee("abc-123-xvz", 20, true, 10D);
+        final SampleTestObjects.Employee emp1 = new SampleTestObjects.Employee("abc-123-xvz", 34, true, 10D);
+        final SampleTestObjects.Employee emp2 = new SampleTestObjects.Employee("abc-123-xvz", 20, true, 10D);
 
         map.put(emp1, emp1);
 
@@ -333,7 +334,7 @@ public class ClientTxnMapTest {
         final String mapName = randomString();
         IMap map = client.getMap(mapName);
 
-        final SampleObjects.Employee emp1 = new SampleObjects.Employee("employee1", 10, true, 10D);
+        final SampleTestObjects.Employee emp1 = new SampleTestObjects.Employee("employee1", 10, true, 10D);
 
         map.put("employee1", emp1);
 
@@ -555,55 +556,51 @@ public class ClientTxnMapTest {
     }
 
     @Test
-    public void testPutDoesNotDeserializeOnServerSide(){
-        String name = randomString();
-        client.getMap(name).put(5, new DeserializeOnceObject(5));
-        TransactionContext context = client.newTransactionContext();
-        context.beginTransaction();
-        TransactionalMap<Integer, DeserializeOnceObject> map = context.getMap(name);
-        map.put(5, new DeserializeOnceObject(6));
-        context.commitTransaction();
+    public void txn_map_get_skips_server_side_near_cache() {
+        String mapName = "test";
+        int keyInServerNearCache = 1;
+
+        IMap serverMap = prepareServerAndGetServerMap(mapName, keyInServerNearCache);
+        TransactionalMap clientTxnMap = getClientTransactionalMap(mapName);
+
+        assertNotNull(clientTxnMap.get(keyInServerNearCache));
+        assertEquals(0, serverMap.getLocalMapStats().getNearCacheStats().getHits());
     }
 
-    private static class DeserializeOnceObject implements DataSerializable {
+    @Test
+    public void txn_map_containsKey_skips_server_side_near_cache() {
+        String mapName = "test";
+        int keyInServerNearCache = 1;
 
-        private int amount;
+        IMap serverMap = prepareServerAndGetServerMap(mapName, keyInServerNearCache);
+        TransactionalMap clientTxnMap = getClientTransactionalMap(mapName);
 
-        private static AtomicBoolean readCalled = new AtomicBoolean(false);
+        assertTrue(clientTxnMap.containsKey(keyInServerNearCache));
+        assertEquals(0, serverMap.getLocalMapStats().getNearCacheStats().getHits());
+    }
 
-        public DeserializeOnceObject() {
-        }
+    private IMap prepareServerAndGetServerMap(String mapName, int keyInServerNearCache) {
+        NearCacheConfig nearCacheConfig = new NearCacheConfig();
+        nearCacheConfig.setCacheLocalEntries(true);
 
-        public DeserializeOnceObject(int amount) {
-            this.amount = amount;
-        }
+        Config serverConfig = new Config();
+        serverConfig.getMapConfig(mapName).setNearCacheConfig(nearCacheConfig);
 
-        @Override
-        public void writeData(ObjectDataOutput out) throws IOException {
-            out.writeInt(amount);
-        }
+        HazelcastInstance server = hazelcastFactory.newHazelcastInstance(serverConfig);
 
-        @Override
-        public void readData(ObjectDataInput in) throws IOException {
-            if (!readCalled.compareAndSet(false, true)) {
-                throw new AssertionError("Read called more than once!!!");
-            }
-            amount = in.readInt();
-        }
+        // populate server near cache.
+        IMap map = server.getMap(mapName);
+        map.put(keyInServerNearCache, 1);
+        map.get(keyInServerNearCache);
 
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof DeserializeOnceObject)) return false;
+        return map;
+    }
 
-            DeserializeOnceObject that = (DeserializeOnceObject) o;
+    private TransactionalMap getClientTransactionalMap(String mapName) {
+        HazelcastInstance client = hazelcastFactory.newHazelcastClient();
 
-            return amount == that.amount;
-        }
-
-        @Override
-        public int hashCode() {
-            return amount;
-        }
+        TransactionContext clientTxnContext = client.newTransactionContext();
+        clientTxnContext.beginTransaction();
+        return clientTxnContext.getMap(mapName);
     }
 }

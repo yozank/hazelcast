@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.hazelcast.util.CollectionUtil.isNotEmpty;
+import static com.hazelcast.util.MapUtil.createHashMap;
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -51,7 +52,6 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
     private static final int RETRY_TIMES_OF_A_FAILED_STORE_OPERATION = 3;
 
     private static final int RETRY_STORE_AFTER_WAIT_SECONDS = 1;
-
 
     private final List<StoreListener> storeListeners;
 
@@ -77,7 +77,7 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
         if (delayedEntries == null || delayedEntries.isEmpty()) {
             return Collections.emptyMap();
         }
-        final Map<Integer, List<DelayedEntry>> failsPerPartition = new HashMap<Integer, List<DelayedEntry>>();
+        final Map<Integer, List<DelayedEntry>> failuresByPartition = new HashMap<Integer, List<DelayedEntry>>();
         final List<DelayedEntry> entriesToProcess = new ArrayList<DelayedEntry>();
         StoreOperationType operationType = null;
         StoreOperationType previousOperationType;
@@ -91,18 +91,18 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
             }
             if (previousOperationType != null && !previousOperationType.equals(operationType)) {
                 final List<DelayedEntry> failures = callHandler(entriesToProcess, previousOperationType);
-                addToFails(failures, failsPerPartition);
+                addFailsTo(failuresByPartition, failures);
                 entriesToProcess.clear();
             }
             entriesToProcess.add(entry);
         }
         final List<DelayedEntry> failures = callHandler(entriesToProcess, operationType);
-        addToFails(failures, failsPerPartition);
+        addFailsTo(failuresByPartition, failures);
         entriesToProcess.clear();
-        return failsPerPartition;
+        return failuresByPartition;
     }
 
-    private void addToFails(List<DelayedEntry> fails, Map<Integer, List<DelayedEntry>> failsPerPartition) {
+    private void addFailsTo(Map<Integer, List<DelayedEntry>> failsPerPartition, List<DelayedEntry> fails) {
         if (fails == null || fails.isEmpty()) {
             return;
         }
@@ -141,7 +141,7 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
         if (size == 1 || !writeCoalescing) {
             return processEntriesOneByOne(delayedEntries, operationType);
         }
-        final DelayedEntry[] delayedEntriesArray = delayedEntries.toArray(new DelayedEntry[delayedEntries.size()]);
+        final DelayedEntry[] delayedEntriesArray = delayedEntries.toArray(new DelayedEntry[0]);
         final Map<Object, DelayedEntry> batchMap = prepareBatchMap(delayedEntriesArray);
 
         // if all batch is on same key, call single store.
@@ -176,8 +176,8 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
     }
 
     private Map prepareBatchMap(DelayedEntry[] delayedEntries) {
-        final Map<Object, DelayedEntry> batchMap = new HashMap<Object, DelayedEntry>();
         final int length = delayedEntries.length;
+        final Map<Object, DelayedEntry> batchMap = createHashMap(length);
         // process in reverse order since we do want to process
         // last store operation on a specific key
         for (int i = length - 1; i >= 0; i--) {
@@ -221,7 +221,7 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
     }
 
     private Map convertToObject(Map<Object, DelayedEntry> batchMap) {
-        final Map map = new HashMap();
+        final Map map = createHashMap(batchMap.size());
         for (DelayedEntry entry : batchMap.values()) {
             final Object key = toObject(entry.getKey());
             final Object value = toObject(entry.getValue());
@@ -346,21 +346,14 @@ class DefaultWriteBehindProcessor extends AbstractWriteBehindProcessor<DelayedEn
      * @return not-stored entries per partition.
      */
     private Map<Integer, List<DelayedEntry>> doStoreUsingBatchSize(List<DelayedEntry> sortedDelayedEntries) {
-        final Map<Integer, List<DelayedEntry>> failsPerPartition = new HashMap<Integer, List<DelayedEntry>>();
+        Map<Integer, List<DelayedEntry>> failsPerPartition = new HashMap<Integer, List<DelayedEntry>>();
         int page = 0;
         List<DelayedEntry> delayedEntryList;
         while ((delayedEntryList = getBatchChunk(sortedDelayedEntries, writeBatchSize, page++)) != null) {
-            final Map<Integer, List<DelayedEntry>> fails = processInternal(delayedEntryList);
-            final Set<Map.Entry<Integer, List<DelayedEntry>>> entries = fails.entrySet();
+            Map<Integer, List<DelayedEntry>> fails = processInternal(delayedEntryList);
+            Set<Map.Entry<Integer, List<DelayedEntry>>> entries = fails.entrySet();
             for (Map.Entry<Integer, List<DelayedEntry>> entry : entries) {
-                final Integer partitionId = entry.getKey();
-                final List<DelayedEntry> tmpFailList = entry.getValue();
-                List<DelayedEntry> failList = failsPerPartition.get(partitionId);
-                if (failList == null || failList.isEmpty()) {
-                    failsPerPartition.put(partitionId, tmpFailList);
-                    failList = failsPerPartition.get(partitionId);
-                }
-                failList.addAll(tmpFailList);
+                addFailsTo(failsPerPartition, entry.getValue());
             }
         }
         return failsPerPartition;

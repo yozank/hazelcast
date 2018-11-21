@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.SlowTest;
+import org.apache.http.NoHttpResponseException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,7 +40,6 @@ import org.junit.runner.RunWith;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
-import java.net.SocketException;
 import java.util.concurrent.CountDownLatch;
 
 import static org.junit.Assert.assertEquals;
@@ -79,7 +79,7 @@ public class RestClusterTest extends HazelcastTestSupport {
         try {
             communicator.getClusterInfo();
             fail("Rest is disabled. Not expected to reach here!");
-        } catch (SocketException ignored) {
+        } catch (NoHttpResponseException ignored) {
         }
     }
 
@@ -125,14 +125,9 @@ public class RestClusterTest extends HazelcastTestSupport {
 
         assertEquals(STATUS_FORBIDDEN, communicator.changeClusterState("dev1", "dev-pass", "frozen").response);
         assertEquals(HttpURLConnection.HTTP_OK, communicator.changeClusterState("dev", "dev-pass", "frozen").responseCode);
-        assertTrueEventually(new AssertTask() {
-            @Override
-            public void run()
-                    throws Exception {
-                assertEquals(ClusterState.FROZEN, instance1.getCluster().getClusterState());
-                assertEquals(ClusterState.FROZEN, instance2.getCluster().getClusterState());
-            }
-        });
+
+        assertClusterStateEventually(ClusterState.FROZEN, instance1);
+        assertClusterStateEventually(ClusterState.FROZEN, instance2);
     }
 
     @Test
@@ -221,7 +216,11 @@ public class RestClusterTest extends HazelcastTestSupport {
             assertEquals("{\"status\":\"success\"}", communicator.shutdownMember("dev", "dev-pass"));
         } catch (ConnectException ignored) {
             // if node shuts down before response is received, `java.net.ConnectException: Connection refused` is expected
+        } catch (NoHttpResponseException ignored) {
+            // `NoHttpResponseException` is also a possible outcome when a node shut down before it has a chance
+            // to send a response back to a client.
         }
+
 
         assertOpenEventually(shutdownLatch);
         assertFalse(instance.getLifecycleService().isRunning());
@@ -241,19 +240,46 @@ public class RestClusterTest extends HazelcastTestSupport {
         HTTPCommunicator communicator = new HTTPCommunicator(instance);
         String result = communicator.getClusterHealth();
 
-        assertEquals("Hazelcast::NodeState=ACTIVE\n" +
-                "Hazelcast::ClusterState=ACTIVE\n" +
-                "Hazelcast::ClusterSafe=TRUE\n" +
-                "Hazelcast::MigrationQueueSize=0\n" +
-                "Hazelcast::ClusterSize=1\n", result);
+        assertEquals("Hazelcast::NodeState=ACTIVE\n"
+                + "Hazelcast::ClusterState=ACTIVE\n"
+                + "Hazelcast::ClusterSafe=TRUE\n"
+                + "Hazelcast::MigrationQueueSize=0\n"
+                + "Hazelcast::ClusterSize=1\n", result);
     }
 
-    @Test(expected = SocketException.class)
+    @Test
+    public void healthCheckWithPathParameters() throws Exception {
+        HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
+        HTTPCommunicator communicator = new HTTPCommunicator(instance);
+
+        assertEquals("ACTIVE", communicator.getClusterHealth("/node-state"));
+        assertEquals("ACTIVE", communicator.getClusterHealth("/cluster-state"));
+        assertEquals(HttpURLConnection.HTTP_OK, communicator.getClusterHealthResponseCode("/cluster-safe"));
+        assertEquals("0", communicator.getClusterHealth("/migration-queue-size"));
+        assertEquals("1", communicator.getClusterHealth("/cluster-size"));
+    }
+
+    @Test
+    public void healthCheckWithUnknownPathParameter() throws Exception {
+        HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
+        HTTPCommunicator communicator = new HTTPCommunicator(instance);
+
+        assertEquals(HttpURLConnection.HTTP_BAD_REQUEST, communicator.getClusterHealthResponseCode("/unknown-parameter"));
+    }
+
+    @Test(expected = NoHttpResponseException.class)
     public void fail_with_deactivatedHealthCheck() throws Exception {
         // Healthcheck REST URL is deactivated by default - no passed config on purpose
         HazelcastInstance instance = Hazelcast.newHazelcastInstance();
         HTTPCommunicator communicator = new HTTPCommunicator(instance);
         communicator.getClusterHealth();
+    }
+
+    @Test
+    public void fail_on_healthcheck_url_with_garbage() throws Exception {
+        HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
+        HTTPCommunicator communicator = new HTTPCommunicator(instance);
+        assertEquals(HttpURLConnection.HTTP_BAD_REQUEST, communicator.getFailingClusterHealthWithTrailingGarbage());
     }
 
     @Test

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package classloading;
 
 import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.test.HazelcastSerialClassRunner;
@@ -25,23 +26,29 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import java.util.Set;
-
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(QuickTest.class)
-public class ThreadLeakClientTest extends ThreadLeakTest {
+public class ThreadLeakClientTest extends AbstractThreadLeakTest {
 
     @Test
-    @Override
     public void testThreadLeak() {
-        Set<Thread> threads = Thread.getAllStackTraces().keySet();
-
         HazelcastInstance member = Hazelcast.newHazelcastInstance();
         HazelcastInstance client = HazelcastClient.newHazelcastClient();
 
         client.shutdown();
         member.shutdown();
+    }
 
-        assertHazelcastThreadShutdown(threads);
+    @Test
+    public void testThreadLeak_withoutCluster() {
+        ClientConfig clientConfig = new ClientConfig();
+        clientConfig.getConnectionStrategyConfig()
+                .setAsyncStart(true);
+        clientConfig.getNetworkConfig()
+                .setConnectionAttemptLimit(Integer.MAX_VALUE);
+
+        HazelcastInstance client = HazelcastClient.newHazelcastClient(clientConfig);
+
+        client.shutdown();
     }
 }

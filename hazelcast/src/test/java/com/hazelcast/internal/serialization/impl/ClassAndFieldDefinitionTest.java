@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import org.junit.runner.RunWith;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
@@ -170,7 +171,7 @@ public class ClassAndFieldDefinitionTest {
         assertEquals(16, fd_nullName.getClassId());
         assertEquals(17, fd_nullName.getVersion());
         assertEquals(10, fd_nullName.getIndex());
-        assertEquals(null, fd_nullName.getName());
+        assertNull(fd_nullName.getName());
         assertEquals(FieldType.PORTABLE, fd_nullName.getType());
     }
 

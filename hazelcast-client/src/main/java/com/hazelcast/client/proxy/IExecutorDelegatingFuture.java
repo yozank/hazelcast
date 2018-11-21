@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package com.hazelcast.client.proxy;
 
-import com.hazelcast.client.impl.ClientMessageDecoder;
-import com.hazelcast.client.impl.HazelcastClientInstanceImpl;
+import com.hazelcast.client.impl.clientside.ClientMessageDecoder;
+import com.hazelcast.client.impl.clientside.HazelcastClientInstanceImpl;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceCancelOnAddressCodec;
 import com.hazelcast.client.impl.protocol.codec.ExecutorServiceCancelOnPartitionCodec;
@@ -46,24 +46,27 @@ public final class IExecutorDelegatingFuture<V> extends ClientDelegatingFuture<V
     private final String uuid;
     private final Address target;
     private final int partitionId;
+    private final String objectName;
 
     IExecutorDelegatingFuture(ClientInvocationFuture future, ClientContext context,
                               String uuid, V defaultValue,
-                              ClientMessageDecoder resultDecoder, Address address) {
+                              ClientMessageDecoder resultDecoder, String objectName, Address address) {
         super(future, context.getSerializationService(), resultDecoder, defaultValue);
         this.context = context;
         this.uuid = uuid;
         this.partitionId = -1;
+        this.objectName = objectName;
         this.target = address;
     }
 
     IExecutorDelegatingFuture(ClientInvocationFuture future, ClientContext context,
                               String uuid, V defaultValue,
-                              ClientMessageDecoder resultDecoder, int partitionId) {
+                              ClientMessageDecoder resultDecoder, String objectName, int partitionId) {
         super(future, context.getSerializationService(), resultDecoder, defaultValue);
         this.context = context;
         this.uuid = uuid;
         this.partitionId = partitionId;
+        this.objectName = objectName;
         this.target = null;
 
     }
@@ -94,12 +97,12 @@ public final class IExecutorDelegatingFuture<V> extends ClientDelegatingFuture<V
         if (partitionId > -1) {
             ClientMessage request =
                     ExecutorServiceCancelOnPartitionCodec.encodeRequest(uuid, partitionId, mayInterruptIfRunning);
-            ClientInvocation clientInvocation = new ClientInvocation(client, request, partitionId);
+            ClientInvocation clientInvocation = new ClientInvocation(client, request, objectName, partitionId);
             ClientInvocationFuture f = clientInvocation.invoke();
             return ExecutorServiceCancelOnPartitionCodec.decodeResponse(f.get()).response;
         } else {
             ClientMessage request = ExecutorServiceCancelOnAddressCodec.encodeRequest(uuid, target, mayInterruptIfRunning);
-            ClientInvocation clientInvocation = new ClientInvocation(client, request, target);
+            ClientInvocation clientInvocation = new ClientInvocation(client, request, objectName, target);
             ClientInvocationFuture f = clientInvocation.invoke();
             return ExecutorServiceCancelOnAddressCodec.decodeResponse(f.get()).response;
         }

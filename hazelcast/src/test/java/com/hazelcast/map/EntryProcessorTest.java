@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,24 +29,34 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.MapLoader;
 import com.hazelcast.core.MapStoreAdapter;
 import com.hazelcast.core.PostProcessingMapStore;
+import com.hazelcast.map.impl.MapEntries;
+import com.hazelcast.map.impl.MapService;
+import com.hazelcast.map.impl.operation.MultipleEntryWithPredicateOperation;
+import com.hazelcast.map.impl.proxy.MapProxyImpl;
 import com.hazelcast.map.listener.EntryAddedListener;
 import com.hazelcast.map.listener.EntryRemovedListener;
 import com.hazelcast.map.listener.EntryUpdatedListener;
 import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.DataSerializable;
 import com.hazelcast.query.EntryObject;
 import com.hazelcast.query.IndexAwarePredicate;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.query.PredicateBuilder;
 import com.hazelcast.query.Predicates;
-import com.hazelcast.query.SampleObjects;
-import com.hazelcast.query.SampleObjects.Employee;
+import com.hazelcast.query.SampleTestObjects;
+import com.hazelcast.query.SampleTestObjects.Employee;
 import com.hazelcast.query.SqlPredicate;
 import com.hazelcast.query.impl.Index;
 import com.hazelcast.query.impl.QueryContext;
 import com.hazelcast.query.impl.QueryableEntry;
+import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.OperationFactory;
+import com.hazelcast.spi.impl.BinaryOperationFactory;
+import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.operationservice.InternalOperationService;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -57,6 +67,9 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameter;
+import org.junit.runners.Parameterized.Parameters;
+import org.junit.runners.Parameterized.UseParametersRunnerFactory;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -86,19 +99,20 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 @RunWith(Parameterized.class)
-@Parameterized.UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
+@UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class EntryProcessorTest extends HazelcastTestSupport {
 
     public static final String MAP_NAME = "EntryProcessorTest";
 
-    @Parameterized.Parameter
+    @Parameter
     public InMemoryFormat inMemoryFormat;
 
-    @Parameterized.Parameters(name = "{index}: {0}")
+    @Parameters(name = "{index}: {0}")
     public static Collection<Object[]> data() {
         return asList(new Object[][]{
-                {BINARY}, {OBJECT}
+                {BINARY},
+                {OBJECT},
         });
     }
 
@@ -284,8 +298,11 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         Map<String, Object> entries = map.executeOnEntries(new TestLoggingEntryProcessor(), predicate);
 
         assertEquals("The predicate should only relate to one entry!", 1, entries.size());
-        assertEquals("The predicate's apply method should only be invoked once!", 1, predicate.getApplied());
-        assertTrue("The predicate should only be used via index service!", predicate.isFilteredAndAppliedOnlyOnce());
+        // for native memory EP with index query the predicate won't be applied since everything happens on partition-threads
+        // so there is no chance of data being modified after the index has been queried.
+        int predicateApplied = inMemoryFormat == NATIVE ? 0 : 1;
+        assertEquals("The predicate's apply method should only be invoked once!", predicateApplied, predicate.getApplied());
+        assertTrue("The predicate should only be used via index service!", predicate.isFilteredAndApplied(predicateApplied));
     }
 
     /**
@@ -308,8 +325,8 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         // the entry has been removed from the primary store but not the backup,
         // so let's kill the primary and execute the logging processor again
         HazelcastInstance newPrimary;
-        String aMemberUiid = instance1.getPartitionService().getPartition("a").getOwner().getUuid();
-        if (aMemberUiid.equals(instance1.getCluster().getLocalMember().getUuid())) {
+        String aMemberUuid = instance1.getPartitionService().getPartition("a").getOwner().getUuid();
+        if (aMemberUuid.equals(instance1.getCluster().getLocalMember().getUuid())) {
             instance1.shutdown();
             newPrimary = instance2;
         } else {
@@ -605,9 +622,8 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         HazelcastInstance instance2 = nodeFactory.newHazelcastInstance(cfg);
         HazelcastInstance instance3 = nodeFactory.newHazelcastInstance(cfg);
 
-        assertTrue(instance1.getCluster().getMembers().size() == 3);
-        assertTrue(instance2.getCluster().getMembers().size() == 3);
-        assertTrue(instance3.getCluster().getMembers().size() == 3);
+        assertClusterSize(3, instance1, instance3);
+        assertClusterSizeEventually(3, instance2);
 
         IMap<Integer, Integer> map = instance1.getMap(MAP_NAME);
         int size = 100;
@@ -620,10 +636,8 @@ public class EntryProcessorTest extends HazelcastTestSupport {
             assertEquals(map.get(i), (Object) (i + 1));
         }
         instance1.shutdown();
-        sleepSeconds(1);
 
-        assertTrue(instance2.getCluster().getMembers().size() == 2);
-        assertTrue(instance3.getCluster().getMembers().size() == 2);
+        assertClusterSizeEventually(2, instance2, instance3);
 
         IMap<Integer, Integer> map2 = instance2.getMap(MAP_NAME);
         for (int i = 0; i < size; i++) {
@@ -642,7 +656,7 @@ public class EntryProcessorTest extends HazelcastTestSupport {
             IMap<Integer, Employee> map = instance1.getMap(MAP_NAME);
             int size = 10;
             for (int i = 0; i < size; i++) {
-                map.put(i, new Employee(i, "", 0, false, 0D, SampleObjects.State.STATE1));
+                map.put(i, new Employee(i, "", 0, false, 0D, SampleTestObjects.State.STATE1));
             }
 
             EntryProcessor entryProcessor = new ChangeStateEntryProcessor();
@@ -651,13 +665,13 @@ public class EntryProcessorTest extends HazelcastTestSupport {
             Map<Integer, Object> res = map.executeOnEntries(entryProcessor, predicate);
 
             for (int i = 0; i < 5; i++) {
-                assertEquals(SampleObjects.State.STATE2, map.get(i).getState());
+                assertEquals(SampleTestObjects.State.STATE2, map.get(i).getState());
             }
             for (int i = 5; i < size; i++) {
-                assertEquals(SampleObjects.State.STATE1, map.get(i).getState());
+                assertEquals(SampleTestObjects.State.STATE1, map.get(i).getState());
             }
             for (int i = 0; i < 5; i++) {
-                assertEquals(((Employee) res.get(i)).getState(), SampleObjects.State.STATE2);
+                assertEquals(((Employee) res.get(i)).getState(), SampleTestObjects.State.STATE2);
             }
         } finally {
             instance1.shutdown();
@@ -674,7 +688,7 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         @Override
         public Object process(Map.Entry<Integer, Employee> entry) {
             Employee value = entry.getValue();
-            value.setState(SampleObjects.State.STATE2);
+            value.setState(SampleTestObjects.State.STATE2);
             entry.setValue(value);
             return value;
         }
@@ -687,7 +701,7 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         @Override
         public void processBackup(Map.Entry<Integer, Employee> entry) {
             Employee value = entry.getValue();
-            value.setState(SampleObjects.State.STATE2);
+            value.setState(SampleTestObjects.State.STATE2);
             entry.setValue(value);
         }
     }
@@ -735,8 +749,8 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         map.executeOnKey(2, entryProcessor);
         map.executeOnEntries(entryProcessor);
 
-        assertEquals(null, map.get(1));
-        assertEquals(null, map.get(2));
+        assertNull(map.get(1));
+        assertNull(map.get(2));
         assertEquals(1, map.size());
     }
 
@@ -795,7 +809,7 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         map.executeOnKey(1, new ValueSetterEntryProcessor(null));
 
         assertEquals((Integer) 1, map.get(2));
-        assertEquals(null, map.get(1));
+        assertNull(map.get(1));
         assertTrue(latch.await(100, TimeUnit.SECONDS));
         assertEquals(2, addCount.get());
         assertEquals(3, updateCount.get());
@@ -969,6 +983,37 @@ public class EntryProcessorTest extends HazelcastTestSupport {
             entry.setValue(null);
             return null;
         }
+    }
+
+    @Test
+    public void testHitsAreIncrementedOnceOnEntryUpdate() {
+
+        class UpdatingEntryProcessor extends AbstractEntryProcessor<String, String> {
+
+            private final String value;
+
+            public UpdatingEntryProcessor(String value) {
+                this.value = value;
+            }
+
+            @Override
+            public Object process(Map.Entry<String, String> entry) {
+                entry.setValue(value);
+                return null;
+            }
+        }
+
+        final Config config = getConfig();
+        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(1);
+        final HazelcastInstance instance = factory.newHazelcastInstance(config);
+
+        final IMap<Object, Object> map = instance.getMap(MAP_NAME);
+        map.put("key", "value");
+
+        final long hitsBefore = map.getLocalMapStats().getHits();
+        map.executeOnKey("key", new UpdatingEntryProcessor("new value"));
+        assertEquals(1, map.getLocalMapStats().getHits() - hitsBefore);
+        assertEquals("new value", map.get("key"));
     }
 
     @Test
@@ -1165,7 +1210,16 @@ public class EntryProcessorTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testExecuteOnKeys() {
+    public void testExecuteOnKeys() throws Exception {
+        testExecuteOrSubmitOnKeys(false);
+    }
+
+    @Test
+    public void testSubmitToKeys() throws Exception {
+        testExecuteOrSubmitOnKeys(true);
+    }
+
+    private void testExecuteOrSubmitOnKeys(boolean sync) throws Exception {
         Config config = getConfig();
         TestHazelcastInstanceFactory nodeFactory = createHazelcastInstanceFactory(2);
         HazelcastInstance instance1 = nodeFactory.newHazelcastInstance(config);
@@ -1183,7 +1237,12 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         keys.add(7);
         keys.add(9);
 
-        Map<Integer, Object> resultMap = map2.executeOnKeys(keys, new IncrementorEntryProcessor());
+        Map<Integer, Object> resultMap;
+        if (sync) {
+            resultMap = map2.executeOnKeys(keys, new IncrementorEntryProcessor());
+        } else {
+            resultMap = ((MapProxyImpl<Integer, Integer>) map2).submitToKeys(keys, new IncrementorEntryProcessor()).get();
+        }
         assertEquals(1, resultMap.get(1));
         assertEquals(1, resultMap.get(4));
         assertEquals(1, resultMap.get(7));
@@ -1197,6 +1256,28 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         assertEquals(1, (int) map.get(7));
         assertEquals(0, (int) map.get(8));
         assertEquals(1, (int) map.get(9));
+    }
+
+    @Test
+    public void testExecuteOnKeys_nullKeyInSet() {
+        Config config = getConfig();
+        TestHazelcastInstanceFactory nodeFactory = createHazelcastInstanceFactory(2);
+        HazelcastInstance instance1 = nodeFactory.newHazelcastInstance(config);
+
+        IMap<Integer, Integer> map = instance1.getMap(MAP_NAME);
+        for (int i = 0; i < 10; i++) {
+            map.put(i, 0);
+        }
+
+        Set<Integer> keys = new HashSet<Integer>();
+        keys.add(1);
+        keys.add(null);
+
+        try {
+            map.executeOnKeys(keys, new IncrementorEntryProcessor());
+            fail("call didn't fail as documented in executeOnKeys' javadoc");
+        } catch (NullPointerException expected) {
+        }
     }
 
     /**
@@ -1404,11 +1485,11 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         factory.newHazelcastInstance(config);
         factory.newHazelcastInstance(config);
 
-        IMap<Integer, SampleObjects.ObjectWithInteger> map = node.getMap(MAP_NAME);
+        IMap<Integer, SampleTestObjects.ObjectWithInteger> map = node.getMap(MAP_NAME);
         map.addIndex("attribute", true);
 
         for (int i = 0; i < 1000; i++) {
-            map.put(i, new SampleObjects.ObjectWithInteger(i));
+            map.put(i, new SampleTestObjects.ObjectWithInteger(i));
         }
 
         map.executeOnEntries(new DeleteEntryProcessor(), new SqlPredicate("attribute >=0"));
@@ -1467,6 +1548,9 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         final IMap<Integer, Integer> map = instance1.getMap(MAP_NAME);
         map.addIndex("__key", true);
 
+        // for native memory EP with index query the predicate won't be applied since everything happens on partition-threads
+        // so there is no chance of data being modified after the index has been queried.
+        final int expectedApplyCount = inMemoryFormat == NATIVE ? 0 : 2;
         AssertTask task = new AssertTask() {
             @Override
             public void run() throws Exception {
@@ -1477,7 +1561,7 @@ public class EntryProcessorTest extends HazelcastTestSupport {
                     map.executeOnEntries(new DeleteEntryProcessor(), predicate);
 
                     assertEquals("Expecting two predicate#apply method call one on owner, other one on backup",
-                            2, PREDICATE_APPLY_COUNT.get());
+                            expectedApplyCount, PREDICATE_APPLY_COUNT.get());
                 } finally {
                     // set predicateApplyCount to zero, in case we repeat this test
                     PREDICATE_APPLY_COUNT.set(0);
@@ -1809,6 +1893,35 @@ public class EntryProcessorTest extends HazelcastTestSupport {
         assertEquals(0, values.size());
         assertEquals(11, testMap.get(1L).getLastValue());
         assertEquals(20, testMap.get(2L).getLastValue());
+    }
+
+    @Test
+    public void multiple_entry_with_predicate_operation_returns_empty_response_when_map_is_empty() throws Exception {
+        Config config = getConfig();
+        MapConfig mapConfig = config.getMapConfig(MAP_NAME);
+        mapConfig.setInMemoryFormat(inMemoryFormat);
+
+        HazelcastInstance node = createHazelcastInstance(config);
+        NodeEngineImpl nodeEngineImpl = getNodeEngineImpl(node);
+        InternalOperationService operationService = nodeEngineImpl.getOperationService();
+
+        int keyCount = 1000;
+        Set<Data> dataKeys = new HashSet<Data>();
+        for (int i = 0; i < keyCount; i++) {
+            dataKeys.add(nodeEngineImpl.toData(i));
+        }
+
+        Operation operation = new MultipleEntryWithPredicateOperation(MAP_NAME, dataKeys,
+                new NoOpEntryProcessor(), new SqlPredicate("this < " + keyCount));
+
+        OperationFactory operationFactory = new BinaryOperationFactory(operation, nodeEngineImpl);
+
+        Map<Integer, Object> partitionResponses
+                = operationService.invokeOnAllPartitions(MapService.SERVICE_NAME, operationFactory);
+
+        for (Object response : partitionResponses.values()) {
+            assertEquals(0, ((MapEntries) response).size());
+        }
     }
 
     static class MyData implements Serializable {

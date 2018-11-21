@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,18 @@ import com.hazelcast.core.ReplicatedMap;
 import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.query.Predicate;
 
+import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CompletionListener;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.util.MapUtil.createHashMap;
+
+@SuppressWarnings("checkstyle:methodcount")
 public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAdapter<K, V> {
 
     private final ReplicatedMap<K, V> map;
@@ -60,8 +64,50 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
     }
 
     @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Void> setAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
     public V put(K key, V value) {
         return map.put(key, value);
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<V> putAsync(K key, V value, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void putTransient(K key, V value, long ttl, TimeUnit timeunit) {
+        throw new MethodNotAvailableException();
     }
 
     @Override
@@ -78,6 +124,12 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
 
     @Override
     @MethodNotAvailable
+    public void setTtl(K key, long duration, TimeUnit timeUnit) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
     public V replace(K key, V newValue) {
         throw new MethodNotAvailableException();
     }
@@ -88,8 +140,8 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
         throw new MethodNotAvailableException();
     }
 
-    public void remove(K key) {
-        map.remove(key);
+    public V remove(K key) {
+        return map.remove(key);
     }
 
     @Override
@@ -101,6 +153,24 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
     @Override
     @MethodNotAvailable
     public ICompletableFuture<V> removeAsync(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void delete(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public ICompletableFuture<Boolean> deleteAsync(K key) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public boolean evict(K key) {
         throw new MethodNotAvailableException();
     }
 
@@ -159,7 +229,7 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
 
     @Override
     public Map<K, V> getAll(Set<K> keys) {
-        Map<K, V> result = new HashMap<K, V>(keys.size());
+        Map<K, V> result = createHashMap(keys.size());
         for (K key : keys) {
             result.put(key, map.get(key));
         }
@@ -185,6 +255,12 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
 
     @Override
     @MethodNotAvailable
+    public void evictAll() {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
     public <T> Map<K, EntryProcessorResult<T>> invokeAll(Set<? extends K> keys, EntryProcessor<K, V, T> entryProcessor,
                                                          Object... arguments) {
         throw new MethodNotAvailableException();
@@ -196,8 +272,26 @@ public class ReplicatedMapDataStructureAdapter<K, V> implements DataStructureAda
     }
 
     @Override
+    @MethodNotAvailable
+    public void close() {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
     public void destroy() {
         map.destroy();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public void setExpiryPolicy(Set<K> keys, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
+    }
+
+    @Override
+    @MethodNotAvailable
+    public boolean setExpiryPolicy(K key, ExpiryPolicy expiryPolicy) {
+        throw new MethodNotAvailableException();
     }
 
     @Override

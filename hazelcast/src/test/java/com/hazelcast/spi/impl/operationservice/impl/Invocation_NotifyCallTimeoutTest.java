@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ public class Invocation_NotifyCallTimeoutTest extends HazelcastTestSupport {
         op.setPartitionId(0).setWaitTimeout(-1);
 
         Invocation invocation = new PartitionInvocation(
-                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false);
+                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false, false);
 
         OperationAccessor.setInvocationTime(op, node.getClusterService().getClusterClock().getClusterTime());
 
@@ -75,7 +75,7 @@ public class Invocation_NotifyCallTimeoutTest extends HazelcastTestSupport {
         op.setPartitionId(0).setWaitTimeout(SECONDS.toMillis(2));
 
         Invocation invocation = new PartitionInvocation(
-                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false);
+                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false, false);
 
         OperationAccessor.setInvocationTime(op, node.getClusterService().getClusterClock().getClusterTime());
 
@@ -94,7 +94,7 @@ public class Invocation_NotifyCallTimeoutTest extends HazelcastTestSupport {
         op.setPartitionId(0).setWaitTimeout(SECONDS.toMillis(60));
 
         Invocation invocation = new PartitionInvocation(
-                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false);
+                operationService.invocationContext, op, 10, MINUTES.toSeconds(2), MINUTES.toSeconds(2), false, false);
 
         OperationAccessor.setInvocationTime(op, node.getClusterService().getClusterClock().getClusterTime());
 
@@ -141,7 +141,7 @@ public class Invocation_NotifyCallTimeoutTest extends HazelcastTestSupport {
 
         @Override
         public boolean shouldWait() {
-             return true;
+            return true;
         }
 
         @Override

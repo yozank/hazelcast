@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,12 +49,12 @@ public abstract class AbstractQueryCacheConfigurator implements QueryCacheConfig
         this.eventService = eventService;
     }
 
-    protected void setEntryListener(String mapName, String cacheName, QueryCacheConfig config) {
+    protected void setEntryListener(String mapName, String cacheId, QueryCacheConfig config) {
         for (EntryListenerConfig listenerConfig : config.getEntryListenerConfigs()) {
             MapListener listener = getListener(listenerConfig);
             if (listener != null) {
                 EventFilter filter = new EntryEventFilter(listenerConfig.isIncludeValue(), null);
-                eventService.addListener(mapName, cacheName, listener, filter);
+                eventService.addListener(mapName, cacheId, listener, filter);
             }
         }
     }

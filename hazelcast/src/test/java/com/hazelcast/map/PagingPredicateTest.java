@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -155,7 +156,8 @@ public class PagingPredicateTest extends HazelcastTestSupport {
     @Test
     public void testPagingWithFilteringAndComparator() {
         Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 8);
-        PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, new TestComparator(false, IterationType.VALUE), pageSize);
+        PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, new TestComparator(false, IterationType.VALUE), pageSize);
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 8, 7, 6, 5, 4);
@@ -223,7 +225,8 @@ public class PagingPredicateTest extends HazelcastTestSupport {
         Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 8);
         // ascending values
         TestComparator comparator = new TestComparator(true, IterationType.VALUE);
-        PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
+        PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 0, 0, 1, 1, 2);
@@ -247,7 +250,8 @@ public class PagingPredicateTest extends HazelcastTestSupport {
         Predicate<Integer, Integer> lessEqual = Predicates.lessEqual("this", 3);
         // ascending values
         TestComparator comparator = new TestComparator(true, IterationType.VALUE);
-        PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
+        PagingPredicate<Integer, Integer> predicate
+                = new PagingPredicate<Integer, Integer>(lessEqual, comparator, pageSize); //pageSize = 5
 
         Collection<Integer> values = map.values(predicate);
         assertIterableEquals(values, 0, 1, 2, 3);
@@ -259,6 +263,52 @@ public class PagingPredicateTest extends HazelcastTestSupport {
         predicate.nextPage();
         values = map.values(predicate);
         assertEquals(0, values.size());
+    }
+
+    @Test
+    public void testLargePageSizeIsNotCausingIndexOutBoundsExceptions() {
+        final int[] pageSizesToCheck = new int[]{
+                Integer.MAX_VALUE / 2,
+                Integer.MAX_VALUE - 1000,
+                Integer.MAX_VALUE - 1,
+                Integer.MAX_VALUE,
+        };
+
+        final int[] pagesToCheck = new int[]{
+                1,
+                1000,
+                Integer.MAX_VALUE / 2,
+                Integer.MAX_VALUE - 1000,
+                Integer.MAX_VALUE - 1,
+                Integer.MAX_VALUE,
+        };
+
+        for (int pageSize : pageSizesToCheck) {
+            final PagingPredicate<Integer, Integer> predicate = new PagingPredicate<Integer, Integer>(pageSize);
+
+            assertEquals(size, map.keySet(predicate).size());
+            for (int page : pagesToCheck) {
+                predicate.setPage(page);
+                assertEquals(0, map.keySet(predicate).size());
+            }
+        }
+    }
+
+    @Test
+    public void testEmptyIndexResultIsNotCausingFullScan() {
+        map.addIndex("this", false);
+        for (int i = 0; i < size; ++i) {
+            map.set(i, i);
+        }
+
+        int resultSize = map.entrySet(new PagingPredicate(Predicates.equal("this", size), pageSize) {
+            @Override
+            public boolean apply(Map.Entry mapEntry) {
+                fail("full scan is not expected");
+                return false;
+            }
+        }).size();
+        assertEquals(0, resultSize);
     }
 
     static class TestComparator implements Comparator<Map.Entry<Integer, Integer>>, Serializable {

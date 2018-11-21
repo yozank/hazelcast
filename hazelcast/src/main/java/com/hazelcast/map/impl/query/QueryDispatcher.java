@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import com.hazelcast.spi.partition.IPartitionService;
 import com.hazelcast.util.executor.ManagedExecutorService;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -84,7 +85,7 @@ final class QueryDispatcher {
     }
 
     private List<Future<Result>> dispatchFullQueryOnLocalMemberOnQueryThread(Query query) {
-        Operation operation = new QueryOperation(query);
+        Operation operation = mapServiceContext.getMapOperationProvider(query.getMapName()).createQueryOperation(query);
         Future<Result> result = operationService.invokeOnTarget(
                 MapService.SERVICE_NAME, operation, nodeEngine.getThisAddress());
         return singletonList(result);
@@ -94,7 +95,7 @@ final class QueryDispatcher {
         Collection<Member> members = clusterService.getMembers(DATA_MEMBER_SELECTOR);
         List<Future<Result>> futures = new ArrayList<Future<Result>>(members.size());
         for (Member member : members) {
-            Operation operation = new QueryOperation(query);
+            Operation operation = createQueryOperation(query);
             Future<Result> future = operationService.invokeOnTarget(
                     MapService.SERVICE_NAME, operation, member.getAddress());
             futures.add(future);
@@ -102,21 +103,26 @@ final class QueryDispatcher {
         return futures;
     }
 
+    private Operation createQueryOperation(Query query) {
+        return mapServiceContext.getMapOperationProvider(query.getMapName()).createQueryOperation(query);
+    }
+
     protected List<Future<Result>> dispatchPartitionScanQueryOnOwnerMemberOnPartitionThread(
-            Query query, Collection<Integer> partitionIds) {
+            Query query, BitSet partitionIds) {
         if (shouldSkipPartitionsQuery(partitionIds)) {
             return Collections.emptyList();
         }
-
         List<Future<Result>> futures = new ArrayList<Future<Result>>(partitionIds.size());
-        for (Integer partitionId : partitionIds) {
-            futures.add(dispatchPartitionScanQueryOnOwnerMemberOnPartitionThread(query, partitionId));
+        for (int partitionId = 0; partitionId < partitionIds.length(); partitionId++) {
+            if (partitionIds.get(partitionId)) {
+                futures.add(dispatchPartitionScanQueryOnOwnerMemberOnPartitionThread(query, partitionId));
+            }
         }
         return futures;
     }
 
     protected Future<Result> dispatchPartitionScanQueryOnOwnerMemberOnPartitionThread(Query query, int partitionId) {
-        Operation op = new QueryPartitionOperation(query);
+        Operation op = createQueryPartitionOperation(query);
         op.setPartitionId(partitionId);
         try {
             return operationService.invokeOnPartition(MapService.SERVICE_NAME, op, partitionId);
@@ -125,7 +131,11 @@ final class QueryDispatcher {
         }
     }
 
-    private static boolean shouldSkipPartitionsQuery(Collection<Integer> partitionIds) {
+    private Operation createQueryPartitionOperation(Query query) {
+        return mapServiceContext.getMapOperationProvider(query.getMapName()).createQueryPartitionOperation(query);
+    }
+
+    private static boolean shouldSkipPartitionsQuery(BitSet partitionIds) {
         return partitionIds == null || partitionIds.isEmpty();
     }
 }

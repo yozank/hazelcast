@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,15 @@ import static java.lang.System.getenv;
 
 /**
  * Attempt to detect whether code is a test running on Jenkins.
- *
  */
-public class JenkinsDetector {
+public final class JenkinsDetector {
+
+    private JenkinsDetector() {
+    }
+
     public static boolean isOnJenkins() {
-        return getenv("JENKINS_URL") != null &&
-               getenv("BUILD_NUMBER") != null &&
-               getenv("NODE_NAME") != null;
+        return getenv("JENKINS_URL") != null
+                && getenv("BUILD_NUMBER") != null
+                && getenv("NODE_NAME") != null;
     }
 }

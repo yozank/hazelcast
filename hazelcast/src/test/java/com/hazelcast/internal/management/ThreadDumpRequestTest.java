@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package com.hazelcast.internal.management;
 
-import com.eclipsesource.json.JsonObject;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.internal.management.request.ThreadDumpRequest;
+import com.hazelcast.internal.json.JsonObject;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -29,7 +29,10 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static com.hazelcast.util.JsonUtil.getBoolean;
+import static com.hazelcast.util.JsonUtil.getString;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -53,7 +56,8 @@ public class ThreadDumpRequestTest extends HazelcastTestSupport {
         request.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        assertNotNull(request.readResponse(result));
+        assertTrue(getBoolean(result, "hasDump"));
+        assertNotNull(getString(result, "dump"));
     }
 
     @Test
@@ -64,6 +68,7 @@ public class ThreadDumpRequestTest extends HazelcastTestSupport {
         request.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        assertNotNull(request.readResponse(result));
+        assertTrue(getBoolean(result, "hasDump"));
+        assertNotNull(getString(result, "dump"));
     }
 }

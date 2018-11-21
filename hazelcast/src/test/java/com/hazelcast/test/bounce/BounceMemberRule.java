@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package com.hazelcast.test.bounce;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.ClassLoaderUtil;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.bounce.BounceTestConfiguration.DriverType;
@@ -33,112 +35,132 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import static com.hazelcast.nio.ClassLoaderUtil.isClassAvailable;
 import static com.hazelcast.test.HazelcastTestSupport.sleepSeconds;
-import static com.hazelcast.test.HazelcastTestSupport.spawn;
 import static com.hazelcast.test.bounce.BounceTestConfiguration.DriverType.ALWAYS_UP_MEMBER;
 import static com.hazelcast.test.bounce.BounceTestConfiguration.DriverType.CLIENT;
+import static com.hazelcast.test.bounce.BounceTestConfiguration.DriverType.MEMBER;
 import static com.hazelcast.util.ExceptionUtil.rethrow;
+import static com.hazelcast.util.StringUtil.timeToString;
+import static java.lang.Math.max;
 import static java.lang.System.currentTimeMillis;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * JUnit rule for testing behavior of cluster while members bounce (shutdown & startup). Key concepts:
  * <ul>
- *     <li>BounceMemberRule sets up a cluster before the test's {@code @Before} methods are executed and tears
- *     it down after its {@code @After} methods. One member of the cluster is kept running for the duration of
- *     the test, while other members are shutdown and replaced by new instances. For example, if the
- *     BounceMemberRule is configured to setup a cluster of 5 members, one will stay up while the rest 4 will
- *     be shutting down and replaced by new ones while the test tasks are executed. Use
- *     {@link #getSteadyMember()} to obtain a reference to the member that is always up.<br/>
- *     <b>Defaults: </b>cluster size 6 members<br/>
- *     <b>Configuration: </b>
- *     <ul>
- *         <li>Cluster members configuration must be provided in {@link BounceMemberRule#with(Config)} which
- *         returns a {@link Builder} to obtain a configured {@code BounceMemberRule}</li>
- *         <li>Set cluster size with {@link Builder#clusterSize(int)}</li>
- *     </ul>
- *     </li>
- *     <li>BounceMemberRule also initializes {@code HazelcastInstance}s to be used as test drivers. References
- *     to test drivers can be obtained by invoking {@link #getNextTestDriver()}. Choices for test drivers
- *     include:
- *     <ul>
- *         <li>{@code ALWAYS_UP_MEMBER}: use as test driver the cluster member that is never shutdown during
- *         the test.</li>
- *         <li>{@code MEMBER}: prepare a set of members, apart from the configured cluster members, to be used
- *         as test drivers.</li>
- *         <li>{@code CLIENT}: use clients as test drivers</li>
- *     </ul>
- *     <b>Defaults: </b> when {@code com.hazelcast.client.test.TestHazelcastFactory} is available on the
- *     classpath, then defaults to preparing 5 {@code CLIENT} test drivers, otherwise uses
- *     {@code ALWAYS_UP_MEMBER} as test driver.<br/>
- *     <b>Configuration: </b>test driver type and count can be configured with the
- *     {@link Builder#driverType(DriverType)} and {@link Builder#driverCount(int)} methods. For more control
- *     over the configuration of test drivers, you may also specify a {@link DriverFactory} with
- *     {@link Builder#driverFactory(DriverFactory)}.</li>
- *     <li>The test case can be directly coded in your {@code @Test} methods, as with regular tests.
- *     Alternatively, {@code Runnable}s can be submitted for concurrent execution in a fixed thread pool
- *     initialized with as many threads as the number of {@code Runnable}s submitted:
- *     <ul>
- *         <li>{@link #testRepeatedly(int, Runnable, long)} submits the given {@code Runnable} to be executed
- *         with the given number of concurrent threads. The submitted {@code Runnable} must be thread safe.
- *         The {@code Runnable} is executed repeatedly until either the configured duration in seconds has
- *         passed or its execution throws a {@code Throwable}, in which case the test is failed and the
- *         exception is rethrown.</li>
- *         <li>{@link #testRepeatedly(Runnable[], long)} same as above, however instead of submitting the same
- *         {@code Runnable} to several threads, submits an array of {@code Runnable}s, allowing for concurrent
- *         execution of heterogeneous {@code Runnable}s (e.g. several producers & consumers in an
- *         {@code ITopic} test). {@code Runnable}s do not have to be thread-safe in this case.</li>
- *         <li>{@link #test(Runnable[])} submits an array of {@code Runnable}s to be executed concurrently and
- *         blocks until all {@code Runnable}s have been completed. If an exception was thrown during a
- *         {@code Runnable}'s execution, the test will fail.</li>
- *     </ul>
- *     </li>
+ * <li>BounceMemberRule sets up a cluster before the test's {@code @Before} methods are executed and tears
+ * it down after its {@code @After} methods. One member of the cluster is kept running for the duration of
+ * the test, while other members are shutdown and replaced by new instances. For example, if the
+ * BounceMemberRule is configured to setup a cluster of 5 members, one will stay up while the rest 4 will
+ * be shutting down and replaced by new ones while the test tasks are executed. Use
+ * {@link #getSteadyMember()} to obtain a reference to the member that is always up.<br/>
+ * <b>Defaults: </b>cluster size 6 members<br/>
+ * <b>Configuration: </b>
+ * <ul>
+ * <li>Cluster members configuration must be provided in {@link BounceMemberRule#with(Config)} which
+ * returns a {@link Builder} to obtain a configured {@code BounceMemberRule}</li>
+ * <li>Set cluster size with {@link Builder#clusterSize(int)}</li>
  * </ul>
- *
+ * </li>
+ * <li>BounceMemberRule also initializes {@code HazelcastInstance}s to be used as test drivers. References
+ * to test drivers can be obtained by invoking {@link #getNextTestDriver()}. Choices for test drivers
+ * include:
+ * <ul>
+ * <li>{@code ALWAYS_UP_MEMBER}: use as test driver the cluster member that is never shutdown during
+ * the test.</li>
+ * <li>{@code MEMBER}: prepare a set of members, apart from the configured cluster members, to be used
+ * as test drivers.</li>
+ * <li>{@code CLIENT}: use clients as test drivers</li>
+ * </ul>
+ * <b>Defaults: </b> when {@code com.hazelcast.client.test.TestHazelcastFactory} is available on the
+ * classpath, then defaults to preparing 5 {@code CLIENT} test drivers, otherwise uses
+ * {@code MEMBER} as test driver.<br/>
+ * <b>Configuration: </b>test driver type and count can be configured with the
+ * {@link Builder#driverType(DriverType)} and {@link Builder#driverCount(int)} methods. For more control
+ * over the configuration of test drivers, you may also specify a {@link DriverFactory} with
+ * {@link Builder#driverFactory(DriverFactory)}.</li>
+ * <li>The test case can be directly coded in your {@code @Test} methods, as with regular tests.
+ * Alternatively, {@code Runnable}s can be submitted for concurrent execution in a fixed thread pool
+ * initialized with as many threads as the number of {@code Runnable}s submitted:
+ * <ul>
+ * <li>{@link #testRepeatedly(int, Runnable, long)} submits the given {@code Runnable} to be executed
+ * with the given number of concurrent threads. The submitted {@code Runnable} must be thread safe.
+ * The {@code Runnable} is executed repeatedly until either the configured duration in seconds has
+ * passed or its execution throws a {@code Throwable}, in which case the test is failed and the
+ * exception is rethrown.</li>
+ * <li>{@link #testRepeatedly(Runnable[], long)} same as above, however instead of submitting the same
+ * {@code Runnable} to several threads, submits an array of {@code Runnable}s, allowing for concurrent
+ * execution of heterogeneous {@code Runnable}s (e.g. several producers & consumers in an
+ * {@code ITopic} test). {@code Runnable}s do not have to be thread-safe in this case.</li>
+ * <li>{@link #test(Runnable[])} submits an array of {@code Runnable}s to be executed concurrently and
+ * blocks until all {@code Runnable}s have been completed. If an exception was thrown during a
+ * {@code Runnable}'s execution, the test will fail.</li>
+ * </ul>
+ * </li>
+ * </ul>
+ * <p>
  * For examples on how to use this rule, see {@code BounceMemberRuleTest} and {@code QueryBounceTest}.
- *
+ * <p>
  * {@code BounceMemberRule} integrates with test lifecycle as described below:
  * <ol>
- *     <li>{@code BounceMemberRule} creates the cluster and test drivers</li>
- *     <li>the test's {@code @Before} method(s) are executed to prepare the test. Use
- *     {@link #getSteadyMember()} to obtain the {@code HazelcastInstace} that is kept running during the test
- *     and prepare the test's environment.</li>
- *     <li>{@code BounceMemberRule} spawns a separate thread that starts bouncing cluster members</li>
- *     <li>the {@code @Test} method is executed</li>
- *     <li>{@code BounceMemberRule} stops bouncing cluster members</li>
- *     <li>the test's {@code @After} methods are executed</li>
- *     <li>{@code BounceMemberRule} tears down test drivers and cluster members</li>
+ * <li>{@code BounceMemberRule} creates the cluster and test drivers</li>
+ * <li>the test's {@code @Before} method(s) are executed to prepare the test. Use
+ * {@link #getSteadyMember()} to obtain the {@code HazelcastInstace} that is kept running during the test
+ * and prepare the test's environment.</li>
+ * <li>{@code BounceMemberRule} spawns a separate thread that starts bouncing cluster members</li>
+ * <li>the {@code @Test} method is executed</li>
+ * <li>{@code BounceMemberRule} stops bouncing cluster members</li>
+ * <li>the test's {@code @After} methods are executed</li>
+ * <li>{@code BounceMemberRule} tears down test drivers and cluster members</li>
  * </ol>
  */
 public class BounceMemberRule implements TestRule {
 
+    public static final long STALENESS_DETECTOR_DISABLED = Long.MAX_VALUE;
+
+    private static final ILogger LOGGER = Logger.getLogger(BounceMemberRule.class);
+
     private static final int DEFAULT_CLUSTER_SIZE = 6;
     private static final int DEFAULT_DRIVERS_COUNT = 5;
+    // amount of time wait for test task futures to complete after test duration has passed
+    private static final int TEST_TASK_TIMEOUT_SECONDS = 30;
+    private static final int DEFAULT_BOUNCING_INTERVAL_SECONDS = 2;
+    private static final long DEFAULT_MAXIMUM_STALE_SECONDS = STALENESS_DETECTOR_DISABLED;
 
     private final BounceTestConfiguration bounceTestConfig;
+    private final AtomicBoolean testRunning = new AtomicBoolean();
+    private final AtomicBoolean testFailed = new AtomicBoolean();
+    private final AtomicReferenceArray<HazelcastInstance> members;
+    private final AtomicReferenceArray<HazelcastInstance> testDrivers;
+    private final int bouncingIntervalSeconds;
+    private final ProgressMonitor progressMonitor;
 
-    private TestHazelcastInstanceFactory factory;
-    private HazelcastInstance[] members;
-    private AtomicBoolean testRunning = new AtomicBoolean();
-    private AtomicBoolean testFailed = new AtomicBoolean();
-    private Future bouncingMembersTask;
+    private volatile TestHazelcastInstanceFactory factory;
 
+    private FutureTask<Runnable> bouncingMembersTask;
     private AtomicInteger driverCounter = new AtomicInteger();
-    private HazelcastInstance[] testDrivers;
     private ExecutorService taskExecutor;
 
     private BounceMemberRule(BounceTestConfiguration bounceTestConfig) {
         this.bounceTestConfig = bounceTestConfig;
+        this.members = new AtomicReferenceArray<HazelcastInstance>(bounceTestConfig.getClusterSize());
+        this.testDrivers = new AtomicReferenceArray<HazelcastInstance>(bounceTestConfig.getDriverCount());
+        this.bouncingIntervalSeconds = bounceTestConfig.getBouncingIntervalSeconds();
+        this.progressMonitor = new ProgressMonitor(bounceTestConfig.getMaximumStaleSeconds());
     }
 
     /**
      * @return cluster member that stays up for the duration of the test
      */
     public final HazelcastInstance getSteadyMember() {
-        return members[0];
+        return members.get(0);
     }
 
     /**
@@ -146,7 +168,7 @@ public class BounceMemberRule implements TestRule {
      * rotate and return the next one.
      */
     public HazelcastInstance getNextTestDriver() {
-        return testDrivers[driverCounter.getAndIncrement() % testDrivers.length];
+        return testDrivers.get(driverCounter.getAndIncrement() % testDrivers.length());
     }
 
     /**
@@ -169,18 +191,23 @@ public class BounceMemberRule implements TestRule {
      * The {@code task} is executed in a loop until either the configured test's duration is reached or an exception
      * is thrown from the {@code task}, in which case the test is marked as failed and the exception will be propagated
      * as test failure cause.
-     *
+     * <p>
      * This method blocks until all test tasks have been completed or one of them throws an exception.
-     *
-     * @param concurrency
-     * @param task
      */
     public void testRepeatedly(int concurrency, Runnable task, long durationSeconds) {
         assert concurrency > 0 : "Concurrency level should be greater than 0";
 
-        TestTaskRunable[] tasks = new TestTaskRunable[concurrency];
-        Arrays.fill(tasks, new TestTaskRunable(task));
+        TestTaskRunnable[] tasks = new TestTaskRunnable[concurrency];
+        Arrays.fill(tasks, new TestTaskRunnable(task));
         testRepeatedly(tasks, durationSeconds);
+    }
+
+    public AtomicReferenceArray<HazelcastInstance> getMembers() {
+        return members;
+    }
+
+    public AtomicReferenceArray<HazelcastInstance> getTestDrivers() {
+        return testDrivers;
     }
 
     /**
@@ -188,17 +215,15 @@ public class BounceMemberRule implements TestRule {
      * The {@code task} is executed in a loop until either the configured test's duration is reached or an exception
      * is thrown from the {@code task}, in which case the test is marked as failed and the exception will be propagated
      * as test failure cause.
-     *
+     * <p>
      * This method blocks until all test tasks have been completed or one of them throws an exception.
-     *
-     * @param tasks
      */
     public void testRepeatedly(Runnable[] tasks, long durationSeconds) {
         assert tasks != null && tasks.length > 0 : "Some tasks must be submitted for execution";
 
-        TestTaskRunable[] runnables = new TestTaskRunable[tasks.length];
+        TestTaskRunnable[] runnables = new TestTaskRunnable[tasks.length];
         for (int i = 0; i < tasks.length; i++) {
-            runnables[i] = new TestTaskRunable(tasks[i]);
+            runnables[i] = new TestTaskRunnable(tasks[i]);
         }
         testWithDuration(runnables, durationSeconds);
     }
@@ -206,10 +231,8 @@ public class BounceMemberRule implements TestRule {
     /**
      * Submit Runnables to be executed concurrently. Each {@code task} is executed once. Exceptions thrown from a {@code task}
      * will mark the test as failed and the exception will be propagated as test failure cause.
-     *
+     * <p>
      * This method blocks until all test tasks have been completed or one of them throws an exception.
-     *
-     * @param tasks
      */
     public void test(Runnable[] tasks) {
         testWithDuration(tasks, 0);
@@ -223,21 +246,34 @@ public class BounceMemberRule implements TestRule {
         Future[] futures = new Future[tasks.length];
         taskExecutor = Executors.newFixedThreadPool(tasks.length);
         for (int i = 0; i < tasks.length; i++) {
-            futures[i] = taskExecutor.submit(tasks[i]);
+            Runnable task = tasks[i];
+            progressMonitor.registerTask(task);
+            futures[i] = taskExecutor.submit(task);
         }
 
         // let the test run for test duration or until failed or finished, whichever comes first
         if (durationSeconds > 0) {
-            long deadline = currentTimeMillis() + durationSeconds * 1000;
+            long deadline = currentTimeMillis() + SECONDS.toMillis(durationSeconds);
+            LOGGER.info("Executing test tasks with deadline " + timeToString(deadline));
             while (currentTimeMillis() < deadline) {
                 if (testFailed.get()) {
                     break;
                 }
                 sleepSeconds(1);
+                try {
+                    progressMonitor.checkProgress();
+                } catch (AssertionError e) {
+                    testRunning.set(false);
+                    throw e;
+                }
+            }
+            if (currentTimeMillis() >= deadline) {
+                LOGGER.info("Test deadline reached, tearing down");
             }
             testRunning.set(false);
             waitForFutures(futures);
         } else {
+            LOGGER.info("Executing test tasks");
             waitForFutures(futures);
             testRunning.set(false);
         }
@@ -284,25 +320,31 @@ public class BounceMemberRule implements TestRule {
             factory = new TestHazelcastInstanceFactory();
         }
         Config memberConfig = bounceTestConfig.getMemberConfig();
-        members = new HazelcastInstance[bounceTestConfig.getClusterSize()];
         for (int i = 0; i < bounceTestConfig.getClusterSize(); i++) {
-            members[i] = factory.newHazelcastInstance(memberConfig);
+            members.set(i, factory.newHazelcastInstance(memberConfig));
         }
 
         // setup drivers
-        testDrivers = bounceTestConfig.getDriverFactory().createTestDrivers(this);
-
+        HazelcastInstance[] drivers = bounceTestConfig.getDriverFactory().createTestDrivers(this);
+        assert drivers.length == bounceTestConfig.getDriverCount()
+                : "Driver factory should return " + bounceTestConfig.getDriverCount() + " test drivers.";
+        for (int i = 0; i < drivers.length; i++) {
+            testDrivers.set(i, drivers[i]);
+        }
         testRunning.set(true);
     }
 
     private void tearDown() {
         try {
+            LOGGER.info("Tearing down BounceMemberRule");
             if (taskExecutor != null) {
-                taskExecutor.shutdown();
+                taskExecutor.shutdownNow();
+                taskExecutor = null;
             }
             // shutdown test drivers first
             if (testDrivers != null) {
-                for (HazelcastInstance hz : testDrivers) {
+                for (int i = 0; i < testDrivers.length(); i++) {
+                    HazelcastInstance hz = testDrivers.get(i);
                     hz.shutdown();
                 }
             }
@@ -310,7 +352,8 @@ public class BounceMemberRule implements TestRule {
                 factory.shutdownAll();
             }
         } catch (Throwable t) {
-            // any exceptions thrown in tearDown are not interesting and may hide the actual failure, so are ignored
+            // any exceptions thrown in tearDown are not interesting and may hide the actual failure, so are not rethrown
+            LOGGER.warning("Error occurred while tearing down BounceMemberRule.", t);
         }
     }
 
@@ -332,7 +375,11 @@ public class BounceMemberRule implements TestRule {
         return new Statement() {
             @Override
             public void evaluate() throws Throwable {
-                bouncingMembersTask = spawn(new MemberUpDownMonkey(members));
+                LOGGER.info("Spawning member bouncing thread");
+                bouncingMembersTask = new FutureTask<Runnable>(new MemberUpDownMonkey(), null);
+                Thread bounceMembersThread = new Thread(bouncingMembersTask);
+                bounceMembersThread.setDaemon(true);
+                bounceMembersThread.start();
                 next.evaluate();
             }
         };
@@ -352,9 +399,12 @@ public class BounceMemberRule implements TestRule {
                 } finally {
                     testRunning.set(false);
                     try {
+                        LOGGER.info("Waiting for member bouncing thread to stop...");
                         bouncingMembersTask.get();
+                        LOGGER.info("Member bouncing thread stopped.");
                     } catch (Exception e) {
-                        // ignore
+                        // do not rethrow
+                        LOGGER.warning("Member bouncing thread failed to stop.", e);
                     }
                 }
             }
@@ -363,8 +413,11 @@ public class BounceMemberRule implements TestRule {
 
     // wait until all test tasks complete or one of them throws an exception
     private void waitForFutures(Future[] futures) {
+        // do not wait more than 30 seconds
+        long deadline = currentTimeMillis() + SECONDS.toMillis(TEST_TASK_TIMEOUT_SECONDS);
+        LOGGER.info("Waiting until " + timeToString(deadline) + " for test tasks to complete gracefully.");
         List<Future> futuresToWaitFor = new ArrayList<Future>(Arrays.asList(futures));
-        while (!futuresToWaitFor.isEmpty()) {
+        while (!futuresToWaitFor.isEmpty() && currentTimeMillis() < deadline) {
             Iterator<Future> iterator = futuresToWaitFor.iterator();
             while (iterator.hasNext()) {
                 boolean hasTestFailed = testFailed.get();
@@ -372,39 +425,56 @@ public class BounceMemberRule implements TestRule {
                 try {
                     // if the test failed, try to locate immediately the future that is done and will throw an exception
                     if ((hasTestFailed && future.isDone()) || !hasTestFailed) {
-                        future.get();
+                        future.get(1, SECONDS);
                         iterator.remove();
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
-                    rethrow(e.getCause());
+                    throw rethrow(e.getCause());
+                } catch (TimeoutException e) {
                 }
             }
+        }
+        if (!futuresToWaitFor.isEmpty()) {
+            LOGGER.warning("Test tasks did not complete within " + TEST_TASK_TIMEOUT_SECONDS + " seconds, there are still "
+                    + futuresToWaitFor.size() + " unfinished test tasks.");
         }
     }
 
     public static class Builder {
+
         private final Config memberConfig;
+
         private int clusterSize = DEFAULT_CLUSTER_SIZE;
         private int driversCount = DEFAULT_DRIVERS_COUNT;
         private DriverFactory driverFactory;
         private DriverType testDriverType;
+        private boolean useTerminate;
+        private int bouncingIntervalSeconds = DEFAULT_BOUNCING_INTERVAL_SECONDS;
+        private long maximumStaleSeconds = DEFAULT_MAXIMUM_STALE_SECONDS;
 
         private Builder(Config memberConfig) {
             this.memberConfig = memberConfig;
         }
 
         public BounceMemberRule build() {
+
             if (testDriverType == null) {
                 // guess driver: if HazelcastTestFactory class is available, then use the client driver,
-                // otherwise default to always-up member as test driver
+                // otherwise use member driver as default
                 if (isClassAvailable(null, "com.hazelcast.client.test.TestHazelcastFactory")) {
                     testDriverType = CLIENT;
                 } else {
-                    testDriverType = ALWAYS_UP_MEMBER;
+                    testDriverType = MEMBER;
                 }
             }
+
+            if (testDriverType == ALWAYS_UP_MEMBER) {
+                assert driversCount == 1
+                        : "Driver count can only be 1 when driver type is ALWAYS_UP_MEMBER but found " + driversCount;
+            }
+
             if (driverFactory == null) {
                 // choose a default driver factory
                 switch (testDriverType) {
@@ -420,7 +490,7 @@ public class BounceMemberRule implements TestRule {
                 }
             }
             return new BounceMemberRule(new BounceTestConfiguration(clusterSize, testDriverType, memberConfig,
-                    driversCount, driverFactory));
+                    driversCount, driverFactory, useTerminate, bouncingIntervalSeconds, maximumStaleSeconds));
         }
 
         public Builder clusterSize(int clusterSize) {
@@ -438,15 +508,31 @@ public class BounceMemberRule implements TestRule {
             return this;
         }
 
+        public Builder bouncingIntervalSeconds(int bouncingIntervalSeconds) {
+            this.bouncingIntervalSeconds = bouncingIntervalSeconds;
+            return this;
+        }
+
+        public Builder maximumStalenessSeconds(int maximumStalenessSeconds) {
+            this.maximumStaleSeconds = maximumStalenessSeconds;
+            return this;
+        }
+
         public Builder driverFactory(DriverFactory driverFactory) {
             this.driverFactory = driverFactory;
+            return this;
+        }
+
+        public Builder useTerminate() {
+            this.useTerminate = true;
             return this;
         }
 
         // reflectively instantiate default client-side test driver factory
         private DriverFactory newDefaultClientDriverFactory() {
             try {
-                Class factoryClass = ClassLoaderUtil.loadClass(null, "com.hazelcast.client.test.bounce.ClientDriverFactory");
+                Class factoryClass = ClassLoaderUtil.loadClass(null,
+                        "com.hazelcast.client.test.bounce.MultiSocketClientDriverFactory");
                 return (DriverFactory) factoryClass.newInstance();
             } catch (Exception e) {
                 throw new AssertionError("Could not instantiate client DriverFactory: " + e.getMessage());
@@ -458,31 +544,44 @@ public class BounceMemberRule implements TestRule {
      * Shuts down and restarts members of the cluster
      */
     protected class MemberUpDownMonkey implements Runnable {
-        private final HazelcastInstance[] instances;
-
-        MemberUpDownMonkey(HazelcastInstance[] allInstances) {
-            this.instances = new HazelcastInstance[allInstances.length - 1];
-            // exclude 0-index instance
-            System.arraycopy(allInstances, 1, instances, 0, allInstances.length - 1);
-        }
-
         @Override
         public void run() {
-            int i = 0;
+            // rotate members 1..members.length(), member.get(0) is the steady member
+            int divisor = members.length() - 1;
+            int i = 1;
             int nextInstance;
             try {
                 while (testRunning.get()) {
-                    instances[i].shutdown();
-                    nextInstance = (i + 1) % instances.length;
-                    sleepSeconds(2);
-
-                    instances[i] = factory.newHazelcastInstance();
-                    sleepSeconds(2);
+                    if (bounceTestConfig.isUseTerminate()) {
+                        members.get(i).getLifecycleService().terminate();
+                    } else {
+                        members.get(i).shutdown();
+                    }
+                    nextInstance = i % divisor + 1;
+                    sleepSecondsWhenRunning(bouncingIntervalSeconds);
+                    if (!testRunning.get()) {
+                        break;
+                    }
+                    members.set(i, factory.newHazelcastInstance(bounceTestConfig.getMemberConfig()));
+                    sleepSecondsWhenRunning(bouncingIntervalSeconds);
                     // move to next member
                     i = nextInstance;
                 }
             } catch (Throwable t) {
-                t.printStackTrace();
+                LOGGER.warning("Error while bouncing members", t);
+            }
+            LOGGER.info("Member bouncing thread exiting");
+        }
+    }
+
+    private void sleepSecondsWhenRunning(int seconds) {
+        long deadLine = System.nanoTime() + SECONDS.toNanos(seconds);
+        while (System.nanoTime() < deadLine && testRunning.get()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
             }
         }
     }
@@ -491,10 +590,16 @@ public class BounceMemberRule implements TestRule {
      * Wraps a {@code Runnable} to be executed repeatedly until testRunning becomes false or an exception is thrown
      * which sets the test as failed.
      */
-    private final class TestTaskRunable implements Runnable {
+    final class TestTaskRunnable implements Runnable {
+
         private final Runnable task;
 
-        public TestTaskRunable(Runnable task) {
+        private volatile long lastIterationStartedTimestamp;
+        private volatile Thread currentThread;
+        private volatile long iterationCounter;
+        private volatile long maxLatencyNanos;
+
+        TestTaskRunnable(Runnable task) {
             this.task = task;
         }
 
@@ -502,12 +607,42 @@ public class BounceMemberRule implements TestRule {
         public void run() {
             while (testRunning.get()) {
                 try {
+                    long startedNanos = System.nanoTime();
+                    lastIterationStartedTimestamp = startedNanos;
+                    currentThread = Thread.currentThread();
                     task.run();
+                    iterationCounter++;
+                    long latencyNanos = System.nanoTime() - startedNanos;
+                    maxLatencyNanos = max(maxLatencyNanos, latencyNanos);
                 } catch (Throwable t) {
                     testFailed.set(true);
-                    rethrow(t);
+                    throw rethrow(t);
                 }
             }
+        }
+
+        public long getLastIterationStartedTimestamp() {
+            return lastIterationStartedTimestamp;
+        }
+
+        public long getIterationCounter() {
+            return iterationCounter;
+        }
+
+        public long getMaxLatencyNanos() {
+            return maxLatencyNanos;
+        }
+
+        public Thread getCurrentThreadOrNull() {
+            return currentThread;
+        }
+
+
+        @Override
+        public String toString() {
+            return "TestTaskRunnable{"
+                    + "task=" + task
+                    + '}';
         }
     }
 }

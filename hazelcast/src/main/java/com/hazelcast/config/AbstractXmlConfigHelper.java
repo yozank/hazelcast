@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import com.hazelcast.logging.Logger;
 import com.hazelcast.memory.MemorySize;
 import com.hazelcast.memory.MemoryUnit;
 import com.hazelcast.util.StringUtil;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -48,8 +47,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.ByteOrder;
-import java.text.DecimalFormat;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
@@ -58,13 +55,16 @@ import java.util.Properties;
 
 import static com.hazelcast.nio.IOUtil.closeResource;
 import static com.hazelcast.util.StringUtil.LINE_SEPARATOR;
+import static com.hazelcast.util.StringUtil.isNullOrEmpty;
 import static com.hazelcast.util.StringUtil.upperCaseInternal;
 import static java.lang.Boolean.parseBoolean;
+import static java.lang.Double.parseDouble;
 import static java.lang.String.format;
 
 /**
  * Contains Hazelcast XML Configuration helper methods and variables.
  */
+@SuppressWarnings("checkstyle:methodcount")
 public abstract class AbstractXmlConfigHelper {
 
     private static final ILogger LOGGER = Logger.getLogger(AbstractXmlConfigHelper.class);
@@ -158,7 +158,7 @@ public abstract class AbstractXmlConfigHelper {
 
             // if this is hazelcast namespace but location is different log only warning
             if (namespace.equals(xmlns) && !uri.endsWith(hazelcastSchemaLocation)) {
-                LOGGER.warning("Name of the hazelcast schema location incorrect using default");
+                LOGGER.warning("Name of the hazelcast schema location is incorrect, using default");
             }
 
             // if this is not hazelcast namespace then try to load from uri
@@ -180,13 +180,13 @@ public abstract class AbstractXmlConfigHelper {
 
         // schema validation
         SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
-        Schema schema = schemaFactory.newSchema(schemas.toArray(new Source[schemas.size()]));
+        Schema schema = schemaFactory.newSchema(schemas.toArray(new Source[0]));
         Validator validator = schema.newValidator();
         try {
             SAXSource source = new SAXSource(new InputSource(is));
             validator.validate(source);
         } catch (Exception e) {
-            throw new InvalidConfigurationException(e.getMessage());
+            throw new InvalidConfigurationException(e.getMessage(), e);
         } finally {
             for (StreamSource source : schemas) {
                 closeResource(source.getInputStream());
@@ -203,7 +203,7 @@ public abstract class AbstractXmlConfigHelper {
             try {
                 inputStream = new URL(schemaLocation).openStream();
             } catch (Exception e) {
-                throw new InvalidConfigurationException("Your xsd schema couldn't be load");
+                throw new InvalidConfigurationException("Your xsd schema couldn't be loaded");
             }
         }
         return inputStream;
@@ -211,10 +211,15 @@ public abstract class AbstractXmlConfigHelper {
 
     protected String getReleaseVersion() {
         BuildInfo buildInfo = BuildInfoProvider.getBuildInfo();
-        return buildInfo.getVersion().substring(0, 3);
+        String[] versionTokens = StringUtil.tokenizeVersionString(buildInfo.getVersion());
+        return versionTokens[0] + "." + versionTokens[1];
     }
 
     protected String xmlToJavaName(final String name) {
+        String javaRefName = xmlRefToJavaName(name);
+        if (javaRefName != null) {
+            return javaRefName;
+        }
         final StringBuilder builder = new StringBuilder();
         final char[] charArray = name.toCharArray();
         boolean dash = false;
@@ -230,6 +235,13 @@ public abstract class AbstractXmlConfigHelper {
         }
         appendToken(builder, token);
         return builder.toString();
+    }
+
+    private String xmlRefToJavaName(final String name) {
+        if (name.equals("quorum-ref")) {
+            return "quorumName";
+        }
+        return null;
     }
 
     protected void appendToken(final StringBuilder builder, final StringBuilder token) {
@@ -303,6 +315,13 @@ public abstract class AbstractXmlConfigHelper {
         }
     }
 
+    protected static int getIntegerValue(final String parameterName, final String value, int defaultValue) {
+        if (isNullOrEmpty(value)) {
+            return defaultValue;
+        }
+        return getIntegerValue(parameterName, value);
+    }
+
     protected static long getLongValue(final String parameterName, final String value) {
         try {
             return Long.parseLong(value);
@@ -310,6 +329,29 @@ public abstract class AbstractXmlConfigHelper {
             throw new InvalidConfigurationException(
                     format("Invalid long integer value for parameter %s: %s", parameterName, value));
         }
+    }
+
+    protected static long getLongValue(final String parameterName, final String value, long defaultValue) {
+        if (isNullOrEmpty(value)) {
+            return defaultValue;
+        }
+        return getLongValue(parameterName, value);
+    }
+
+    protected static double getDoubleValue(final String parameterName, final String value) {
+        try {
+            return parseDouble(value);
+        } catch (final Exception e) {
+            throw new InvalidConfigurationException(
+                    format("Invalid long integer value for parameter %s: %s", parameterName, value));
+        }
+    }
+
+    protected static double getDoubleValue(final String parameterName, final String value, double defaultValue) {
+        if (isNullOrEmpty(value)) {
+            return defaultValue;
+        }
+        return getDoubleValue(parameterName, value);
     }
 
     protected String getAttribute(Node node, String attName) {
@@ -407,6 +449,8 @@ public abstract class AbstractXmlConfigHelper {
                 fillPortableFactories(child, serializationConfig);
             } else if ("serializers".equals(name)) {
                 fillSerializers(child, serializationConfig);
+            } else if ("java-serialization-filter".equals(name)) {
+                fillJavaSerializationFilter(child, serializationConfig);
             }
         }
         return serializationConfig;
@@ -465,7 +509,39 @@ public abstract class AbstractXmlConfigHelper {
         }
     }
 
-    @SuppressFBWarnings("DM_BOXED_PRIMITIVE_FOR_PARSING")
+    protected void fillJavaSerializationFilter(final Node node, SerializationConfig serializationConfig) {
+        JavaSerializationFilterConfig filterConfig = new JavaSerializationFilterConfig();
+        serializationConfig.setJavaSerializationFilterConfig(filterConfig);
+        Node defaultsDisabledNode = node.getAttributes().getNamedItem("defaults-disabled");
+        boolean defaultsDisabled = defaultsDisabledNode != null && getBooleanValue(getTextContent(defaultsDisabledNode));
+        filterConfig.setDefaultsDisabled(defaultsDisabled);
+        for (Node child : childElements(node)) {
+            final String name = cleanNodeName(child);
+            if ("blacklist".equals(name)) {
+                ClassFilter list = parseClassFilterList(child);
+                filterConfig.setBlacklist(list);
+            } else if ("whitelist".equals(name)) {
+                ClassFilter list = parseClassFilterList(child);
+                filterConfig.setWhitelist(list);
+            }
+        }
+    }
+
+    private ClassFilter parseClassFilterList(Node node) {
+        ClassFilter list = new ClassFilter();
+        for (Node child : childElements(node)) {
+            final String name = cleanNodeName(child);
+            if ("class".equals(name)) {
+                list.addClasses(getTextContent(child));
+            } else if ("package".equals(name)) {
+                list.addPackages(getTextContent(child));
+            } else if ("prefix".equals(name)) {
+                list.addPrefixes(getTextContent(child));
+            }
+        }
+        return list;
+    }
+
     protected void fillNativeMemoryConfig(Node node, NativeMemoryConfig nativeMemoryConfig) {
         final NamedNodeMap atts = node.getAttributes();
         final Node enabledNode = atts.getNamedItem("enabled");
@@ -485,7 +561,7 @@ public abstract class AbstractXmlConfigHelper {
                 final NamedNodeMap attrs = n.getAttributes();
                 final String value = getTextContent(attrs.getNamedItem("value"));
                 final MemoryUnit unit = MemoryUnit.valueOf(getTextContent(attrs.getNamedItem("unit")));
-                MemorySize memorySize = new MemorySize(Long.valueOf(value), unit);
+                MemorySize memorySize = new MemorySize(Long.parseLong(value), unit);
                 nativeMemoryConfig.setSize(memorySize);
             } else if ("min-block-size".equals(nodeName)) {
                 String value = getTextContent(n);
@@ -495,13 +571,7 @@ public abstract class AbstractXmlConfigHelper {
                 nativeMemoryConfig.setPageSize(Integer.parseInt(value));
             } else if ("metadata-space-percentage".equals(nodeName)) {
                 String value = getTextContent(n);
-                try {
-                    Number percentage = new DecimalFormat("##.#").parse(value);
-                    nativeMemoryConfig.setMetadataSpacePercentage(percentage.floatValue());
-                } catch (ParseException e) {
-                    LOGGER.info("Metadata space percentage, [" + value
-                            + "], is not a proper value. Default value will be used!");
-                }
+                nativeMemoryConfig.setMetadataSpacePercentage(Float.parseFloat(value));
             }
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
 
 package com.hazelcast.scheduledexecutor;
 
+import com.hazelcast.config.Config;
+import com.hazelcast.config.ScheduledExecutorConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IAtomicLong;
 import com.hazelcast.core.ICountDownLatch;
-import com.hazelcast.test.HazelcastParallelClassRunner;
+import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.SlowTest;
@@ -27,7 +29,9 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import java.util.concurrent.ExecutionException;
+import java.util.Collection;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hazelcast.scheduledexecutor.TaskUtils.named;
 import static java.lang.String.valueOf;
@@ -36,15 +40,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-@RunWith(HazelcastParallelClassRunner.class)
+@RunWith(HazelcastSerialClassRunner.class)
 @Category({SlowTest.class, ParallelTest.class})
-public class ScheduledExecutorServiceSlowTest
-        extends ScheduledExecutorServiceTestSupport {
+public class ScheduledExecutorServiceSlowTest extends ScheduledExecutorServiceTestSupport {
 
     @Test
-    public void schedule_withLongSleepingCallable_blockingOnGet()
-            throws ExecutionException, InterruptedException {
-
+    public void schedule_withLongSleepingCallable_blockingOnGet() throws Exception {
         int delay = 0;
         double expectedResult = 169.4;
 
@@ -59,14 +60,12 @@ public class ScheduledExecutorServiceSlowTest
         double result = future.get();
 
         assertEquals(expectedResult, result, 0);
-        assertEquals(true, future.isDone());
-        assertEquals(false, future.isCancelled());
+        assertTrue(future.isDone());
+        assertFalse(future.isCancelled());
     }
 
     @Test
-    public void schedule_withStatefulRunnable_durable()
-            throws ExecutionException, InterruptedException {
-
+    public void schedule_withStatefulRunnable_durable() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(4);
         IScheduledExecutorService executorService = getScheduledExecutor(instances, "s");
         int waitStateSyncPeriodToAvoidPassiveState = 2000;
@@ -82,14 +81,14 @@ public class ScheduledExecutorServiceSlowTest
                 new StatefulRunnableTask("latch", "runC", "loadC"),
                 key, 10, 10, SECONDS);
 
-        // Wait for task to get scheduled and start
+        // wait for task to get scheduled and start
         latch.await(11, SECONDS);
 
         Thread.sleep(waitStateSyncPeriodToAvoidPassiveState);
 
         instances[1].getLifecycleService().shutdown();
 
-        // Reset latch - task should be running on a replica now
+        // reset latch - task should be running on a replica now
         latch.trySetCount(7);
         latch.await(70, SECONDS);
         future.cancel(false);
@@ -100,8 +99,7 @@ public class ScheduledExecutorServiceSlowTest
     }
 
     @Test
-    public void stats_longRunningTask_durable()
-            throws ExecutionException, InterruptedException {
+    public void stats_longRunningTask_durable() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(4);
 
         String key = generateKeyOwnedBy(instances[1]);
@@ -121,7 +119,8 @@ public class ScheduledExecutorServiceSlowTest
         instances[1].getLifecycleService().shutdown();
 
         lastLatch.await(70, SECONDS);
-        sleepSeconds(4); // Wait for run-cycle to finish before cancelling, in order for stats to get updated.
+        // wait for run-cycle to finish before cancelling, in order for stats to get updated
+        sleepSeconds(4);
         future.cancel(false);
 
         ScheduledTaskStatistics stats = future.getStats();
@@ -129,8 +128,7 @@ public class ScheduledExecutorServiceSlowTest
     }
 
     @Test
-    public void stats_manyRepetitionsTask()
-            throws ExecutionException, InterruptedException {
+    public void stats_manyRepetitionsTask() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(4);
 
         ICountDownLatch latch = instances[0].getCountDownLatch("latch");
@@ -140,42 +138,45 @@ public class ScheduledExecutorServiceSlowTest
         IScheduledFuture future = executorService.scheduleAtFixedRate(
                 new ICountdownLatchRunnableTask("latch"), 0, 10, SECONDS);
 
-
         latch.await(120, SECONDS);
-        sleepSeconds(4); // Wait for run-cycle to finish before cancelling, in order for stats to get updated.
         future.cancel(false);
 
         ScheduledTaskStatistics stats = future.getStats();
-        assertEquals(6, stats.getTotalRuns());
+        assertEquals(6, stats.getTotalRuns(), 1);
     }
 
     @Test
-    public void scheduleRandomPartitions_getAllScheduled_durable()
-            throws ExecutionException, InterruptedException {
+    public void scheduleRandomPartitions_getAllScheduled_durable() throws Exception {
+        ScheduledExecutorConfig scheduledExecutorConfig = new ScheduledExecutorConfig()
+                .setName("s")
+                .setDurability(2);
 
-        HazelcastInstance[] instances = createClusterWithCount(3);
+        Config config = new Config()
+                // keep the partition count low, makes test faster, and chances of partition loss, less
+                .setProperty("hazelcast.partition.count", "10")
+                .addScheduledExecutorConfig(scheduledExecutorConfig);
+
+        HazelcastInstance[] instances = createClusterWithCount(4, config);
         IScheduledExecutorService s = getScheduledExecutor(instances, "s");
 
         int expectedTotal = 11;
         IScheduledFuture[] futures = new IScheduledFuture[expectedTotal];
-        for (int i=0; i < expectedTotal; i++) {
+        for (int i = 0; i < expectedTotal; i++) {
             futures[i] = s.schedule(new PlainCallableTask(i), 0, SECONDS);
         }
 
-        instances[1].getLifecycleService().shutdown();
+        instances[1].shutdown();
 
         assertEquals(expectedTotal, countScheduledTasksOn(s), 0);
 
-        // Verify all tasks
-        for (int i=0; i < expectedTotal; i++) {
+        // verify all tasks
+        for (int i = 0; i < expectedTotal; i++) {
             assertEquals(25.0 + i, futures[i].get());
         }
     }
 
     @Test
-    public void scheduleRandomPartitions_periodicTask_getAllScheduled_durable()
-            throws ExecutionException, InterruptedException {
-
+    public void scheduleRandomPartitions_periodicTask_getAllScheduled_durable() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(3);
         IScheduledExecutorService s = getScheduledExecutor(instances, "s");
         String key = generateKeyOwnedBy(instances[1]);
@@ -185,7 +186,7 @@ public class ScheduledExecutorServiceSlowTest
         runsLatch.trySetCount(2);
 
         int expectedTotal = 11;
-        for (int i=0; i < expectedTotal; i++) {
+        for (int i = 0; i < expectedTotal; i++) {
             s.scheduleOnKeyOwnerAtFixedRate(new ICountdownLatchRunnableTask(runsCounterName), key, 0, 2, SECONDS);
         }
 
@@ -196,9 +197,7 @@ public class ScheduledExecutorServiceSlowTest
     }
 
     @Test
-    public void schedulePeriodicTask_withMultipleSchedulers_atRandomPartitions_thenGetAllScheduled()
-            throws ExecutionException, InterruptedException {
-
+    public void schedulePeriodicTask_withMultipleSchedulers_atRandomPartitions_thenGetAllScheduled() throws Exception {
         String runsCounterName = "runs";
         HazelcastInstance[] instances = createClusterWithCount(3);
         ICountDownLatch runsLatch = instances[0].getCountDownLatch(runsCounterName);
@@ -230,8 +229,7 @@ public class ScheduledExecutorServiceSlowTest
 
     @Test
     public void schedulePeriodicTask_withMultipleSchedulers_atRandomPartitions_shutdownOrDestroy_thenGetAllScheduled()
-            throws ExecutionException, InterruptedException {
-
+            throws Exception {
         String runsCounterName = "runs";
         HazelcastInstance[] instances = createClusterWithCount(3);
         ICountDownLatch runsLatch = instances[0].getCountDownLatch(runsCounterName);
@@ -262,14 +260,11 @@ public class ScheduledExecutorServiceSlowTest
             actualTotal += countScheduledTasksOn(getScheduledExecutor(instances, "scheduler_" + i));
         }
 
-
-        assertEquals(expectedTotal - 3 /*numOfShutdownOrDestroy*/ * numOfTasks, actualTotal, 0);
+        assertEquals(expectedTotal - 3 * numOfTasks, actualTotal, 0);
     }
 
     @Test
-    public void schedulePeriodicTask_withMultipleSchedulers_atRandomPartitions_killMember_thenGetAllScheduled()
-            throws ExecutionException, InterruptedException {
-
+    public void schedulePeriodicTask_withMultipleSchedulers_atRandomPartitions_killMember_thenGetAllScheduled() throws Exception {
         String runsCounterName = "runs";
         HazelcastInstance[] instances = createClusterWithCount(10);
         ICountDownLatch runsLatch = instances[0].getCountDownLatch(runsCounterName);
@@ -302,9 +297,7 @@ public class ScheduledExecutorServiceSlowTest
     }
 
     @Test
-    public void cancelUninterruptedTask_waitUntilRunCompleted_checkStatusIsCancelled()
-            throws ExecutionException, InterruptedException {
-
+    public void cancelUninterruptedTask_waitUntilRunCompleted_checkStatusIsCancelled() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(1);
 
         String runFinishedLatchName = "runFinishedLatch";
@@ -312,8 +305,7 @@ public class ScheduledExecutorServiceSlowTest
         latch.trySetCount(1);
 
         IScheduledExecutorService executorService = getScheduledExecutor(instances, "s");
-        IScheduledFuture future = executorService.scheduleAtFixedRate(
-                new HotLoopBusyTask(runFinishedLatchName), 0, 1, SECONDS);
+        IScheduledFuture future = executorService.scheduleAtFixedRate(new HotLoopBusyTask(runFinishedLatchName), 0, 1, SECONDS);
 
         assertFalse(future.isCancelled());
         assertFalse(future.isDone());
@@ -323,22 +315,19 @@ public class ScheduledExecutorServiceSlowTest
         assertTrue(future.isCancelled());
         assertTrue(future.isDone());
 
-        // Even though we cancelled the task is current task is still running.
-        // Wait till the task is actually done
+        // wait till the task is actually done, since even though we cancelled the task is current task is still running
         latch.await(60, SECONDS);
 
-        // Make sure SyncState goes through
+        // make sure SyncState goes through
         sleepSeconds(10);
 
-        // Check once more that the task status is consistent
+        // check once more that the task status is consistent
         assertTrue(future.isCancelled());
         assertTrue(future.isDone());
     }
 
     @Test
-    public void cancelUninterruptedTask_waitUntilRunCompleted_killMember_checkStatusIsCancelled()
-            throws ExecutionException, InterruptedException {
-
+    public void cancelUninterruptedTask_waitUntilRunCompleted_killMember_checkStatusIsCancelled() throws Exception {
         HazelcastInstance[] instances = createClusterWithCount(2);
 
         String key = generateKeyOwnedBy(instances[1]);
@@ -359,16 +348,15 @@ public class ScheduledExecutorServiceSlowTest
         assertTrue(future.isCancelled());
         assertTrue(future.isDone());
 
-        // Even though we cancelled the task is current task is still running.
-        // Wait till the task is actually done
+        // wait till the task is actually done, since even though we cancelled the task is current task is still running
         latch.await(60, SECONDS);
 
-        // Make sure SyncState goes through
+        // make sure SyncState goes through
         sleepSeconds(10);
 
         instances[1].getLifecycleService().terminate();
 
-        // Check once more that the task status is consistent
+        // check once more that the task status is consistent
         assertTrue(future.isCancelled());
         assertTrue(future.isDone());
     }
@@ -386,16 +374,67 @@ public class ScheduledExecutorServiceSlowTest
 
         assertTrueEventually(new AllTasksRunningWithinNumOfNodes(scheduler, 1));
 
-        // Start a second member
+        // start a second member
         HazelcastInstance second = factory.newHazelcastInstance();
         waitAllForSafeState(first, second);
 
         assertTrueEventually(new AllTasksRunningWithinNumOfNodes(scheduler, 2));
 
-        // Kill the second member, tasks should now get rescheduled back in first member
+        // kill the second member, tasks should now get rescheduled back in first member
         second.getLifecycleService().terminate();
         waitAllForSafeState(first);
 
         assertTrueEventually(new AllTasksRunningWithinNumOfNodes(scheduler, 1));
+    }
+
+    @Test(timeout = 1800000)
+    public void schedule_thenDisposeLeakTest() {
+        Config config = new Config()
+                .addScheduledExecutorConfig(new ScheduledExecutorConfig()
+                        .setName("s")
+                        .setCapacity(10000));
+
+        HazelcastInstance[] instances = createClusterWithCount(2, config);
+        final IScheduledExecutorService executorService = getScheduledExecutor(instances, "s");
+
+        final AtomicBoolean running = new AtomicBoolean(true);
+        long counter = 0;
+        long limit = 2000000;
+
+        Executors.newSingleThreadExecutor().submit(new Runnable() {
+            @Override
+            public void run() {
+                while (running.get()) {
+                    for (Collection<IScheduledFuture<Object>> collection : executorService.getAllScheduledFutures().values()) {
+                        for (IScheduledFuture future : collection) {
+                            if (future.getStats().getTotalRuns() >= 1) {
+                                future.dispose();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        while (running.get()) {
+            try {
+                executorService.schedule(new PlainCallableTask(), 1, SECONDS);
+                Thread.yield();
+
+                if (counter++ % 1000 == 0) {
+                    System.out.println("Tasks: " + counter);
+                }
+
+                if (counter >= limit) {
+                    running.set(false);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                running.set(false);
+            }
+        }
+
+        // wait for running tasks to finish, keeping log clean of PassiveMode exceptions
+        sleepSeconds(5);
     }
 }

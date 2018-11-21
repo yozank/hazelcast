@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.hazelcast.cache.HazelcastCacheManager;
 import com.hazelcast.cache.HazelcastCachingProvider;
 import com.hazelcast.cache.impl.HazelcastServerCachingProvider;
 import com.hazelcast.cache.impl.ICacheService;
+import com.hazelcast.cache.jsr.JsrTestUtil;
 import com.hazelcast.config.CacheSimpleConfig.ExpiryPolicyFactoryConfig;
 import com.hazelcast.config.CacheSimpleConfig.ExpiryPolicyFactoryConfig.DurationConfig;
 import com.hazelcast.config.CacheSimpleConfig.ExpiryPolicyFactoryConfig.TimedExpiryPolicyFactoryConfig;
@@ -27,15 +28,11 @@ import com.hazelcast.config.CacheSimpleConfig.ExpiryPolicyFactoryConfig.TimedExp
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.HazelcastInstanceFactory;
-import com.hazelcast.instance.Node;
-import com.hazelcast.instance.TestUtil;
-import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.QuickTest;
-import com.hazelcast.util.EmptyStatement;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -81,10 +78,14 @@ public class CacheConfigTest extends HazelcastTestSupport {
     private final URL configUrl2 = getClass().getClassLoader().getResource("test-hazelcast-jcache2.xml");
 
     @Before
+    public void setUp() {
+        JsrTestUtil.setup();
+    }
+
     @After
     public void cleanup() {
         HazelcastInstanceFactory.terminateAll();
-        Caching.getCachingProvider().close();
+        JsrTestUtil.cleanup();
     }
 
     @Test
@@ -501,7 +502,7 @@ public class CacheConfigTest extends HazelcastTestSupport {
             cacheManager.createCache(cacheName, (Configuration<Object, Object>) null);
             fail("NullPointerException expected");
         } catch (NullPointerException expected) {
-            EmptyStatement.ignore(expected);
+            ignore(expected);
         }
     }
 
@@ -547,13 +548,7 @@ public class CacheConfigTest extends HazelcastTestSupport {
     }
 
     private ICacheService getCacheService(HazelcastInstance instance) {
-        Node node = TestUtil.getNode(instance);
-        return node.getNodeEngine().getService(ICacheService.SERVICE_NAME);
-    }
-
-    private NodeEngine getNodeEngine(HazelcastInstance instance) {
-        Node node = TestUtil.getNode(instance);
-        return node.getNodeEngine();
+        return getNodeEngineImpl(instance).getService(ICacheService.SERVICE_NAME);
     }
 
     @Test

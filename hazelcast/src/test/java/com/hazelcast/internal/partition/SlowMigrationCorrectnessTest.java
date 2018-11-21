@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,15 +49,17 @@ import static org.junit.Assert.assertTrue;
 @Ignore(value = "https://github.com/hazelcast/hazelcast/issues/9828")
 public class SlowMigrationCorrectnessTest extends AbstractMigrationCorrectnessTest {
 
-    @Parameters(name = "backups:{0},nodes:{1}")
+    @Parameters(name = "backups:{0},nodes:{1},fragmented:{2}")
     public static Collection<Object[]> parameters() {
-        return Arrays.asList(new Object[][] {
-                {1, 2},
-                {1, InternalPartition.MAX_REPLICA_COUNT},
-                {2, 3},
-                {2, InternalPartition.MAX_REPLICA_COUNT},
-                {3, 4},
-                {3, InternalPartition.MAX_REPLICA_COUNT}
+        return Arrays.asList(new Object[][]{
+                {1, 2, true},
+                {1, InternalPartition.MAX_REPLICA_COUNT, true},
+                {2, 3, true},
+                {2, InternalPartition.MAX_REPLICA_COUNT, true},
+                {3, 4, true},
+                {3, InternalPartition.MAX_REPLICA_COUNT, true},
+                {3, 4, false},
+                {3, InternalPartition.MAX_REPLICA_COUNT, false},
         });
     }
 

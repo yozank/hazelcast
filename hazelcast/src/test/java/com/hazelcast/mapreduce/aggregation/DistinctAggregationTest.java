@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -36,13 +35,12 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
-@Ignore
 public class DistinctAggregationTest extends AbstractAggregationTest {
 
     @Test
     public void testDistinctAggregationWithPredicates() {
         String mapName = randomMapName();
-        IMap<Integer, Car> map = HAZELCAST_INSTANCE.getMap(mapName);
+        IMap<Integer, Car> map = hazelcastInstance.getMap(mapName);
 
         Car vw1999 = Car.newCar(1999, "VW");
         Car bmw2000 = Car.newCar(2000, "BMW");
@@ -60,6 +58,7 @@ public class DistinctAggregationTest extends AbstractAggregationTest {
     }
 
     private static class Car implements Serializable {
+
         private int buildYear;
         private String brand;
 
@@ -72,14 +71,19 @@ public class DistinctAggregationTest extends AbstractAggregationTest {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof Car)) return false;
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof Car)) {
+                return false;
+            }
 
             Car car = (Car) o;
 
-            if (buildYear != car.buildYear) return false;
+            if (buildYear != car.buildYear) {
+                return false;
+            }
             return brand.equals(car.brand);
-
         }
 
         @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.HazelcastOverloadException;
 import com.hazelcast.core.IExecutorService;
 import com.hazelcast.core.IMap;
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -100,11 +102,14 @@ public class ClientMaxAllowedInvocationTest extends ClientTestSupport {
 
         @Override
         public Object call() throws Exception {
+            ILogger logger = Logger.getLogger(getClass());
             try {
-
+                logger.info("SleepyProcessor(" + this + ") sleeping for " + millis + " milliseconds");
                 Thread.sleep(millis);
+                logger.info("SleepyProcessor(" + this + ") woke up.");
             } catch (InterruptedException e) {
                 //ignored
+                logger.info("SleepyProcessor(" + this + ") is interrupted.");
             }
             return null;
         }
@@ -150,17 +155,17 @@ public class ClientMaxAllowedInvocationTest extends ClientTestSupport {
         String name = randomString();
         IMap map = client.getMap(name);
 
-        IExecutorService executorService = client.getExecutorService(randomString());
-        for (int i = 0; i < MAX_ALLOWED - 1; i++) {
-            executorService.submit(new SleepyProcessor(Integer.MAX_VALUE));
-        }
-
-        ClientDelegatingFuture future = (ClientDelegatingFuture) executorService.submit(new SleepyProcessor(0));
         CountDownLatch countDownLatch = new CountDownLatch(1);
         SleepyCallback sleepyCallback = new SleepyCallback(countDownLatch);
-        registerCallbackCall.call(future, sleepyCallback);
-        future.get();
         try {
+            IExecutorService executorService = client.getExecutorService(randomString());
+            for (int i = 0; i < MAX_ALLOWED - 1; i++) {
+                executorService.submit(new SleepyProcessor(Integer.MAX_VALUE));
+            }
+
+            ClientDelegatingFuture future = (ClientDelegatingFuture) executorService.submit(new SleepyProcessor(0));
+            registerCallbackCall.call(future, sleepyCallback);
+            future.get();
             map.get(1);
         } finally {
             countDownLatch.countDown();
@@ -211,12 +216,12 @@ public class ClientMaxAllowedInvocationTest extends ClientTestSupport {
         CountDownLatch countDownLatch = new CountDownLatch(1);
         SleepyCallback sleepyCallback = new SleepyCallback(countDownLatch);
 
-        for (int i = 0; i < MAX_ALLOWED; i++) {
-            ClientDelegatingFuture future = (ClientDelegatingFuture) executorService.submit(new SleepyProcessor(0));
-            registerCallbackCall.call(future, sleepyCallback);
-            future.get();
-        }
         try {
+            for (int i = 0; i < MAX_ALLOWED; i++) {
+                ClientDelegatingFuture future = (ClientDelegatingFuture) executorService.submit(new SleepyProcessor(0));
+                registerCallbackCall.call(future, sleepyCallback);
+                future.get();
+            }
             map.get(1);
         } finally {
             countDownLatch.countDown();
@@ -228,7 +233,7 @@ public class ClientMaxAllowedInvocationTest extends ClientTestSupport {
     }
 
     static class SleepyCallback implements ExecutionCallback<ClientMessage> {
-
+        final ILogger logger = Logger.getLogger(getClass());
         final CountDownLatch countDownLatch;
 
         public SleepyCallback(CountDownLatch countDownLatch) {
@@ -238,15 +243,18 @@ public class ClientMaxAllowedInvocationTest extends ClientTestSupport {
         @Override
         public void onResponse(ClientMessage response) {
             try {
+                logger.info("SleepyCallback onResponse entered. Will await for latch.");
                 countDownLatch.await();
+                logger.info("SleepyCallback onResponse latch wait finished.");
             } catch (InterruptedException e) {
                 //ignored
+                logger.info("SleepyCallback onResponse is interrupted.");
             }
         }
 
         @Override
         public void onFailure(Throwable t) {
-
+            logger.info("SleepyCallback onFailure is entered.");
         }
     }
 }

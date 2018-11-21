@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,19 @@ package com.hazelcast.map.impl;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.DistributedObject;
 import com.hazelcast.internal.cluster.ClusterStateListener;
+import com.hazelcast.internal.cluster.ClusterVersionListener;
 import com.hazelcast.map.impl.event.MapEventPublishingService;
 import com.hazelcast.monitor.LocalMapStats;
 import com.hazelcast.spi.ClientAwareService;
+import com.hazelcast.spi.DistributedObjectNamespace;
 import com.hazelcast.spi.EventFilter;
 import com.hazelcast.spi.EventPublishingService;
 import com.hazelcast.spi.EventRegistration;
+import com.hazelcast.spi.FragmentedMigrationAwareService;
 import com.hazelcast.spi.ManagedService;
-import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.NotifiableEventListener;
+import com.hazelcast.spi.ObjectNamespace;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.PartitionMigrationEvent;
@@ -37,6 +40,7 @@ import com.hazelcast.spi.PostJoinAwareService;
 import com.hazelcast.spi.QuorumAwareService;
 import com.hazelcast.spi.RemoteService;
 import com.hazelcast.spi.ReplicationSupportingService;
+import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.spi.SplitBrainHandlerService;
 import com.hazelcast.spi.StatisticsAwareService;
 import com.hazelcast.spi.TransactionalService;
@@ -44,8 +48,10 @@ import com.hazelcast.spi.impl.CountingMigrationAwareService;
 import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.transaction.TransactionalObject;
 import com.hazelcast.transaction.impl.Transaction;
+import com.hazelcast.version.Version;
 import com.hazelcast.wan.WanReplicationEvent;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 
@@ -68,10 +74,11 @@ import static com.hazelcast.core.EntryEventType.INVALIDATION;
  * @see MapClientAwareService
  * @see MapServiceContext
  */
-public class MapService implements ManagedService, MigrationAwareService,
+public class MapService implements ManagedService, FragmentedMigrationAwareService,
         TransactionalService, RemoteService, EventPublishingService<Object, ListenerAdapter>,
-        PostJoinAwareService, SplitBrainHandlerService, ReplicationSupportingService, StatisticsAwareService,
-        PartitionAwareService, ClientAwareService, QuorumAwareService, NotifiableEventListener, ClusterStateListener {
+        PostJoinAwareService, SplitBrainHandlerService, ReplicationSupportingService, StatisticsAwareService<LocalMapStats>,
+        PartitionAwareService, ClientAwareService, QuorumAwareService, NotifiableEventListener, ClusterStateListener,
+        ClusterVersionListener {
 
     public static final String SERVICE_NAME = "hz:impl:mapService";
 
@@ -86,8 +93,10 @@ public class MapService implements ManagedService, MigrationAwareService,
     protected StatisticsAwareService statisticsAwareService;
     protected PartitionAwareService partitionAwareService;
     protected ClientAwareService clientAwareService;
-    protected QuorumAwareService quorumAwareService;
+    protected MapQuorumAwareService quorumAwareService;
     protected MapServiceContext mapServiceContext;
+    // RU_COMPAT_V3_9
+    protected MapIndexSynchronizer mapIndexSynchronizer;
 
     public MapService() {
     }
@@ -113,8 +122,24 @@ public class MapService implements ManagedService, MigrationAwareService,
     }
 
     @Override
+    public Collection<ServiceNamespace> getAllServiceNamespaces(PartitionReplicationEvent event) {
+        return migrationAwareService.getAllServiceNamespaces(event);
+    }
+
+    @Override
+    public boolean isKnownServiceNamespace(ServiceNamespace namespace) {
+        return migrationAwareService.isKnownServiceNamespace(namespace);
+    }
+
+    @Override
     public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
         return migrationAwareService.prepareReplicationOperation(event);
+    }
+
+    @Override
+    public Operation prepareReplicationOperation(PartitionReplicationEvent event,
+            Collection<ServiceNamespace> namespaces) {
+        return migrationAwareService.prepareReplicationOperation(event, namespaces);
     }
 
     @Override
@@ -145,6 +170,7 @@ public class MapService implements ManagedService, MigrationAwareService,
     @Override
     public void destroyDistributedObject(String objectName) {
         remoteService.destroyDistributedObject(objectName);
+        quorumAwareService.onDestroy(objectName);
     }
 
     @Override
@@ -224,5 +250,16 @@ public class MapService implements ManagedService, MigrationAwareService,
     @Override
     public void onClusterStateChange(ClusterState newState) {
         mapServiceContext.onClusterStateChange(newState);
+    }
+
+    @Override
+    // RU_COMPAT_V3_9
+    // We wont need to sync the indexes in 3.10+ clusters.
+    public void onClusterVersionChange(Version newVersion) {
+        mapIndexSynchronizer.onClusterVersionChange(newVersion);
+    }
+
+    public static ObjectNamespace getObjectNamespace(String mapName) {
+        return new DistributedObjectNamespace(SERVICE_NAME, mapName);
     }
 }

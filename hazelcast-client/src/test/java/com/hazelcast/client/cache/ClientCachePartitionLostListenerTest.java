@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.cache.impl.CacheService;
 import com.hazelcast.cache.impl.HazelcastServerCachingProvider;
 import com.hazelcast.cache.impl.event.CachePartitionLostEvent;
 import com.hazelcast.cache.impl.event.CachePartitionLostListener;
+import com.hazelcast.client.HazelcastClientManager;
 import com.hazelcast.client.cache.impl.HazelcastClientCachingProvider;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.CacheConfig;
@@ -63,6 +64,7 @@ public class ClientCachePartitionLostListenerTest extends HazelcastTestSupport {
     @After
     public void tearDown() {
         hazelcastFactory.terminateAll();
+        HazelcastClientManager.shutdownAll();
     }
 
     @Test
@@ -80,9 +82,9 @@ public class ClientCachePartitionLostListenerTest extends HazelcastTestSupport {
         final ICache iCache = cache.unwrap(ICache.class);
 
         iCache.addPartitionLostListener(new CachePartitionLostListener() {
-           @Override
-           public void partitionLost(CachePartitionLostEvent event) {
-           }
+            @Override
+            public void partitionLost(CachePartitionLostEvent event) {
+            }
         });
 
         assertRegistrationsSizeEventually(instance, cacheName, 1);
@@ -177,7 +179,7 @@ public class ClientCachePartitionLostListenerTest extends HazelcastTestSupport {
     }
 
     private void assertCachePartitionLostEventEventually(final EventCollectingCachePartitionLostListener listener,
-                                                       final int partitionId) {
+                                                         final int partitionId) {
         assertTrueEventually(new AssertTask() {
             @Override
             public void run()
@@ -205,10 +207,11 @@ public class ClientCachePartitionLostListenerTest extends HazelcastTestSupport {
         });
     }
 
-    private class EventCollectingCachePartitionLostListener
+    private static class EventCollectingCachePartitionLostListener
             implements CachePartitionLostListener {
 
-        private final List<CachePartitionLostEvent> events = Collections.synchronizedList(new LinkedList<CachePartitionLostEvent>());
+        private final List<CachePartitionLostEvent> events
+                = Collections.synchronizedList(new LinkedList<CachePartitionLostEvent>());
 
         public EventCollectingCachePartitionLostListener() {
         }
@@ -224,5 +227,4 @@ public class ClientCachePartitionLostListenerTest extends HazelcastTestSupport {
             }
         }
     }
-
 }

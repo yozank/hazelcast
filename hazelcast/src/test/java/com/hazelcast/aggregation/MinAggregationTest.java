@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,7 +84,8 @@ public class MinAggregationTest {
             aggregation.accumulate(createExtractableEntryWithValue(value));
         }
 
-        Aggregator<Map.Entry<ValueContainer, ValueContainer>, BigDecimal> resultAggregation = Aggregators.bigDecimalMin("bigDecimal");
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, BigDecimal> resultAggregation
+                = Aggregators.bigDecimalMin("bigDecimal");
         resultAggregation.combine(aggregation);
         BigDecimal result = resultAggregation.aggregate();
 
@@ -120,7 +121,8 @@ public class MinAggregationTest {
             aggregation.accumulate(createExtractableEntryWithValue(value));
         }
 
-        Aggregator<Map.Entry<ValueContainer, ValueContainer>, BigInteger> resultAggregation = Aggregators.bigIntegerMin("bigInteger");
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, BigInteger> resultAggregation
+                = Aggregators.bigIntegerMin("bigInteger");
         resultAggregation.combine(aggregation);
         BigInteger result = resultAggregation.aggregate();
 
@@ -264,7 +266,8 @@ public class MinAggregationTest {
             aggregation.accumulate(createExtractableEntryWithValue(value));
         }
 
-        Aggregator<Map.Entry<ValueContainer, ValueContainer>, String> resultAggregation = Aggregators.comparableMin("stringValue");
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, String> resultAggregation
+                = Aggregators.comparableMin("stringValue");
         resultAggregation.combine(aggregation);
         String result = resultAggregation.aggregate();
 
@@ -302,9 +305,31 @@ public class MinAggregationTest {
             aggregation.accumulate(createExtractableEntryWithValue(value));
         }
 
-        Aggregator<Map.Entry<ValueContainer, ValueContainer>, String> resultAggregation = Aggregators.comparableMin("stringValue");
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, String> resultAggregation
+                = Aggregators.comparableMin("stringValue");
         resultAggregation.combine(aggregation);
         String result = resultAggregation.aggregate();
+
+        assertThat(result, is(equalTo(expectation)));
+    }
+
+    @Test(timeout = TimeoutInMillis.MINUTE)
+    public void testMinBy_withAttributePath_withNull() {
+        List<ValueContainer> values = sampleValueContainers(STRING);
+        Collections.sort(values);
+        Map.Entry<ValueContainer, ValueContainer> expectation = createExtractableEntryWithValue(values.get(0));
+        values.add(null);
+
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, Map.Entry<ValueContainer, ValueContainer>> aggregation
+                = Aggregators.minBy("stringValue");
+        for (ValueContainer value : values) {
+            aggregation.accumulate(createExtractableEntryWithValue(value));
+        }
+
+        Aggregator<Map.Entry<ValueContainer, ValueContainer>, Map.Entry<ValueContainer, ValueContainer>> resultAggregation
+                = Aggregators.minBy("stringValue");
+        resultAggregation.combine(aggregation);
+        Map.Entry<ValueContainer, ValueContainer> result = resultAggregation.aggregate();
 
         assertThat(result, is(equalTo(expectation)));
     }

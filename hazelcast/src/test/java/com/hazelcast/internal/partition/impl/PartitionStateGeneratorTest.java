@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import org.junit.runner.RunWith;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +62,7 @@ import static org.junit.Assert.assertTrue;
 @Category({QuickTest.class, ParallelTest.class})
 public class PartitionStateGeneratorTest {
 
-    private static final MemberVersion VERSION = MemberVersion.of(BuildInfoProvider.BUILD_INFO.getVersion());
+    private static final MemberVersion VERSION = MemberVersion.of(BuildInfoProvider.getBuildInfo().getVersion());
     private static final boolean PRINT_STATE = false;
 
     @Test
@@ -161,6 +162,51 @@ public class PartitionStateGeneratorTest {
         assertTrue(partitionGroupConfig.isEnabled());
         assertEquals(PartitionGroupConfig.MemberGroupType.CUSTOM, partitionGroupConfig.getGroupType());
         assertEquals(2, partitionGroupConfig.getMemberGroupConfigs().size());
+    }
+
+    @Test
+    public void testOnlyUnassignedArrangement() throws Exception {
+        List<Member> memberList = createMembers(10, 1);
+        MemberGroupFactory memberGroupFactory = new SingleMemberGroupFactory();
+        Collection<MemberGroup> groups = memberGroupFactory.createMemberGroups(memberList);
+
+        PartitionStateGenerator generator = new PartitionStateGeneratorImpl();
+        Address[][] state = generator.arrange(groups, emptyPartitionArray(100));
+
+        // unassign some partitions entirely
+        Collection<Integer> unassignedPartitions = new ArrayList<Integer>();
+        for (int i = 0; i < state.length; i++) {
+            if (i % 3 == 0) {
+                state[i] = new Address[InternalPartition.MAX_REPLICA_COUNT];
+                unassignedPartitions.add(i);
+            }
+        }
+
+        // unassign only backup replicas of some partitions
+        for (int i = 0; i < state.length; i++) {
+            if (i % 10 == 0) {
+                Arrays.fill(state[i], 1, InternalPartition.MAX_REPLICA_COUNT, null);
+            }
+        }
+
+        InternalPartition[] partitions = toPartitionArray(state);
+
+        state = generator.arrange(groups, partitions, unassignedPartitions);
+
+        for (int pid = 0; pid < state.length; pid++) {
+            Address[] addresses = state[pid];
+
+            if (unassignedPartitions.contains(pid)) {
+                for (Address address : addresses) {
+                    assertNotNull(address);
+                }
+            } else {
+                InternalPartition partition = partitions[pid];
+                for (int replicaIx = 0; replicaIx < InternalPartition.MAX_REPLICA_COUNT; replicaIx++) {
+                    assertEquals(partition.getReplicaAddress(replicaIx), addresses[replicaIx]);
+                }
+            }
+        }
     }
 
     private void test(MemberGroupFactory memberGroupFactory) throws Exception {
@@ -338,12 +384,12 @@ public class PartitionStateGeneratorTest {
         }
         final float r = 2f;
         assertTrue("Too low partition count! \nOwned: " + count + ", Avg: " + average
-                + ", \nPartitionCount: " + partitionCount + ", Replica: " + replica +
-                ", \nOwner: " + owner, count >= (float) (average) / r);
+                + ", \nPartitionCount: " + partitionCount + ", Replica: " + replica
+                + ", \nOwner: " + owner, count >= (float) (average) / r);
 
         assertTrue("Too high partition count! \nOwned: " + count + ", Avg: " + average
-                + ", \nPartitionCount: " + partitionCount + ", Replica: " + replica +
-                ", \nOwner: " + owner, count <= (float) (average) * r);
+                + ", \nPartitionCount: " + partitionCount + ", Replica: " + replica
+                + ", \nOwner: " + owner, count <= (float) (average) * r);
     }
 
     private static void printTable(Map<MemberGroup, GroupPartitionState> groupPartitionStates, int replicaCount) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import com.hazelcast.config.Config;
 import com.hazelcast.core.IMap;
 import com.hazelcast.instance.HazelcastInstanceProxy;
 import com.hazelcast.internal.serialization.InternalSerializationService;
-import com.hazelcast.internal.serialization.impl.SerializationServiceV1;
 import com.hazelcast.map.AbstractEntryProcessor;
 import com.hazelcast.map.impl.LazyMapEntry;
 import com.hazelcast.nio.serialization.Data;
@@ -289,21 +288,28 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     @Test
     public void portableArrayFirst_withAny_primitiveArrayAtTheEnd2() throws IOException {
-        Portable[] expected = new Portable[]{((WheelPortable) PORSCHE.wheels[0]).chip,
-                ((WheelPortable) PORSCHE.wheels[1]).chip};
+        Portable[] expected = new Portable[]{
+                ((WheelPortable) PORSCHE.wheels[0]).chip,
+                ((WheelPortable) PORSCHE.wheels[1]).chip,
+        };
         assertArrayEquals(expected, reader(PORSCHE).readPortableArray("wheels[any].chip"));
     }
 
     @Test
     public void portableArrayFirst_withAny_primitiveArrayAtTheEnd3() throws IOException {
-        Portable[] expected = new Portable[]{((WheelPortable) PORSCHE.wheels[0]).chips[1],
-                ((WheelPortable) PORSCHE.wheels[1]).chips[1]};
+        Portable[] expected = new Portable[]{
+                ((WheelPortable) PORSCHE.wheels[0]).chips[1],
+                ((WheelPortable) PORSCHE.wheels[1]).chips[1],
+        };
         assertArrayEquals(expected, reader(PORSCHE).readPortableArray("wheels[any].chips[1]"));
     }
 
     @Test
     public void portableArrayFirst_withAny_primitiveArrayAtTheEnd5() throws IOException {
-        String[] expected = {"front", "rear"};
+        String[] expected = {
+                "front",
+                "rear",
+        };
         assertArrayEquals(expected, reader(PORSCHE).readUTFArray("wheels[any].name"));
     }
 
@@ -345,7 +351,7 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void reusingTheReader_multipleCalls_stateResetCorreclty() throws IOException {
+    public void reusingTheReader_multipleCalls_stateResetCorrectly() throws IOException {
         PortableReader reader = reader(PORSCHE);
         assertEquals("rear", reader.readUTF("wheels[1].name"));
         assertEquals(300, reader.readInt("engine.power"));
@@ -419,8 +425,8 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     static class CarPortable implements Portable {
 
-        final static int FACTORY_ID = 1;
-        final static int ID = 5;
+        static final int FACTORY_ID = 1;
+        static final int ID = 5;
 
         int power;
         String name;
@@ -493,8 +499,8 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     static class EnginePortable implements Portable, Comparable<EnginePortable> {
 
-        final static int FACTORY_ID = 1;
-        final static int ID = 8;
+        static final int FACTORY_ID = 1;
+        static final int ID = 8;
 
         Integer power;
         ChipPortable chip;
@@ -556,8 +562,8 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     static class ChipPortable implements Portable, Comparable<ChipPortable> {
 
-        final static int FACTORY_ID = 1;
-        final static int ID = 6;
+        static final int FACTORY_ID = 1;
+        static final int ID = 6;
 
         Integer power;
 
@@ -615,15 +621,15 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     static class WheelPortable implements Portable, Comparable<WheelPortable> {
 
-        final static int FACTORY_ID = 1;
-        final static int ID = 7;
+        static final int FACTORY_ID = 1;
+        static final int ID = 7;
 
         String name;
         ChipPortable chip;
-        Portable chips[];
-        Portable emptyChips[];
-        Portable nullChips[];
-        int serial[];
+        Portable[] chips;
+        Portable[] emptyChips;
+        Portable[] nullChips;
+        int[] serial;
 
         public WheelPortable() {
         }
@@ -702,7 +708,7 @@ public class DefaultPortableReaderQuickTest extends HazelcastTestSupport {
 
     public static class TestPortableFactory implements PortableFactory {
 
-        public final static int ID = 1;
+        public static final int ID = 1;
 
         @Override
         public Portable create(int classId) {

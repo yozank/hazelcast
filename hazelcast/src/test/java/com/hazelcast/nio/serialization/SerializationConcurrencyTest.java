@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Category(QuickTest.class)
 public class SerializationConcurrencyTest {
 
-    static final short FACTORY_ID = 1;
+    public static final short FACTORY_ID = 1;
 
     @Test
     public void test() throws IOException, InterruptedException {
@@ -50,8 +50,9 @@ public class SerializationConcurrencyTest {
                         return new PortablePerson();
                     case 2:
                         return new PortableAddress();
+                    default:
+                        throw new IllegalArgumentException();
                 }
-                throw new IllegalArgumentException();
             }
         };
         final SerializationService ss = new DefaultSerializationServiceBuilder()
@@ -89,7 +90,8 @@ public class SerializationConcurrencyTest {
                             Data dataPortableAddress = ss.toData(portableAddress);
                             Assert.assertEquals(portableAddress, ss.toObject(dataPortableAddress));
 
-                            PortablePerson portablePerson = new PortablePerson(63 + rnd(), 167L + rnd(), "ahmet", portableAddress);
+                            PortablePerson portablePerson = new PortablePerson(
+                                    63 + rnd(), 167L + rnd(), "ahmet", portableAddress);
                             Data dataPortablePerson = ss.toData(portablePerson);
                             Assert.assertEquals(portablePerson, ss.toObject(dataPortablePerson));
                         }
@@ -114,7 +116,7 @@ public class SerializationConcurrencyTest {
         }
     }
 
-    static class Address implements DataSerializable {
+    public static class Address implements DataSerializable {
 
         private String street;
 
@@ -169,7 +171,7 @@ public class SerializationConcurrencyTest {
         }
     }
 
-    static class Person implements DataSerializable {
+    public static class Person implements DataSerializable {
 
         private int age;
 
@@ -254,7 +256,7 @@ public class SerializationConcurrencyTest {
         }
     }
 
-    static class PortableAddress implements Portable {
+    public static class PortableAddress implements Portable {
 
         private String street;
 
@@ -317,7 +319,7 @@ public class SerializationConcurrencyTest {
         }
     }
 
-    static class PortablePerson implements Portable {
+    public static class PortablePerson implements Portable {
 
         private int age;
 

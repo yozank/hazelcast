@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static java.util.Collections.emptyList;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -54,8 +55,8 @@ import static org.junit.Assert.assertTrue;
 @Category({QuickTest.class, ParallelTest.class})
 public class ClientQueueTest extends HazelcastTestSupport {
 
-    private final static int MAX_SIZE_FOR_QUEUE = 8;
-    private final static String QUEUE_WITH_MAX_SIZE = "queueWithMaxSize*";
+    private static final int MAX_SIZE_FOR_QUEUE = 8;
+    private static final String QUEUE_WITH_MAX_SIZE = "queueWithMaxSize*";
 
     private final TestHazelcastFactory hazelcastFactory = new TestHazelcastFactory();
     private HazelcastInstance client;
@@ -337,13 +338,12 @@ public class ClientQueueTest extends HazelcastTestSupport {
         }
 
         Object[] result = q.toArray();
-        assertEquals(offered, result);
+        assertArrayEquals(offered, result);
     }
 
     @Test
-    public void testToPartialArray() {
-        final int maxItems = 74;
-        final int arraySZ = maxItems / 2;
+    public void testToEmptyArray() {
+        final int maxItems = 23;
         IQueue<Integer> q = client.getQueue(randomString());
 
         Object[] offered = new Object[maxItems];
@@ -352,8 +352,23 @@ public class ClientQueueTest extends HazelcastTestSupport {
             offered[i] = i;
         }
 
-        Object[] result = q.toArray(new Object[arraySZ]);
-        assertEquals(offered, result);
+        Object[] result = q.toArray(new Object[0]);
+        assertArrayEquals(offered, result);
+    }
+
+    @Test
+    public void testToPreSizedArray() {
+        final int maxItems = 74;
+        IQueue<Integer> q = client.getQueue(randomString());
+
+        Object[] offered = new Object[maxItems];
+        for (int i = 0; i < maxItems; i++) {
+            q.offer(i);
+            offered[i] = i;
+        }
+
+        Object[] result = q.toArray(new Object[maxItems / 2]);
+        assertArrayEquals(offered, result);
     }
 
     @Test

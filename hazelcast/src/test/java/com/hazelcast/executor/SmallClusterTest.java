@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hazelcast.executor;
 
 import com.hazelcast.config.Config;
@@ -22,6 +23,7 @@ import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.core.IExecutorService;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MultiExecutionCallback;
+import com.hazelcast.nio.serialization.HazelcastSerializationException;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -42,6 +44,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -59,6 +62,7 @@ public class SmallClusterTest extends ExecutorServiceTestSupport {
     @Before
     public void setUp() {
         instances = createHazelcastInstanceFactory(NODE_COUNT).newInstances(new Config());
+        warmUpPartitions(instances);
     }
 
     @Test
@@ -125,7 +129,7 @@ public class SmallClusterTest extends ExecutorServiceTestSupport {
     public void submitToMembers_runnable() {
         int sum = 0;
         Set<Member> membersSet = instances[0].getCluster().getMembers();
-        Member[] members = membersSet.toArray(new Member[membersSet.size()]);
+        Member[] members = membersSet.toArray(new Member[0]);
         Random random = new Random();
 
         ResponseCountingMultiExecutionCallback callback = new ResponseCountingMultiExecutionCallback(instances.length);
@@ -238,7 +242,7 @@ public class SmallClusterTest extends ExecutorServiceTestSupport {
         ResponseCountingMultiExecutionCallback callback = new ResponseCountingMultiExecutionCallback(instances.length);
 
         Set<Member> membersSet = instances[0].getCluster().getMembers();
-        Member[] members = membersSet.toArray(new Member[membersSet.size()]);
+        Member[] members = membersSet.toArray(new Member[0]);
         Random random = new Random();
         String name = "testSubmitToMembersCallable";
         for (HazelcastInstance instance : instances) {
@@ -306,5 +310,48 @@ public class SmallClusterTest extends ExecutorServiceTestSupport {
         public Integer call() throws Exception {
             return ++state;
         }
+    }
+
+    @Test
+    public void submitToAllMembers_NonSerializableResponse() {
+        IExecutorService executorService = instances[0].getExecutorService(randomString());
+        NonSerializableResponseCallable nonSerializableResponseCallable = new NonSerializableResponseCallable();
+
+        final AtomicLong exceptionCount = new AtomicLong();
+        final AtomicLong responseCount = new AtomicLong();
+        final CountDownLatch completedLatch = new CountDownLatch(1);
+        executorService.submitToAllMembers(nonSerializableResponseCallable, new MultiExecutionCallback() {
+            @Override
+            public void onResponse(Member member, Object value) {
+                if (value instanceof HazelcastSerializationException) {
+                    exceptionCount.incrementAndGet();
+                } else {
+                    responseCount.incrementAndGet();
+                }
+            }
+
+            @Override
+            public void onComplete(Map<Member, Object> values) {
+                completedLatch.countDown();
+            }
+        });
+
+        assertOpenEventually(completedLatch);
+        // two exceptions from remote nodes
+        assertEquals(2, exceptionCount.get());
+        // one response from local node since, it does not need to serialize/deserialize the response
+        assertEquals(1, responseCount.get());
+    }
+
+    private static class NonSerializableResponseCallable implements Callable, Serializable {
+
+        @Override
+        public Object call() throws Exception {
+            return new NonSerializableResponse();
+        }
+    }
+
+    private static class NonSerializableResponse {
+
     }
 }

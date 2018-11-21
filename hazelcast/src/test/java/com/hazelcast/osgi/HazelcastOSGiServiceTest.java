@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.osgi.impl.HazelcastInternalOSGiService;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
-import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.SlowTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -43,7 +43,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 @RunWith(HazelcastSerialClassRunner.class)
-@Category(QuickTest.class)
+@Category(SlowTest.class)
 public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
 
     private TestBundle bundle;
@@ -207,8 +207,8 @@ public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
             testBundle = new TestBundle(registerDeregisterListener);
             try {
                 testBundle.start();
-                fail("OSGI service could not be activated because of exception while registering default instance. " +
-                        "It is expected to get `IllegalStateException` here!");
+                fail("OSGI service could not be activated because of exception while registering default instance."
+                        + " It is expected to get `IllegalStateException` here!");
             } catch (IllegalStateException e) {
                 // Since bundle is not active, it is expected to get `IllegalStateException`
             }
@@ -236,8 +236,8 @@ public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
             testBundle = new TestBundle(registerDeregisterListener);
             try {
                 testBundle.start();
-                fail("OSGI service could not be activated because of exception while registering default instance. " +
-                        "It is expected to get `IllegalStateException` here!");
+                fail("OSGI service could not be activated because of exception while registering default instance."
+                        + "It is expected to get `IllegalStateException` here!");
             } catch (IllegalStateException e) {
                 // Since bundle is not active, it is expected to get `IllegalStateException`
             }
@@ -272,16 +272,15 @@ public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
 
         HazelcastOSGiInstance osgiInstance = service.newHazelcastInstance(config);
         assertNotNull(osgiInstance);
-        assertEquals(config, osgiInstance.getConfig());
+        assertEquals(config.getInstanceName(), osgiInstance.getConfig().getInstanceName());
 
         HazelcastInstance instance = osgiInstance.getDelegatedInstance();
         assertNotNull(instance);
-        assertEquals(config, instance.getConfig());
+        assertEquals(config.getInstanceName(), instance.getConfig().getInstanceName());
     }
 
     @Test
-    public void newInstanceRegisteredAsServiceWhenRegistrationIsNotDisabled()
-            throws BundleException {
+    public void newInstanceRegisteredAsServiceWhenRegistrationIsNotDisabled() throws BundleException {
         HazelcastInternalOSGiService service = getService();
 
         service.newHazelcastInstance();
@@ -290,8 +289,7 @@ public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void newInstanceNotRegisteredAsServiceWhenRegistrationIsDisabled()
-            throws BundleException {
+    public void newInstanceNotRegisteredAsServiceWhenRegistrationIsDisabled() throws BundleException {
         String propValue = System.getProperty(HazelcastOSGiService.HAZELCAST_OSGI_REGISTER_DISABLED);
         TestBundle testBundle = null;
         try {
@@ -457,11 +455,11 @@ public class HazelcastOSGiServiceTest extends HazelcastTestSupport {
 
         HazelcastOSGiInstance osgiInstance = service.getHazelcastInstanceByName(INSTANCE_NAME);
         assertNotNull(osgiInstance);
-        assertEquals(config, osgiInstance.getConfig());
+        assertEquals(config.getInstanceName(), osgiInstance.getConfig().getInstanceName());
 
         HazelcastInstance instance = osgiInstance.getDelegatedInstance();
         assertNotNull(instance);
-        assertEquals(config, instance.getConfig());
+        assertEquals(config.getInstanceName(), instance.getConfig().getInstanceName());
     }
 
     @Test

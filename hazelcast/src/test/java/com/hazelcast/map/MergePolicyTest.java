@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,19 +84,18 @@ public class MergePolicyTest extends HazelcastTestSupport {
         IMap<Object, Object> map2 = h2.getMap(mapName);
         map1.put("key1", "value");
         // prevent updating at the same time
-        sleepAtLeastMillis(1);
+        sleepAtLeastMillis(1000);
         map2.put("key1", "LatestUpdatedValue");
         map2.put("key2", "value2");
         // prevent updating at the same time
-        sleepAtLeastMillis(1);
+        sleepAtLeastMillis(1000);
         map1.put("key2", "LatestUpdatedValue2");
 
         // allow merge process to continue
         mergeBlockingLatch.countDown();
 
         assertOpenEventually(lifeCycleListener.mergeFinishedLatch);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         IMap<Object, Object> mapTest = h1.getMap(mapName);
         assertEquals("LatestUpdatedValue", mapTest.get("key1"));
@@ -143,8 +142,7 @@ public class MergePolicyTest extends HazelcastTestSupport {
         mergeBlockingLatch.countDown();
 
         assertOpenEventually(lifeCycleListener.mergeFinishedLatch);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         IMap<Object, Object> mapTest = h2.getMap(mapName);
         assertEquals("higherHitsValue", mapTest.get("key1"));
@@ -184,8 +182,7 @@ public class MergePolicyTest extends HazelcastTestSupport {
         mergeBlockingLatch.countDown();
 
         assertOpenEventually(lifeCycleListener.mergeFinishedLatch);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         IMap<Object, Object> mapTest = h2.getMap(mapName);
         assertEquals("PutIfAbsentValue1", mapTest.get("key1"));
@@ -225,8 +222,7 @@ public class MergePolicyTest extends HazelcastTestSupport {
         mergeBlockingLatch.countDown();
 
         assertOpenEventually(lifeCycleListener.mergeFinishedLatch);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         IMap<Object, Object> mapTest = h2.getMap(mapName);
         assertEquals("passThroughValue", mapTest.get(key));
@@ -235,7 +231,7 @@ public class MergePolicyTest extends HazelcastTestSupport {
     @Test
     public void testCustomMergePolicy() {
         String mapName = randomMapName();
-        Config config = newConfig(TestCustomMergePolicy.class.getName(), mapName);
+        Config config = newConfig(TestCustomMapMergePolicy.class.getName(), mapName);
         HazelcastInstance h1 = Hazelcast.newHazelcastInstance(config);
         HazelcastInstance h2 = Hazelcast.newHazelcastInstance(config);
 
@@ -265,8 +261,7 @@ public class MergePolicyTest extends HazelcastTestSupport {
         mergeBlockingLatch.countDown();
 
         assertOpenEventually(lifeCycleListener.mergeFinishedLatch);
-        assertClusterSizeEventually(2, h1);
-        assertClusterSizeEventually(2, h2);
+        assertClusterSizeEventually(2, h1, h2);
 
         IMap<Object, Object> mapTest = h2.getMap(mapName);
         assertNotNull(mapTest.get(key));

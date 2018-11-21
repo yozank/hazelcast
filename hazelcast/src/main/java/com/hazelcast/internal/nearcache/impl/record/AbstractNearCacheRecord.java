@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
-
 /**
- * Abstract implementation of {@link NearCacheRecord} with value and
- * expiration time as internal state.
+ * Abstract implementation of {@link NearCacheRecord} with value and expiration time as internal state.
  *
  * @param <V> the type of the value stored by this {@link AbstractNearCacheRecord}
  */
@@ -44,8 +42,10 @@ public abstract class AbstractNearCacheRecord<V> implements NearCacheRecord<V> {
             AtomicLongFieldUpdater.newUpdater(AbstractNearCacheRecord.class, "recordState");
 
     protected long creationTime = TIME_NOT_SET;
-    protected long sequence;
-    protected UUID uuid;
+
+    protected volatile int partitionId;
+    protected volatile long sequence;
+    protected volatile UUID uuid;
 
     protected volatile V value;
     protected volatile long expirationTime = TIME_NOT_SET;
@@ -125,29 +125,6 @@ public abstract class AbstractNearCacheRecord<V> implements NearCacheRecord<V> {
     }
 
     @Override
-    public long getInvalidationSequence() {
-        return sequence;
-    }
-
-    @Override
-    public void setInvalidationSequence(long sequence) {
-        this.sequence = sequence;
-    }
-
-    @Override
-    public boolean hasSameUuid(UUID thatUuid) {
-        if (uuid == null || thatUuid == null) {
-            return false;
-        }
-        return uuid.equals(thatUuid);
-    }
-
-    @Override
-    public void setUuid(UUID uuid) {
-        this.uuid = uuid;
-    }
-
-    @Override
     public boolean isIdleAt(long maxIdleMilliSeconds, long now) {
         if (maxIdleMilliSeconds > 0) {
             if (accessTime > TIME_NOT_SET) {
@@ -168,6 +145,36 @@ public abstract class AbstractNearCacheRecord<V> implements NearCacheRecord<V> {
     @Override
     public boolean casRecordState(long expect, long update) {
         return RECORD_STATE.compareAndSet(this, expect, update);
+    }
+
+    @Override
+    public int getPartitionId() {
+        return partitionId;
+    }
+
+    @Override
+    public void setPartitionId(int partitionId) {
+        this.partitionId = partitionId;
+    }
+
+    @Override
+    public long getInvalidationSequence() {
+        return sequence;
+    }
+
+    @Override
+    public void setInvalidationSequence(long sequence) {
+        this.sequence = sequence;
+    }
+
+    @Override
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
+
+    @Override
+    public boolean hasSameUuid(UUID thatUuid) {
+        return uuid != null && thatUuid != null && uuid.equals(thatUuid);
     }
 
     @Override

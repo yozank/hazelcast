@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import com.hazelcast.spi.impl.operationservice.impl.operations.PartitionAwareOpe
 import com.hazelcast.spi.impl.operationservice.impl.operations.PartitionIteratingOperation;
 import com.hazelcast.spi.impl.operationservice.impl.operations.PartitionIteratingOperation.PartitionResponse;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +32,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import static com.hazelcast.spi.impl.operationservice.impl.operations.PartitionAwareFactoryAccessor.extractPartitionAware;
+import static com.hazelcast.util.CollectionUtil.toIntArray;
+import static com.hazelcast.util.MapUtil.createHashMap;
 
 /**
  * Executes an operation on a set of partitions.
+ *
+ * // TODO delete this class in 3.12, replace with {@link InvokeOnPartitionsAsync}
+ * which has the same functionality, but in an async implementation. Allows
+ * for async version of all-partitions operations, such as putAll, clear...
  */
 final class InvokeOnPartitions {
 
@@ -55,15 +60,15 @@ final class InvokeOnPartitions {
         this.serviceName = serviceName;
         this.operationFactory = operationFactory;
         this.memberPartitions = memberPartitions;
-        this.futures = new HashMap<Address, Future>(memberPartitions.size());
+        this.futures = createHashMap(memberPartitions.size());
         int partitionCount = operationService.nodeEngine.getPartitionService().getPartitionCount();
-        this.partitionResults = new HashMap<Integer, Object>(partitionCount);
+        this.partitionResults = createHashMap(partitionCount);
     }
 
     /**
      * Executes all the operations on the partitions.
      */
-    Map<Integer, Object> invoke() throws Exception {
+    <T> Map<Integer, T> invoke() throws Exception {
         ensureNotCallingFromPartitionOperationThread();
 
         invokeOnAllPartitions();
@@ -72,7 +77,7 @@ final class InvokeOnPartitions {
 
         retryFailedPartitions();
 
-        return partitionResults;
+        return (Map<Integer, T>) partitionResults;
     }
 
     private void ensureNotCallingFromPartitionOperationThread() {
@@ -85,8 +90,8 @@ final class InvokeOnPartitions {
         for (Map.Entry<Address, List<Integer>> mp : memberPartitions.entrySet()) {
             Address address = mp.getKey();
             List<Integer> partitions = mp.getValue();
-            PartitionIteratingOperation operation = new PartitionIteratingOperation(operationFactory, partitions);
-            Future future = operationService.createInvocationBuilder(serviceName, operation, address)
+            PartitionIteratingOperation op = new PartitionIteratingOperation(operationFactory, toIntArray(partitions));
+            Future future = operationService.createInvocationBuilder(serviceName, op, address)
                     .setTryCount(TRY_COUNT)
                     .setTryPauseMillis(TRY_PAUSE_MILLIS)
                     .invoke();
@@ -99,7 +104,7 @@ final class InvokeOnPartitions {
         for (Map.Entry<Address, Future> response : futures.entrySet()) {
             try {
                 Future future = response.getValue();
-                PartitionResponse result = (PartitionResponse) nodeEngine.toObject(future.get());
+                PartitionResponse result = nodeEngine.toObject(future.get());
                 result.addResults(partitionResults);
             } catch (Throwable t) {
                 if (operationService.logger.isFinestEnabled()) {

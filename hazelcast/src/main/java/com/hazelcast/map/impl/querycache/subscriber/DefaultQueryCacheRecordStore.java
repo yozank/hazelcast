@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import com.hazelcast.map.impl.querycache.subscriber.record.ObjectQueryCacheRecor
 import com.hazelcast.map.impl.querycache.subscriber.record.QueryCacheRecord;
 import com.hazelcast.map.impl.querycache.subscriber.record.QueryCacheRecordFactory;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.query.impl.Index;
 import com.hazelcast.query.impl.Indexes;
 import com.hazelcast.query.impl.QueryEntry;
 import com.hazelcast.query.impl.getters.Extractors;
@@ -82,11 +83,16 @@ class DefaultQueryCacheRecordStore implements QueryCacheRecordStore {
     public QueryCacheRecord add(Data keyData, Data valueData) {
         evictionOperator.evictIfRequired();
 
-        QueryCacheRecord entry = recordFactory.createEntry(keyData, valueData);
-        QueryCacheRecord oldEntry = cache.put(keyData, entry);
-        saveIndex(keyData, entry, oldEntry);
+        return addWithoutEvictionCheck(keyData, valueData);
+    }
 
-        return oldEntry;
+    @Override
+    public QueryCacheRecord addWithoutEvictionCheck(Data keyData, Data valueData) {
+        QueryCacheRecord newRecord = recordFactory.createRecord(valueData);
+        QueryCacheRecord oldRecord = cache.put(keyData, newRecord);
+        saveIndex(keyData, newRecord, oldRecord);
+
+        return oldRecord;
     }
 
     private void saveIndex(Data keyData, QueryCacheRecord currentRecord, QueryCacheRecord oldRecord) {
@@ -94,7 +100,7 @@ class DefaultQueryCacheRecordStore implements QueryCacheRecordStore {
             Object currentValue = currentRecord.getValue();
             QueryEntry queryEntry = new QueryEntry(serializationService, keyData, currentValue, Extractors.empty());
             Object oldValue = oldRecord == null ? null : oldRecord.getValue();
-            indexes.saveEntryIndex(queryEntry, oldValue);
+            indexes.saveEntryIndex(queryEntry, oldValue, Index.OperationSource.USER);
         }
     }
 
@@ -115,7 +121,7 @@ class DefaultQueryCacheRecordStore implements QueryCacheRecordStore {
 
     private void removeIndex(Data keyData, Object value) {
         if (indexes.hasIndex()) {
-            indexes.removeEntryIndex(keyData, value);
+            indexes.removeEntryIndex(keyData, value, Index.OperationSource.USER);
         }
     }
 
@@ -150,15 +156,10 @@ class DefaultQueryCacheRecordStore implements QueryCacheRecordStore {
 
     @Override
     public int clear() {
-        int removeCount = 0;
-        Set<Data> dataKeys = keySet();
-        for (Data dataKey : dataKeys) {
-            QueryCacheRecord oldRecord = remove(dataKey);
-            if (oldRecord != null) {
-                removeCount++;
-            }
-        }
-        return removeCount;
+        int removedEntryCount = cache.size();
+        cache.clear();
+        indexes.clearAll();
+        return removedEntryCount;
     }
 
     @Override

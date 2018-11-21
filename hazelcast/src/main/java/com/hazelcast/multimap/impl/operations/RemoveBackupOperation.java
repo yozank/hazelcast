@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.multimap.impl.operations;
 
+import com.hazelcast.multimap.impl.MultiMapContainer;
 import com.hazelcast.multimap.impl.MultiMapDataSerializerHook;
 import com.hazelcast.multimap.impl.MultiMapRecord;
 import com.hazelcast.multimap.impl.MultiMapValue;
@@ -28,9 +29,9 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
 
-public class RemoveBackupOperation extends MultiMapKeyBasedOperation implements BackupOperation {
+public class RemoveBackupOperation extends AbstractKeyBasedMultiMapOperation implements BackupOperation {
 
-    long recordId;
+    private long recordId;
 
     public RemoveBackupOperation() {
     }
@@ -42,19 +43,20 @@ public class RemoveBackupOperation extends MultiMapKeyBasedOperation implements 
 
     @Override
     public void run() throws Exception {
-        MultiMapValue multiMapValue = getMultiMapValueOrNull();
         response = false;
+        MultiMapContainer container = getOrCreateContainerWithoutAccess();
+        MultiMapValue multiMapValue = container.getMultiMapValueOrNull(dataKey);
         if (multiMapValue == null) {
             return;
         }
         Collection<MultiMapRecord> coll = multiMapValue.getCollection(false);
-        Iterator<MultiMapRecord> iter = coll.iterator();
-        while (iter.hasNext()) {
-            if (iter.next().getRecordId() == recordId) {
-                iter.remove();
+        Iterator<MultiMapRecord> iterator = coll.iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next().getRecordId() == recordId) {
+                iterator.remove();
                 response = true;
                 if (coll.isEmpty()) {
-                    delete();
+                    container.delete(dataKey);
                 }
                 break;
             }
@@ -77,5 +79,4 @@ public class RemoveBackupOperation extends MultiMapKeyBasedOperation implements 
     public int getId() {
         return MultiMapDataSerializerHook.REMOVE_BACKUP;
     }
-
 }

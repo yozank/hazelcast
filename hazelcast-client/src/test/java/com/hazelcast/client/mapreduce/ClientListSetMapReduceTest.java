@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,9 +60,8 @@ public class ClientListSetMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
 
@@ -75,9 +74,10 @@ public class ClientListSetMapReduceTest
 
         JobTracker jobTracker = client.getJobTracker("default");
         Job<String, Integer> job = jobTracker.newJob(KeyValueSource.fromList(list));
-        ICompletableFuture<Map<String, Integer>> ICompletableFuture = job.chunkSize(10).mapper(new ListSetMapReduceTest.ListSetMapper())
-                                                                         .combiner(new ListSetMapReduceTest.ListSetCombinerFactory())
-                                                                         .reducer(new ListSetMapReduceTest.ListSetReducerFactory()).submit();
+        ICompletableFuture<Map<String, Integer>> ICompletableFuture
+                = job.chunkSize(10).mapper(new ListSetMapReduceTest.ListSetMapper())
+                .combiner(new ListSetMapReduceTest.ListSetCombinerFactory())
+                .reducer(new ListSetMapReduceTest.ListSetReducerFactory()).submit();
 
         Map<String, Integer> result = ICompletableFuture.get();
 
@@ -98,9 +98,8 @@ public class ClientListSetMapReduceTest
         HazelcastInstance h2 = hazelcastFactory.newHazelcastInstance(config);
         HazelcastInstance h3 = hazelcastFactory.newHazelcastInstance(config);
 
-        assertClusterSizeEventually(3, h1);
+        assertClusterSize(3, h1, h3);
         assertClusterSizeEventually(3, h2);
-        assertClusterSizeEventually(3, h3);
 
         HazelcastInstance client = hazelcastFactory.newHazelcastClient();
 
@@ -113,9 +112,10 @@ public class ClientListSetMapReduceTest
 
         JobTracker jobTracker = client.getJobTracker("default");
         Job<String, Integer> job = jobTracker.newJob(KeyValueSource.fromSet(set));
-        ICompletableFuture<Map<String, Integer>> ICompletableFuture = job.chunkSize(10).mapper(new ListSetMapReduceTest.ListSetMapper())
-                                                                         .combiner(new ListSetMapReduceTest.ListSetCombinerFactory())
-                                                                         .reducer(new ListSetMapReduceTest.ListSetReducerFactory()).submit();
+        ICompletableFuture<Map<String, Integer>> ICompletableFuture
+                = job.chunkSize(10).mapper(new ListSetMapReduceTest.ListSetMapper())
+                .combiner(new ListSetMapReduceTest.ListSetCombinerFactory())
+                .reducer(new ListSetMapReduceTest.ListSetReducerFactory()).submit();
 
         Map<String, Integer> result = ICompletableFuture.get();
 

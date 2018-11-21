@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import com.hazelcast.core.MemberSelector;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
+import com.hazelcast.nio.serialization.HazelcastSerializationException;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -40,6 +41,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
@@ -48,7 +50,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static com.hazelcast.test.HazelcastTestSupport.assertOpenEventually;
 import static com.hazelcast.test.HazelcastTestSupport.assertTrueEventually;
 import static com.hazelcast.test.HazelcastTestSupport.randomString;
 import static org.junit.Assert.assertEquals;
@@ -151,7 +155,7 @@ public class ClientExecutorServiceTest {
     }
 
     @Test
-    @Ignore
+    @Ignore("https://github.com/hazelcast/hazelcast/issues/4677")
     //Ignored because fixing it requires extensive refactoring see ClientExecutorServiceCancelTest
     public void testCancelFutureAfterCancellationAwareTaskTimeOut() throws InterruptedException, ExecutionException, TimeoutException {
         IExecutorService service = client.getExecutorService(randomString());
@@ -249,7 +253,9 @@ public class ClientExecutorServiceTest {
         assertEquals(2, future.get());
     }
 
+
     static class SerializedCounterCallable implements Callable, DataSerializable {
+
 
         int counter;
 
@@ -271,4 +277,46 @@ public class ClientExecutorServiceTest {
             counter = in.readInt() + 1;
         }
     }
+
+    @Test(expected = HazelcastSerializationException.class)
+    public void testUnserializableResponse_exceptionPropagatesToClient() throws Throwable {
+        IExecutorService service = client.getExecutorService("executor");
+        TaskWithUnserialazableResponse counterCallable = new TaskWithUnserialazableResponse();
+        Future future = service.submit(counterCallable);
+        try {
+            future.get();
+        } catch (ExecutionException e) {
+            throw e.getCause();
+        }
+    }
+
+    @Test(expected = HazelcastSerializationException.class)
+    public void testUnserializableResponse_exceptionPropagatesToClientCallback() throws Throwable {
+        IExecutorService service = client.getExecutorService("executor");
+        TaskWithUnserialazableResponse counterCallable = new TaskWithUnserialazableResponse();
+        final CountDownLatch countDownLatch = new CountDownLatch(1);
+        final AtomicReference<Throwable> throwable = new AtomicReference<Throwable>();
+        service.submit(counterCallable, new ExecutionCallback() {
+            @Override
+            public void onResponse(Object response) {
+
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                throwable.set(t.getCause());
+                countDownLatch.countDown();
+            }
+        });
+        assertOpenEventually(countDownLatch);
+        throw throwable.get();
+    }
+
+    private static class TaskWithUnserialazableResponse implements Callable, Serializable {
+        @Override
+        public Object call() throws Exception {
+            return new Object();
+        }
+    }
+
 }

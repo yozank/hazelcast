@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ public interface Record<V> {
     int NOT_AVAILABLE = -1;
 
     Data getKey();
+
+    void setKey(Data key);
 
     V getValue();
 
@@ -77,6 +79,10 @@ public interface Record<V> {
     long getTtl();
 
     void setTtl(long ttl);
+
+    long getMaxIdle();
+
+    void setMaxIdle(long maxIdle);
 
     long getLastAccessTime();
 

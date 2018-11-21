@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@ import com.hazelcast.spi.BackupAwareOperation;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionAwareOperation;
 import com.hazelcast.spi.UrgentSystemOperation;
+import com.hazelcast.spi.impl.sequence.CallIdSequence;
+import com.hazelcast.spi.impl.sequence.CallIdSequenceWithBackpressure;
+import com.hazelcast.spi.impl.sequence.CallIdSequenceWithoutBackpressure;
 import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -43,7 +46,7 @@ import static org.mockito.Mockito.mock;
 @Category({QuickTest.class, ParallelTest.class})
 public class BackpressureRegulatorTest extends HazelcastTestSupport {
 
-    private final static int SYNC_WINDOW = 100;
+    private static final int SYNC_WINDOW = 100;
 
     private ILogger logger;
 
@@ -94,7 +97,7 @@ public class BackpressureRegulatorTest extends HazelcastTestSupport {
 
         CallIdSequence callIdSequence = backpressureRegulator.newCallIdSequence();
 
-        assertInstanceOf(CallIdSequence.CallIdSequenceWithBackpressure.class, callIdSequence);
+        assertInstanceOf(CallIdSequenceWithBackpressure.class, callIdSequence);
         assertEquals(backpressureRegulator.getMaxConcurrentInvocations(), callIdSequence.getMaxConcurrentInvocations());
     }
 
@@ -107,7 +110,7 @@ public class BackpressureRegulatorTest extends HazelcastTestSupport {
 
         CallIdSequence callIdSequence = backpressureRegulator.newCallIdSequence();
 
-        assertInstanceOf(CallIdSequence.CallIdSequenceWithoutBackpressure.class, callIdSequence);
+        assertInstanceOf(CallIdSequenceWithoutBackpressure.class, callIdSequence);
     }
 
     // ========================== isSyncForced =================

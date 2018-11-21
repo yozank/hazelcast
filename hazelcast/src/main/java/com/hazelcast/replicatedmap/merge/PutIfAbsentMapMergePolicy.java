@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,16 +22,13 @@ import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapDataSerializerHook;
 import com.hazelcast.replicatedmap.impl.record.ReplicatedMapEntryView;
 
-import java.io.IOException;
-
 /**
- * PutIfAbsentMapMergePolicy causes the merging entry to be merged from source to destination map
- * if it does not exist in the destination map.
+ * Merges replicated map entries from source to destination if they don't exist in the destination map.
  */
 public final class PutIfAbsentMapMergePolicy implements ReplicatedMapMergePolicy, IdentifiedDataSerializable {
 
     /**
-     * Single instance of this class
+     * Single instance of this class.
      */
     public static final PutIfAbsentMapMergePolicy INSTANCE = new PutIfAbsentMapMergePolicy();
 
@@ -57,14 +54,10 @@ public final class PutIfAbsentMapMergePolicy implements ReplicatedMapMergePolicy
     }
 
     @Override
-    public void writeData(ObjectDataOutput out) throws IOException {
+    public void writeData(ObjectDataOutput out) {
     }
 
     @Override
-    public void readData(ObjectDataInput in) throws IOException {
-    }
-
-    private Object readResolve() {
-        return INSTANCE;
+    public void readData(ObjectDataInput in) {
     }
 }

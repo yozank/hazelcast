@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,15 @@ package com.hazelcast.test;
 import java.util.Arrays;
 
 /**
- * Backport of selected convenient classes from JDK 7.
+ * Backport of some convenient methods from JDK 7.
+ * <p>
  * It's intended to be used in tests only.
  */
-public class ObjectTestUtils {
+public final class ObjectTestUtils {
+
+    private ObjectTestUtils() {
+    }
+
     public static boolean equals(Object a, Object b) {
         return (a == b) || (a != null && a.equals(b));
     }

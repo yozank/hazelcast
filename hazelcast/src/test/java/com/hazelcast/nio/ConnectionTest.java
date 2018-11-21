@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,15 @@ import com.hazelcast.config.Config;
 import com.hazelcast.config.SocketInterceptorConfig;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.internal.management.ThreadDumpGenerator;
+import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
+import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
+import org.junit.runner.RunWith;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,15 +47,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.hazelcast.internal.management.ThreadDumpGenerator.dumpAllThreads;
 import static org.junit.Assert.assertTrue;
 
 /**
  * IGNORED THIS TEST COMPLETELY. KEEPING FOR FUTURE REFERENCE.
  * PRONE TO FAIL BECAUSE OF BLOCKING TCP CONNECT-ACCEPT-CLOSE CYCLE.
  */
-
-@Ignore("See testBlockedClientSockets and testBlockedClientSockets2 tests. " +
-        "Currently we couldn't find a way to make them pass...")
+@RunWith(HazelcastSerialClassRunner.class)
+@Category(QuickTest.class)
+@Ignore("See testBlockedClientSockets and testBlockedClientSockets2 tests. Currently we couldn't find a way to make them pass...")
 public class ConnectionTest extends HazelcastTestSupport {
 
     @BeforeClass
@@ -246,7 +250,7 @@ public class ConnectionTest extends HazelcastTestSupport {
         try {
             assertTrue(latch.await(1, TimeUnit.MINUTES));
         } catch (AssertionError e) {
-            System.err.println(ThreadDumpGenerator.dumpAllThreads());
+            System.err.println(dumpAllThreads());
             throw e;
         } finally {
             for (Socket socket : sockets) {

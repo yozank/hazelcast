@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package com.hazelcast.client.util;
 
-import com.hazelcast.client.impl.ClientMessageDecoder;
+import com.hazelcast.client.impl.clientside.ClientMessageDecoder;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.spi.impl.ClientInvocationFuture;
 import com.hazelcast.core.ExecutionCallback;
@@ -31,10 +31,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
- * Client Delegating Future is used to delegate ClientInvocationFuture to user to be used with
- * andThen or get. It converts ClientMessage coming from ClientInvocationFuture to user object
+ * The Client Delegating Future is used to delegate {@link
+ * ClientInvocationFuture} to a user type to be used with {@code andThen()} or
+ * {@code get()}. It converts {@link ClientMessage} coming from {@link
+ * ClientInvocationFuture} to a user object.
  *
- * @param <V> Value type that user expecting
+ * @param <V> Value type that the user expects
  */
 public class ClientDelegatingFuture<V> implements InternalCompletableFuture<V> {
 
@@ -44,28 +46,38 @@ public class ClientDelegatingFuture<V> implements InternalCompletableFuture<V> {
     private final ClientInvocationFuture future;
     private final SerializationService serializationService;
     private final ClientMessageDecoder clientMessageDecoder;
+    private final boolean deserializeResponse;
     private final V defaultValue;
     private final Executor userExecutor;
     private volatile Object decodedResponse = VOID;
 
     public ClientDelegatingFuture(ClientInvocationFuture clientInvocationFuture,
                                   SerializationService serializationService,
-                                  ClientMessageDecoder clientMessageDecoder, V defaultValue) {
+                                  ClientMessageDecoder clientMessageDecoder, V defaultValue, boolean deserializeResponse) {
         this.future = clientInvocationFuture;
         this.serializationService = serializationService;
         this.clientMessageDecoder = clientMessageDecoder;
         this.defaultValue = defaultValue;
         this.userExecutor = clientInvocationFuture.getInvocation().getUserExecutor();
+        this.deserializeResponse = deserializeResponse;
+    }
+
+    public ClientDelegatingFuture(ClientInvocationFuture clientInvocationFuture,
+                                  SerializationService serializationService,
+                                  ClientMessageDecoder clientMessageDecoder, V defaultValue) {
+        this(clientInvocationFuture, serializationService, clientMessageDecoder, defaultValue, true);
     }
 
     public ClientDelegatingFuture(ClientInvocationFuture clientInvocationFuture,
                                   SerializationService serializationService,
                                   ClientMessageDecoder clientMessageDecoder) {
-        this.future = clientInvocationFuture;
-        this.serializationService = serializationService;
-        this.clientMessageDecoder = clientMessageDecoder;
-        this.userExecutor = clientInvocationFuture.getInvocation().getUserExecutor();
-        this.defaultValue = null;
+        this(clientInvocationFuture, serializationService, clientMessageDecoder, null, true);
+    }
+
+    public ClientDelegatingFuture(ClientInvocationFuture clientInvocationFuture,
+                                  SerializationService serializationService,
+                                  ClientMessageDecoder clientMessageDecoder, boolean deserializeResponse) {
+        this(clientInvocationFuture, serializationService, clientMessageDecoder, null, deserializeResponse);
     }
 
     /**
@@ -125,13 +137,7 @@ public class ClientDelegatingFuture<V> implements InternalCompletableFuture<V> {
     public V get(long timeout, TimeUnit unit) throws InterruptedException,
             ExecutionException, TimeoutException {
         ClientMessage response = future.get(timeout, unit);
-        return (V) resolveResponse(response, true);
-    }
-
-    public Object getRaw() throws InterruptedException,
-            ExecutionException, TimeoutException {
-        ClientMessage response = future.get(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-        return resolveResponse(response, false);
+        return (V) resolveResponse(response, deserializeResponse);
     }
 
     @Override

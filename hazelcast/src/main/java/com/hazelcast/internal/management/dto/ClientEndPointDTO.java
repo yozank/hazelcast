@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 
 package com.hazelcast.internal.management.dto;
 
-import com.eclipsesource.json.JsonObject;
 import com.hazelcast.core.Client;
 import com.hazelcast.internal.management.JsonSerializable;
+import com.hazelcast.internal.json.JsonObject;
 
 import static com.hazelcast.util.JsonUtil.getString;
 
 /**
- * A Serializable DTO for {@link com.hazelcast.client.ClientEndpoint}.
+ * A Serializable DTO for {@link com.hazelcast.client.impl.ClientEndpoint}.
  */
 public class ClientEndPointDTO implements JsonSerializable {
 

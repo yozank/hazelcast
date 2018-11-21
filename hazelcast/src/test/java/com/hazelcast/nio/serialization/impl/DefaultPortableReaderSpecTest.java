@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,10 @@
 
 package com.hazelcast.nio.serialization.impl;
 
-
 import com.hazelcast.config.Config;
 import com.hazelcast.core.IMap;
 import com.hazelcast.instance.HazelcastInstanceProxy;
 import com.hazelcast.internal.serialization.InternalSerializationService;
-import com.hazelcast.internal.serialization.impl.SerializationServiceV1;
 import com.hazelcast.map.AbstractEntryProcessor;
 import com.hazelcast.map.impl.LazyMapEntry;
 import com.hazelcast.nio.serialization.Data;
@@ -29,7 +27,8 @@ import com.hazelcast.nio.serialization.Portable;
 import com.hazelcast.nio.serialization.PortableReader;
 import com.hazelcast.query.impl.getters.MultiResult;
 import com.hazelcast.test.HazelcastTestSupport;
-import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.ParallelTest;
+import com.hazelcast.test.annotation.SlowTest;
 import com.hazelcast.util.ExceptionUtil;
 import org.junit.Rule;
 import org.junit.Test;
@@ -81,23 +80,23 @@ import static org.junit.Assert.assertThat;
 /**
  * Tests that verifies the behavior of the DefaultPortableReader.
  * All tests cases are generated, since there's a lot of possible cases due to the long lists of read* method on the reader.
- *
+ * <p>
  * The test is parametrised with 4 parameters
  * Each test execution runs one read operation on the reader.
- *
+ * <p>
  * The rationale behind these tests is to cover all possible combinations of reads using nested paths and quantifiers
  * (number or any) with all possible portable types. It's impossible to do it manually, since there's 20 supported
  * types and a read method for each one of them.
- *
+ * <p>
  * Each test case is documented, plus each test outputs it's scenario in a readable way, so you it's easy to follow
  * the test case while you run it. Also each test case shows in which method it is generated.
- *
+ * <p>
  * IF YOU SEE A FAILURE HERE:
  * - check the test output - analyse the test scenario
  * - check in which method the scenario is generated - narrow down the scope of the tests run
  */
 @RunWith(Parameterized.class)
-@Category(QuickTest.class)
+@Category({SlowTest.class, ParallelTest.class})
 public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
 
     private static final PrimitivePortable P_NON_EMPTY = new PrimitivePortable(0, PrimitivePortable.Init.FULL);
@@ -165,10 +164,20 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         // assert the condition
         Object result = Invoker.invoke(reader(inputObject), readMethodNameToInvoke, pathToRead);
         if (result instanceof MultiResult) {
-            // in case of multi result while invoking generic "read" method deal with the multi results
-            result = ((MultiResult) result).getResults().toArray();
+            MultiResult multiResult = (MultiResult) result;
+            if (multiResult.getResults().size() == 1
+                    && multiResult.getResults().get(0) == null && multiResult.isNullEmptyTarget()) {
+                // explode null in case of a single multi-result target result
+                result = null;
+            } else {
+                // in case of multi result while invoking generic "read" method deal with the multi results
+                result = ((MultiResult) result).getResults().toArray();
+            }
+            assertThat(result, equalTo(resultToMatch));
+        } else {
+            assertThat(result, equalTo(resultToMatch));
         }
-        assertThat(result, equalTo(resultToMatch));
+
     }
 
     private void printlnScenarioDescription(Object resultToMatch) {
@@ -225,7 +234,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
     /**
      * Expands test cases for primitive non-array data types.
      * Word "primitive_" is replaced by each primitive type and the scenario is to call a wrong method type for the field.
-     *
+     * <p>
      * So, for example, for primitive byte field we call methods for other data types.
      * <ul>
      * <li>scenario(input, result.byte_, Short, adjustedPath + "byte_"),</li>
@@ -257,7 +266,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
     /**
      * Expands test cases for primitive array data types.
      * Word "primitive_" is replaced by each primitive type and the scenario is to call a wrong method type for the field.
-     *
+     * <p>
      * So, for example, for primitive byte field we call methods for other data types.
      * <ul>
      * <li>scenario(input, result.bytes, Short, adjustedPath + "bytes"),</li>
@@ -288,29 +297,29 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
     /**
      * Expands test cases for primitive array data types.
      * Word "primitiveArray" is replaced by each primitive array type and the scenario is expanded to for each type:
-     *
+     * <p>
      * group A:
      * <ul>
      * <li>scenario(prim(FULL), prim(FULL).bytes, ByteArray, "bytes"),</li>
      * <li>scenario(prim(NONE), prim(NONE).bytes, ByteArray, "bytes"),</li>
      * <li>scenario(prim(NULL), prim(NULL).bytes, ByteArray, "bytes"),</li>
-     *
+     * <p>
      * <li>scenario(prim(FULL), prim(FULL).bytes, ByteArray, "bytes[any]"),</li>
      * <li>scenario(prim(NONE), prim(NONE).bytes, ByteArray, "bytes[any]"),</li>
      * <li>scenario(prim(NULL), prim(NULL).bytes, ByteArray, "bytes[any]"),</li>
      * </ul>
-     *
+     * <p>
      * group B:
      * <ul>
      * <li>scenario(prim(FULL), prim(FULL).bytes[0], Byte, "bytes[0]"),</li>
      * <li>scenario(prim(FULL), prim(FULL).bytes[1], Byte, "bytes[1]"),</li>
      * <li>scenario(prim(FULL), prim(FULL).bytes[2], Byte, "bytes[2]"),</li>
-     *
+     * <p>
      * <li>for all primitives apart from UTF (exception expected)<ul>
      * <li>scenario(prim(NONE), IllegalArgumentException.class, Byte, "bytes[0]"),</li>
      * <li>scenario(prim(NULL), IllegalArgumentException.class, Byte, "bytes[1]"),</li>
      * </ul></li>
-     *
+     * <p>
      * <li>for UTF (null expected)<ul>
      * <li>scenario(prim(NONE), null, UTF, "strings[0]"),</li>
      * <li>scenario(prim(NULL), null, UTF, "strings[1]"),</li>
@@ -378,7 +387,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
      * Expands test cases for that navigate from portable array to a primitive field.
      * Word portableArray is replaced to: portables[0], portables[1], portables[2], portables[any]
      * Word "primitive_" is replaced by each primitive type and the scenario is expanded to for each type:
-     *
+     * <p>
      * A.) The contract is that input should somewhere on the path contain an array of Portable[] which contains objects of type
      * PrimitivePortable. For example: "portableArray.primitive_" will be expanded two-fold, the portable array and primitive
      * types will be expanded as follows:
@@ -387,12 +396,12 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
      * <li>portables[1].byte, portables[1].short, portables[1].char, ...</li>
      * <li>portables[2].byte, portables[2].short, portables[2].char, ...</li>
      * </ul>
-     *
+     * <p>
      * B.) Then the [any] case will be expanded too:
      * <ul>
      * <li>portables[any].byte, portables[any].short, portables[any].char, ... for all primitive types</li>
      * </ul>
-     *
+     * <p>
      * The expected result should be the object that contains the portable array - that's the general contract.
      * The result for assertion will be automatically calculated
      */
@@ -771,7 +780,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
                         new GroupPortable(new Portable[0]),
                         group(p1, p10),
                         new GroupPortable((Portable[]) null),
-                        group(new PrimitivePortable[]{p20})
+                        group(new PrimitivePortable[]{p20}),
                 }
         );
 
@@ -790,23 +799,23 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         result.add(scenario(input, expectedUtfArray, UTFArray, "portables[any].portables[any].string_", p));
 
         result.addAll(asList(
-                scenario(input, list(null, p1.byte_, p10.byte_, null, p20.byte_), Generic,
+                scenario(input, list(null, p1.byte_, p10.byte_, p20.byte_), Generic,
                         "portables[any].portables[any].byte_", p),
-                scenario(input, list(null, p1.short_, p10.short_, null, p20.short_), Generic,
+                scenario(input, list(null, p1.short_, p10.short_, p20.short_), Generic,
                         "portables[any].portables[any].short_", p),
-                scenario(input, list(null, p1.int_, p10.int_, null, p20.int_), Generic,
+                scenario(input, list(null, p1.int_, p10.int_, p20.int_), Generic,
                         "portables[any].portables[any].int_", p),
-                scenario(input, list(null, p1.long_, p10.long_, null, p20.long_), Generic,
+                scenario(input, list(null, p1.long_, p10.long_, p20.long_), Generic,
                         "portables[any].portables[any].long_", p),
-                scenario(input, list(null, p1.char_, p10.char_, null, p20.char_), Generic,
+                scenario(input, list(null, p1.char_, p10.char_, p20.char_), Generic,
                         "portables[any].portables[any].char_", p),
-                scenario(input, list(null, p1.float_, p10.float_, null, p20.float_), Generic,
+                scenario(input, list(null, p1.float_, p10.float_, p20.float_), Generic,
                         "portables[any].portables[any].float_", p),
-                scenario(input, list(null, p1.double_, p10.double_, null, p20.double_), Generic,
+                scenario(input, list(null, p1.double_, p10.double_, p20.double_), Generic,
                         "portables[any].portables[any].double_", p),
-                scenario(input, list(null, p1.boolean_, p10.boolean_, null, p20.boolean_), Generic,
+                scenario(input, list(null, p1.boolean_, p10.boolean_, p20.boolean_), Generic,
                         "portables[any].portables[any].boolean_", p),
-                scenario(input, list(null, p1.string_, p10.string_, null, p20.string_), Generic,
+                scenario(input, list(null, p1.string_, p10.string_, p20.string_), Generic,
                         "portables[any].portables[any].string_", p)
         ));
 
@@ -883,7 +892,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
                         new GroupPortable(new Portable[0]),
                         group(prim(1, NONE), prim(10, FULL), prim(50, NULL)),
                         new GroupPortable((Portable[]) null),
-                        group(prim(20, FULL), prim(70, NULL))
+                        group(prim(20, FULL), prim(70, NULL)),
                 }
         );
 
@@ -904,23 +913,23 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         result.add(scenario(input, expectedUtfArray, UTFArray, "portables[any].portables[any].strings[any]", p));
 
         result.addAll(asList(
-                scenario(input, list(null, null, p10.bytes, null, null, p20.bytes, null), Generic,
+                scenario(input, list(null, p10.bytes, p20.bytes), Generic,
                         "portables[any].portables[any].bytes[any]", p),
-                scenario(input, list(null, null, p10.shorts, null, null, p20.shorts, null), Generic,
+                scenario(input, list(null, p10.shorts, p20.shorts), Generic,
                         "portables[any].portables[any].shorts[any]", p),
-                scenario(input, list(null, null, p10.ints, null, null, p20.ints, null), Generic,
+                scenario(input, list(null, p10.ints, p20.ints), Generic,
                         "portables[any].portables[any].ints[any]", p),
-                scenario(input, list(null, null, p10.longs, null, null, p20.longs, null), Generic,
+                scenario(input, list(null, p10.longs, p20.longs), Generic,
                         "portables[any].portables[any].longs[any]", p),
-                scenario(input, list(null, null, p10.chars, null, null, p20.chars, null), Generic,
+                scenario(input, list(null, p10.chars, p20.chars), Generic,
                         "portables[any].portables[any].chars[any]", p),
-                scenario(input, list(null, null, p10.floats, null, null, p20.floats, null), Generic,
+                scenario(input, list(null, p10.floats, p20.floats), Generic,
                         "portables[any].portables[any].floats[any]", p),
-                scenario(input, list(null, null, p10.doubles, null, null, p20.doubles, null), Generic,
+                scenario(input, list(null, p10.doubles, p20.doubles), Generic,
                         "portables[any].portables[any].doubles[any]", p),
-                scenario(input, list(null, null, p10.booleans, null, null, p20.booleans, null), Generic,
+                scenario(input, list(null, p10.booleans, p20.booleans), Generic,
                         "portables[any].portables[any].booleans[any]", p),
-                scenario(input, list(null, null, p10.strings, null, null, p20.strings, null), Generic,
+                scenario(input, list(null, p10.strings, p20.strings), Generic,
                         "portables[any].portables[any].strings[any]", p)
         ));
 
@@ -1034,7 +1043,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         );
 
         NestedGroupPortable anyGroup = nested(new Portable[]{
-                group(prim(1, FULL), prim(10, NONE), prim(50, NULL)), group(prim(2, FULL), prim(20, NONE), prim(80, NULL))
+                group(prim(1, FULL), prim(10, NONE), prim(50, NULL)), group(prim(2, FULL), prim(20, NONE), prim(80, NULL)),
         });
         result.addAll(expandPortableArrayPrimitiveScenario(anyGroup, (GroupPortable) anyGroup.portables[0],
                 "portables[0].portableArray.primitiveUTF_", p)
@@ -1141,7 +1150,7 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         String p = "fromPortableArrayToPortableArrayAnyScenarios";
         NestedGroupPortable anyGroup = nested(new Portable[]{
                 group(prim(1, FULL), prim(10, NONE), prim(50, NULL)),
-                group(prim(2, FULL), prim(20, NONE), prim(80, NULL))
+                group(prim(2, FULL), prim(20, NONE), prim(80, NULL)),
         });
         result.addAll(asList(
                 scenario(anyGroup, ((GroupPortable) (anyGroup.portables[0])).portables, PortableArray,
@@ -1153,7 +1162,8 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
                 scenario(anyGroup, new Portable[]{prim(50, FULL), prim(80, FULL)}, PortableArray,
                         "portables[any].portables[2]", p),
                 scenario(anyGroup, new Portable[]{prim(1, FULL), prim(10, FULL), prim(50, FULL), prim(2, FULL), prim(20, FULL),
-                        prim(80, FULL)}, PortableArray, "portables[any].portables[any]", p)
+                        prim(80, FULL),
+                }, PortableArray, "portables[any].portables[any]", p)
         ));
         result.addAll(asList(
                 scenario(anyGroup, ((GroupPortable) (anyGroup.portables[0])).portables, Generic,
@@ -1165,11 +1175,13 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
                 scenario(anyGroup, new Portable[]{prim(50, FULL), prim(80, FULL)}, Generic,
                         "portables[any].portables[2]", p),
                 scenario(anyGroup, new Portable[]{prim(1, FULL), prim(10, FULL), prim(50, FULL), prim(2, FULL), prim(20, FULL),
-                        prim(80, FULL)}, Generic, "portables[any].portables[any]", p)
+                        prim(80, FULL),
+                }, Generic, "portables[any].portables[any]", p)
         ));
 
         NestedGroupPortable nestedEmptyArrayGroup = nested(new Portable[]{new GroupPortable(new Portable[0]),
-                group(prim(1, FULL), prim(10, NONE), prim(50, NULL))});
+                group(prim(1, FULL), prim(10, NONE), prim(50, NULL)),
+        });
         result.addAll(asList(
                 scenario(nestedEmptyArrayGroup, null, PortableArray,
                         "portables[0].portables[any]", p),
@@ -1196,7 +1208,8 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
         ));
 
         NestedGroupPortable nestedNullArrayGroup = nested(new Portable[]{new GroupPortable((Portable[]) null),
-                group(prim(1, FULL), prim(10, NONE), prim(50, NULL))});
+                group(prim(1, FULL), prim(10, NONE), prim(50, NULL)),
+        });
         result.addAll(asList(
                 scenario(nestedNullArrayGroup, null, PortableArray,
                         "portables[0].portables[any]", p),
@@ -1229,14 +1242,6 @@ public class DefaultPortableReaderSpecTest extends HazelcastTestSupport {
 
     private static Object[] scenario(Portable input, Object result, Method method, String path, String parent) {
         return new Object[]{input, result, method, path, parent};
-    }
-
-    private static Collection<Object[]> test(Object[]... scenarios) {
-        List<Object[]> result = new ArrayList<Object[]>();
-        for (Object[] scenario : scenarios) {
-            result.add(scenario);
-        }
-        return result;
     }
 
     /**

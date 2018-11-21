@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.properties.HazelcastProperties;
+import com.hazelcast.spi.serialization.SerializationService;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -91,13 +92,14 @@ public class RepairingTaskTest extends HazelcastTestSupport {
 
     private static RepairingTask newRepairingTask(Config config) {
         HazelcastProperties hazelcastProperties = new HazelcastProperties(config);
-        MetaDataFetcher metaDataFetcher = mock(MetaDataFetcher.class);
+        InvalidationMetaDataFetcher invalidationMetaDataFetcher = mock(InvalidationMetaDataFetcher.class);
         ExecutionService executionService = mock(ExecutionService.class);
+        SerializationService serializationService = mock(SerializationService.class);
         MinimalPartitionService minimalPartitionService = mock(MinimalPartitionService.class);
         String uuid = UuidUtil.newUnsecureUUID().toString();
         ILogger logger = Logger.getLogger(RepairingTask.class);
 
-        return new RepairingTask(hazelcastProperties, metaDataFetcher, executionService.getGlobalTaskScheduler(),
-                minimalPartitionService, uuid, logger);
+        return new RepairingTask(hazelcastProperties, invalidationMetaDataFetcher, executionService.getGlobalTaskScheduler(),
+                serializationService, minimalPartitionService, uuid, logger);
     }
 }

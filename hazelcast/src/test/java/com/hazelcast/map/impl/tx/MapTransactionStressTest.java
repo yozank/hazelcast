@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ import static org.junit.Assert.assertTrue;
 @Category(NightlyTest.class)
 public class MapTransactionStressTest extends HazelcastTestSupport {
 
-    private static String DUMMY_TX_SERVICE = "dummy-tx-service";
+    private static final String DUMMY_TX_SERVICE = "dummy-tx-service";
 
     @Test
     public void testTransactionAtomicity_whenMapGetIsUsed_withTransaction() throws InterruptedException {
@@ -230,7 +230,9 @@ public class MapTransactionStressTest extends HazelcastTestSupport {
     }
 
     public static class ProducerThread extends Thread {
-        public static final String value = "some-value";
+
+        public static final String VALUE = "some-value";
+
         private final HazelcastInstance hz;
         private final String name;
         private final String dummyServiceName;
@@ -252,10 +254,10 @@ public class MapTransactionStressTest extends HazelcastTestSupport {
                     DummyTransactionalObject slowTxObject = tx.getTransactionalObject(dummyServiceName, name);
                     slowTxObject.doSomethingTxnal();
                     TransactionalMap<String, Object> map = tx.getMap(name);
-                    map.put(id, value);
+                    map.put(id, VALUE);
                     slowTxObject.doSomethingTxnal();
                     TransactionalMultiMap<Object, Object> multiMap = tx.getMultiMap(name);
-                    multiMap.put(id, value);
+                    multiMap.put(id, VALUE);
                     tx.commitTransaction();
                 } catch (TransactionException e) {
                     tx.rollbackTransaction();

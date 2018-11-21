@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,14 @@
 
 package com.hazelcast.client.config;
 
+import com.hazelcast.client.config.ClientConnectionStrategyConfig.ReconnectMode;
 import com.hazelcast.client.util.RandomLB;
 import com.hazelcast.client.util.RoundRobinLB;
 import com.hazelcast.config.AbstractConfigBuilder;
+import com.hazelcast.config.AliasedDiscoveryConfig;
 import com.hazelcast.config.ConfigLoader;
+import com.hazelcast.config.CredentialsFactoryConfig;
+import com.hazelcast.config.AliasedDiscoveryConfigUtils;
 import com.hazelcast.config.DiscoveryConfig;
 import com.hazelcast.config.DiscoveryStrategyConfig;
 import com.hazelcast.config.EvictionConfig;
@@ -36,6 +40,7 @@ import com.hazelcast.config.SocketInterceptorConfig;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.IOUtil;
+import com.hazelcast.topic.TopicOverloadPolicy;
 import com.hazelcast.util.ExceptionUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -55,7 +60,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.hazelcast.client.config.ClientXmlElements.CONNECTION_STRATEGY;
 import static com.hazelcast.client.config.ClientXmlElements.EXECUTOR_POOL_SIZE;
+import static com.hazelcast.client.config.ClientXmlElements.FLAKE_ID_GENERATOR;
 import static com.hazelcast.client.config.ClientXmlElements.GROUP;
 import static com.hazelcast.client.config.ClientXmlElements.INSTANCE_NAME;
 import static com.hazelcast.client.config.ClientXmlElements.LICENSE_KEY;
@@ -67,8 +74,10 @@ import static com.hazelcast.client.config.ClientXmlElements.NETWORK;
 import static com.hazelcast.client.config.ClientXmlElements.PROPERTIES;
 import static com.hazelcast.client.config.ClientXmlElements.PROXY_FACTORIES;
 import static com.hazelcast.client.config.ClientXmlElements.QUERY_CACHES;
+import static com.hazelcast.client.config.ClientXmlElements.RELIABLE_TOPIC;
 import static com.hazelcast.client.config.ClientXmlElements.SECURITY;
 import static com.hazelcast.client.config.ClientXmlElements.SERIALIZATION;
+import static com.hazelcast.client.config.ClientXmlElements.USER_CODE_DEPLOYMENT;
 import static com.hazelcast.client.config.ClientXmlElements.canOccurMultipleTimes;
 import static com.hazelcast.util.StringUtil.LINE_SEPARATOR;
 import static com.hazelcast.util.StringUtil.upperCaseInternal;
@@ -169,10 +178,14 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
 
     public ClientConfig build(ClassLoader classLoader) {
         ClientConfig clientConfig = new ClientConfig();
+        build(clientConfig, classLoader);
+        return clientConfig;
+    }
+
+    void build(ClientConfig clientConfig, ClassLoader classLoader) {
         clientConfig.setClassLoader(classLoader);
         try {
             parseAndBuildConfig(clientConfig);
-            return clientConfig;
         } catch (Exception e) {
             throw ExceptionUtil.rethrow(e);
         } finally {
@@ -207,7 +220,7 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
         for (Node node : childElements(docElement)) {
             String nodeName = cleanNodeName(node);
             if (occurrenceSet.contains(nodeName)) {
-                throw new InvalidConfigurationException("Duplicate '" + nodeName + "' definition found in XML configuration. ");
+                throw new InvalidConfigurationException("Duplicate '" + nodeName + "' definition found in XML configuration");
             }
             handleXmlNode(node, nodeName);
             if (!canOccurMultipleTimes(nodeName)) {
@@ -245,7 +258,88 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
             clientConfig.setLicenseKey(getTextContent(node));
         } else if (INSTANCE_NAME.isEqual(nodeName)) {
             clientConfig.setInstanceName(getTextContent(node));
+        } else if (CONNECTION_STRATEGY.isEqual(nodeName)) {
+            handleConnectionStrategy(node);
+        } else if (USER_CODE_DEPLOYMENT.isEqual(nodeName)) {
+            handleUserCodeDeployment(node);
+        } else if (FLAKE_ID_GENERATOR.isEqual(nodeName)) {
+            handleFlakeIdGenerator(node);
+        } else if (RELIABLE_TOPIC.isEqual(nodeName)) {
+            handleReliableTopic(node);
         }
+    }
+
+    private void handleConnectionStrategy(Node node) {
+        ClientConnectionStrategyConfig strategyConfig = new ClientConnectionStrategyConfig();
+        String attrValue = getAttribute(node, "async-start");
+        strategyConfig.setAsyncStart(attrValue != null && getBooleanValue(attrValue.trim()));
+        attrValue = getAttribute(node, "reconnect-mode");
+        if (attrValue != null) {
+            strategyConfig.setReconnectMode(ReconnectMode.valueOf(upperCaseInternal(attrValue.trim())));
+        }
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            if ("connection-retry".equals(nodeName)) {
+                handleConnectionRetry(child, strategyConfig);
+            }
+        }
+        clientConfig.setConnectionStrategyConfig(strategyConfig);
+    }
+
+    private void handleConnectionRetry(Node node, ClientConnectionStrategyConfig strategyConfig) {
+        Node enabledNode = node.getAttributes().getNamedItem("enabled");
+        boolean enabled = enabledNode != null && getBooleanValue(getTextContent(enabledNode).trim());
+        if (!enabled) {
+            LOGGER.warning("Exponential Connection Strategy is not enabled.");
+        }
+        ConnectionRetryConfig connectionRetryConfig = new ConnectionRetryConfig();
+        connectionRetryConfig.setEnabled(enabled);
+
+        String initialBackoffMillis = "initial-backoff-millis";
+        String maxBackoffMillis = "max-backoff-millis";
+        String multiplier = "multiplier";
+        String jitter = "jitter";
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            String value = getTextContent(child).trim();
+            if (initialBackoffMillis.equals(nodeName)) {
+                connectionRetryConfig.setInitialBackoffMillis(getIntegerValue(initialBackoffMillis, value));
+            } else if (maxBackoffMillis.equals(nodeName)) {
+                connectionRetryConfig.setMaxBackoffMillis(getIntegerValue(maxBackoffMillis, value));
+            } else if (multiplier.equals(nodeName)) {
+                connectionRetryConfig.setMultiplier(getIntegerValue(multiplier, value));
+            } else if ("fail-on-max-backoff".equals(nodeName)) {
+                connectionRetryConfig.setFailOnMaxBackoff(getBooleanValue(value));
+            } else if (jitter.equals(nodeName)) {
+                connectionRetryConfig.setJitter(getDoubleValue(jitter, value));
+            }
+        }
+        strategyConfig.setConnectionRetryConfig(connectionRetryConfig);
+    }
+
+    private void handleUserCodeDeployment(Node node) {
+        NamedNodeMap atts = node.getAttributes();
+        Node enabledNode = atts.getNamedItem("enabled");
+        boolean enabled = enabledNode != null && getBooleanValue(getTextContent(enabledNode).trim());
+        ClientUserCodeDeploymentConfig userCodeDeploymentConfig = new ClientUserCodeDeploymentConfig();
+        userCodeDeploymentConfig.setEnabled(enabled);
+
+        for (Node child : childElements(node)) {
+            String childNodeName = cleanNodeName(child);
+            if ("classnames".equals(childNodeName)) {
+                for (Node classNameNode : childElements(child)) {
+                    userCodeDeploymentConfig.addClass(getTextContent(classNameNode));
+                }
+            } else if ("jarpaths".equals(childNodeName)) {
+                for (Node jarPathNode : childElements(child)) {
+                    userCodeDeploymentConfig.addJar(getTextContent(jarPathNode));
+                }
+            } else {
+                throw new InvalidConfigurationException("User code deployement can either be className or jarPath. "
+                        + childNodeName + " is invalid");
+            }
+        }
+        clientConfig.setUserCodeDeploymentConfig(userCodeDeploymentConfig);
     }
 
     private void handleExecutorPoolSize(Node node) {
@@ -256,6 +350,7 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
     private void handleNearCache(Node node) {
         String name = getAttribute(node, "name");
         NearCacheConfig nearCacheConfig = new NearCacheConfig(name);
+        Boolean serializeKeys = null;
         for (Node child : childElements(node)) {
             String nodeName = cleanNodeName(child);
             String value = getTextContent(child).trim();
@@ -271,6 +366,9 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
                 LOGGER.warning("The element <eviction-policy/> for <near-cache/> is deprecated, please use <eviction/> instead!");
             } else if ("in-memory-format".equals(nodeName)) {
                 nearCacheConfig.setInMemoryFormat(InMemoryFormat.valueOf(upperCaseInternal(value)));
+            } else if ("serialize-keys".equals(nodeName)) {
+                serializeKeys = Boolean.parseBoolean(value);
+                nearCacheConfig.setSerializeKeys(serializeKeys);
             } else if ("invalidate-on-change".equals(nodeName)) {
                 nearCacheConfig.setInvalidateOnChange(Boolean.parseBoolean(value));
             } else if ("cache-local-entries".equals(nodeName)) {
@@ -283,7 +381,41 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
                 nearCacheConfig.setPreloaderConfig(getNearCachePreloaderConfig(child));
             }
         }
+        if (serializeKeys != null && !serializeKeys && nearCacheConfig.getInMemoryFormat() == InMemoryFormat.NATIVE) {
+            LOGGER.warning("The Near Cache doesn't support keys by-reference with NATIVE in-memory-format."
+                    + " This setting will have no effect!");
+        }
         clientConfig.addNearCacheConfig(nearCacheConfig);
+    }
+
+    private void handleFlakeIdGenerator(Node node) {
+        String name = getAttribute(node, "name");
+        ClientFlakeIdGeneratorConfig config = new ClientFlakeIdGeneratorConfig(name);
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            String value = getTextContent(child).trim();
+            if ("prefetch-count".equals(nodeName)) {
+                config.setPrefetchCount(Integer.parseInt(value));
+            } else if ("prefetch-validity-millis".equalsIgnoreCase(nodeName)) {
+                config.setPrefetchValidityMillis(Long.parseLong(value));
+            }
+        }
+        clientConfig.addFlakeIdGeneratorConfig(config);
+    }
+
+    private void handleReliableTopic(Node node) {
+        String name = getAttribute(node, "name");
+        ClientReliableTopicConfig config = new ClientReliableTopicConfig(name);
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            String value = getTextContent(child).trim();
+            if ("topic-overload-policy".equals(nodeName)) {
+                config.setTopicOverloadPolicy(TopicOverloadPolicy.valueOf(value));
+            } else if ("read-batch-size".equalsIgnoreCase(nodeName)) {
+                config.setReadBatchSize(Integer.parseInt(value));
+            }
+        }
+        clientConfig.addReliableTopicConfig(config);
     }
 
     private EvictionConfig getEvictionConfig(Node node) {
@@ -358,13 +490,60 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
                 handleSocketInterceptorConfig(child, clientNetworkConfig);
             } else if ("ssl".equals(nodeName)) {
                 handleSSLConfig(child, clientNetworkConfig);
-            } else if ("aws".equals(nodeName)) {
-                handleAWS(child, clientNetworkConfig);
+            } else if (AliasedDiscoveryConfigUtils.supports(nodeName)) {
+                handleAliasedDiscoveryStrategy(child, clientNetworkConfig, nodeName);
             } else if ("discovery-strategies".equals(nodeName)) {
                 handleDiscoveryStrategies(child, clientNetworkConfig);
+            } else if ("outbound-ports".equals(nodeName)) {
+                handleOutboundPorts(child, clientNetworkConfig);
+            } else if ("icmp-ping".equals(nodeName)) {
+                handleIcmpPing(child, clientNetworkConfig);
+            } else if ("hazelcast-cloud".equals(nodeName)) {
+                handleHazelcastCloud(child, clientNetworkConfig);
             }
         }
         clientConfig.setNetworkConfig(clientNetworkConfig);
+    }
+
+    private void handleHazelcastCloud(Node node, ClientNetworkConfig clientNetworkConfig) {
+        ClientCloudConfig cloudConfig = clientNetworkConfig.getCloudConfig();
+
+        NamedNodeMap atts = node.getAttributes();
+        Node enabledNode = atts.getNamedItem("enabled");
+        boolean enabled = enabledNode != null && getBooleanValue(getTextContent(enabledNode).trim());
+        cloudConfig.setEnabled(enabled);
+
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            if ("discovery-token".equals(nodeName)) {
+                cloudConfig.setDiscoveryToken(getTextContent(child));
+            }
+        }
+    }
+
+    private void handleIcmpPing(Node node, ClientNetworkConfig clientNetworkConfig) {
+        ClientIcmpPingConfig icmpPingConfig = clientNetworkConfig.getClientIcmpPingConfig();
+
+        NamedNodeMap atts = node.getAttributes();
+        Node enabledNode = atts.getNamedItem("enabled");
+        boolean enabled = enabledNode != null && getBooleanValue(getTextContent(enabledNode).trim());
+        icmpPingConfig.setEnabled(enabled);
+
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            if ("timeout-milliseconds".equals(nodeName)) {
+                icmpPingConfig.setTimeoutMilliseconds(Integer.parseInt(getTextContent(child)));
+            } else if ("interval-milliseconds".equals(nodeName)) {
+                icmpPingConfig.setIntervalMilliseconds(Integer.parseInt(getTextContent(child)));
+            } else if ("ttl".equals(nodeName)) {
+                icmpPingConfig.setTtl(Integer.parseInt(getTextContent(child)));
+            } else if ("max-attempts".equals(nodeName)) {
+                icmpPingConfig.setMaxAttempts(Integer.parseInt(getTextContent(child)));
+            } else if ("echo-fail-fast-on-startup".equals(nodeName)) {
+                icmpPingConfig.setEchoFailFastOnStartup(Boolean.parseBoolean(getTextContent(child)));
+            }
+        }
+        clientNetworkConfig.setClientIcmpPingConfig(icmpPingConfig);
     }
 
     private void handleDiscoveryStrategies(Node node, ClientNetworkConfig clientNetworkConfig) {
@@ -418,50 +597,23 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
         discoveryConfig.addDiscoveryStrategyConfig(new DiscoveryStrategyConfig(clazz, properties));
     }
 
-    private void handleAWS(Node node, ClientNetworkConfig clientNetworkConfig) {
-        ClientAwsConfig clientAwsConfig = handleAwsAttributes(node);
-        for (Node n : childElements(node)) {
-            String value = getTextContent(n).trim();
-            if ("secret-key".equals(cleanNodeName(n))) {
-                clientAwsConfig.setSecretKey(value);
-            } else if ("access-key".equals(cleanNodeName(n))) {
-                clientAwsConfig.setAccessKey(value);
-            } else if ("region".equals(cleanNodeName(n))) {
-                clientAwsConfig.setRegion(value);
-            } else if ("host-header".equals(cleanNodeName(n))) {
-                clientAwsConfig.setHostHeader(value);
-            } else if ("security-group-name".equals(cleanNodeName(n))) {
-                clientAwsConfig.setSecurityGroupName(value);
-            } else if ("tag-key".equals(cleanNodeName(n))) {
-                clientAwsConfig.setTagKey(value);
-            } else if ("tag-value".equals(cleanNodeName(n))) {
-                clientAwsConfig.setTagValue(value);
-            } else if ("inside-aws".equals(cleanNodeName(n))) {
-                clientAwsConfig.setInsideAws(getBooleanValue(value));
-            } else if ("iam-role".equals(cleanNodeName(n))) {
-                clientAwsConfig.setIamRole(value);
-            }
-        }
-        if (!clientAwsConfig.isInsideAws() && clientAwsConfig.getIamRole() != null) {
-            throw new InvalidConfigurationException("You cannot set IAM Role from outside EC2");
-        }
-        clientNetworkConfig.setAwsConfig(clientAwsConfig);
-    }
-
-    private ClientAwsConfig handleAwsAttributes(Node node) {
+    private void handleAliasedDiscoveryStrategy(Node node, ClientNetworkConfig clientNetworkConfig, String tag) {
+        AliasedDiscoveryConfig config = ClientAliasedDiscoveryConfigUtils.getConfigByTag(clientNetworkConfig, tag);
         NamedNodeMap atts = node.getAttributes();
-        ClientAwsConfig clientAwsConfig = new ClientAwsConfig();
         for (int i = 0; i < atts.getLength(); i++) {
             Node att = atts.item(i);
             String value = getTextContent(att).trim();
             if ("enabled".equalsIgnoreCase(att.getNodeName())) {
-                clientAwsConfig.setEnabled(getBooleanValue(value));
+                config.setEnabled(getBooleanValue(value));
             } else if (att.getNodeName().equals("connection-timeout-seconds")) {
-                int timeout = getIntegerValue("connection-timeout-seconds", value);
-                clientAwsConfig.setConnectionTimeoutSeconds(timeout);
+                config.setProperty("connection-timeout-seconds", value);
             }
         }
-        return clientAwsConfig;
+        for (Node n : childElements(node)) {
+            String key = cleanNodeName(n);
+            String value = getTextContent(n).trim();
+            config.setProperty(key, value);
+        }
     }
 
     private void handleSSLConfig(Node node, ClientNetworkConfig clientNetworkConfig) {
@@ -564,8 +716,36 @@ public class XmlClientConfigBuilder extends AbstractConfigBuilder {
             if ("credentials".equals(nodeName)) {
                 String className = getTextContent(child);
                 clientSecurityConfig.setCredentialsClassname(className);
+            } else if ("credentials-factory".equals(nodeName)) {
+                handleCredentialsFactory(child, clientSecurityConfig);
             }
         }
         clientConfig.setSecurityConfig(clientSecurityConfig);
     }
+
+    private void handleCredentialsFactory(Node node, ClientSecurityConfig clientSecurityConfig) {
+        NamedNodeMap attrs = node.getAttributes();
+        Node classNameNode = attrs.getNamedItem("class-name");
+        String className = getTextContent(classNameNode);
+        CredentialsFactoryConfig credentialsFactoryConfig = new CredentialsFactoryConfig(className);
+        clientSecurityConfig.setCredentialsFactoryConfig(credentialsFactoryConfig);
+        for (Node child : childElements(node)) {
+            String nodeName = cleanNodeName(child);
+            if ("properties".equals(nodeName)) {
+                fillProperties(child, credentialsFactoryConfig.getProperties());
+                break;
+            }
+        }
+    }
+
+    private void handleOutboundPorts(Node child, ClientNetworkConfig clientNetworkConfig) {
+        for (Node n : childElements(child)) {
+            String nodeName = cleanNodeName(n);
+            if ("ports".equals(nodeName)) {
+                String value = getTextContent(n);
+                clientNetworkConfig.addOutboundPortDefinition(value);
+            }
+        }
+    }
+
 }

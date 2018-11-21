@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,24 @@
 
 package com.hazelcast.internal.ascii.rest;
 
-import com.eclipsesource.json.Json;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.config.GroupConfig;
 import com.hazelcast.config.WanReplicationConfig;
 import com.hazelcast.core.Member;
-import com.hazelcast.instance.BuildInfoProvider;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.ascii.TextCommandService;
 import com.hazelcast.internal.cluster.ClusterService;
+import com.hazelcast.internal.json.Json;
 import com.hazelcast.internal.management.ManagementCenterService;
 import com.hazelcast.internal.management.dto.WanReplicationConfigDTO;
 import com.hazelcast.internal.management.operation.AddWanConfigOperation;
+import com.hazelcast.internal.management.request.UpdatePermissionConfigRequest;
 import com.hazelcast.logging.ILogger;
+import com.hazelcast.security.SecurityService;
 import com.hazelcast.spi.InternalCompletableFuture;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.properties.GroupProperty;
+import com.hazelcast.util.StringUtil;
 import com.hazelcast.version.Version;
 import com.hazelcast.wan.WanReplicationService;
 
@@ -42,7 +44,9 @@ import java.util.List;
 import java.util.Set;
 
 import static com.hazelcast.util.StringUtil.bytesToString;
+import static com.hazelcast.util.StringUtil.lowerCaseInternal;
 import static com.hazelcast.util.StringUtil.stringToBytes;
+import static com.hazelcast.util.StringUtil.upperCaseInternal;
 
 public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostCommand> {
     private static final byte[] QUEUE_SIMPLE_VALUE_CONTENT_TYPE = stringToBytes("text/plain");
@@ -86,14 +90,24 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
                 handleListNodes(command);
             } else if (uri.startsWith(URI_SHUTDOWN_NODE_CLUSTER_URL)) {
                 handleShutdownNode(command);
-            } else if (uri.startsWith(URI_WAN_SYNC_MAP)) {
+            } else if (uri.startsWith(URI_WAN_SYNC_MAP) || uri.startsWith(LEGACY_URI_WAN_SYNC_MAP)) {
                 handleWanSyncMap(command);
-            } else if (uri.startsWith(URI_WAN_SYNC_ALL_MAPS)) {
+            } else if (uri.startsWith(URI_WAN_SYNC_ALL_MAPS) || uri.startsWith(LEGACY_URI_WAN_SYNC_ALL_MAPS)) {
                 handleWanSyncAllMaps(command);
-            } else if (uri.startsWith(URI_MANCENTER_WAN_CLEAR_QUEUES)) {
+            } else if (uri.startsWith(URI_MANCENTER_WAN_CLEAR_QUEUES) || uri.startsWith(LEGACY_URI_MANCENTER_WAN_CLEAR_QUEUES)) {
                 handleWanClearQueues(command);
-            } else if (uri.startsWith(URI_ADD_WAN_CONFIG)) {
+            } else if (uri.startsWith(URI_ADD_WAN_CONFIG) || uri.startsWith(LEGACY_URI_ADD_WAN_CONFIG)) {
                 handleAddWanConfig(command);
+            } else if (uri.startsWith(URI_WAN_PAUSE_PUBLISHER)) {
+                handleWanPausePublisher(command);
+            } else if (uri.startsWith(URI_WAN_STOP_PUBLISHER)) {
+                handleWanStopPublisher(command);
+            } else if (uri.startsWith(URI_WAN_RESUME_PUBLISHER)) {
+                handleWanResumePublisher(command);
+            } else if (uri.startsWith(URI_WAN_CONSISTENCY_CHECK_MAP)) {
+                handleWanConsistencyCheck(command);
+            } else if (uri.startsWith(URI_UPDATE_PERMISSIONS)) {
+                handleUpdatePermissions(command);
             } else {
                 command.setResponse(HttpCommand.RES_400);
             }
@@ -117,21 +131,12 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
             if (!(groupConfig.getName().equals(groupName) && groupConfig.getPassword().equals(groupPass))) {
                 res = response(ResponseType.FORBIDDEN);
             } else {
-                ClusterState state = clusterService.getClusterState();
-                if (stateParam.equals("frozen")) {
-                    state = ClusterState.FROZEN;
-                }
-                if (stateParam.equals("active")) {
-                    state = ClusterState.ACTIVE;
-                }
-                if (stateParam.equals("passive")) {
-                    state = ClusterState.PASSIVE;
-                }
+                ClusterState state = ClusterState.valueOf(upperCaseInternal(stateParam));
                 if (!state.equals(clusterService.getClusterState())) {
                     clusterService.changeClusterState(state);
-                    res = response(ResponseType.SUCCESS, "state", state.toString().toLowerCase());
+                    res = response(ResponseType.SUCCESS, "state", state.toString().toLowerCase(StringUtil.LOCALE_INTERNAL));
                 } else {
-                    res = response(ResponseType.FAIL, "state", state.toString().toLowerCase());
+                    res = response(ResponseType.FAIL, "state", state.toString().toLowerCase(StringUtil.LOCALE_INTERNAL));
                 }
             }
         } catch (Throwable throwable) {
@@ -149,7 +154,8 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
             if (!checkCredentials(command)) {
                 res = response(ResponseType.FORBIDDEN);
             } else {
-                res = response(ResponseType.SUCCESS, "state", clusterService.getClusterState().toString().toLowerCase());
+                ClusterState clusterState = clusterService.getClusterState();
+                res = response(ResponseType.SUCCESS, "state", lowerCaseInternal(clusterState.toString()));
             }
         } catch (Throwable throwable) {
             logger.warning("Error occurred while getting cluster state", throwable);
@@ -278,7 +284,7 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
                 res = response(ResponseType.FORBIDDEN);
             } else {
                 final String responseTxt = clusterService.getMembers().toString() + "\n"
-                        + BuildInfoProvider.getBuildInfo().getVersion() + "\n"
+                        + node.getBuildInfo().getVersion() + "\n"
                         + System.getProperty("java.version");
                 res = response(ResponseType.SUCCESS, "response", responseTxt);
                 sendResponse(command, res);
@@ -372,15 +378,22 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
         command.send200();
     }
 
+    /**
+     * Initiates a WAN sync for a single map and the wan replication name and publisher ID defined
+     * by the command parameters.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
     private void handleWanSyncMap(HttpPostCommand command) throws UnsupportedEncodingException {
         String res;
-        byte[] data = command.getData();
-        String[] strList = bytesToString(data).split("&");
-        String wanRepName = URLDecoder.decode(strList[0], "UTF-8");
-        String targetGroup = URLDecoder.decode(strList[1], "UTF-8");
-        String mapName = URLDecoder.decode(strList[2], "UTF-8");
+        final String[] params = decodeParams(command, 3);
+        final String wanRepName = params[0];
+        final String publisherId = params[1];
+        final String mapName = params[2];
         try {
-            textCommandService.getNode().getNodeEngine().getWanReplicationService().syncMap(wanRepName, targetGroup, mapName);
+            textCommandService.getNode().getNodeEngine().getWanReplicationService().syncMap(wanRepName, publisherId, mapName);
             res = response(ResponseType.SUCCESS, "message", "Sync initiated");
         } catch (Exception ex) {
             logger.warning("Error occurred while syncing map", ex);
@@ -389,14 +402,22 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
         sendResponse(command, res);
     }
 
+    /**
+     * Initiates WAN sync for all maps and the wan replication name and publisher ID
+     * defined
+     * by the command parameters.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
     private void handleWanSyncAllMaps(HttpPostCommand command) throws UnsupportedEncodingException {
         String res;
-        byte[] data = command.getData();
-        String[] strList = bytesToString(data).split("&");
-        String wanRepName = URLDecoder.decode(strList[0], "UTF-8");
-        String targetGroup = URLDecoder.decode(strList[1], "UTF-8");
+        final String[] params = decodeParams(command, 2);
+        final String wanRepName = params[0];
+        final String publisherId = params[1];
         try {
-            textCommandService.getNode().getNodeEngine().getWanReplicationService().syncAllMaps(wanRepName, targetGroup);
+            textCommandService.getNode().getNodeEngine().getWanReplicationService().syncAllMaps(wanRepName, publisherId);
             res = response(ResponseType.SUCCESS, "message", "Sync initiated");
         } catch (Exception ex) {
             logger.warning("Error occurred while syncing maps", ex);
@@ -405,14 +426,47 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
         sendResponse(command, res);
     }
 
+    /**
+     * Initiates a WAN consistency check for a single map and the WAN replication
+     * name and publisher ID defined by the command parameters.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
+    private void handleWanConsistencyCheck(HttpPostCommand command) throws UnsupportedEncodingException {
+        String res;
+        String[] params = decodeParams(command, 3);
+        String wanReplicationName = params[0];
+        String publisherId = params[1];
+        String mapName = params[2];
+        WanReplicationService service = textCommandService.getNode().getNodeEngine().getWanReplicationService();
+
+        try {
+            service.consistencyCheck(wanReplicationName, publisherId, mapName);
+            res = response(ResponseType.SUCCESS, "message", "Consistency check initiated");
+        } catch (Exception ex) {
+            logger.warning("Error occurred while initiating consistency check", ex);
+            res = exceptionResponse(ex);
+        }
+        sendResponse(command, res);
+    }
+
+    /**
+     * Clears the WAN queues for the wan replication name and publisher ID defined
+     * by the command parameters.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
     private void handleWanClearQueues(HttpPostCommand command) throws UnsupportedEncodingException {
         String res;
-        byte[] data = command.getData();
-        String[] strList = bytesToString(data).split("&");
-        String wanRepName = URLDecoder.decode(strList[0], "UTF-8");
-        String targetGroup = URLDecoder.decode(strList[1], "UTF-8");
+        final String[] params = decodeParams(command, 2);
+        final String wanRepName = params[0];
+        final String publisherId = params[1];
         try {
-            textCommandService.getNode().getNodeEngine().getWanReplicationService().clearQueues(wanRepName, targetGroup);
+            textCommandService.getNode().getNodeEngine().getWanReplicationService().clearQueues(wanRepName, publisherId);
             res = response(ResponseType.SUCCESS, "message", "WAN replication queues are cleared.");
         } catch (Exception ex) {
             logger.warning("Error occurred while clearing queues", ex);
@@ -421,11 +475,18 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
         sendResponse(command, res);
     }
 
+    /**
+     * Broadcasts a new {@link WanReplicationConfig} to all members. The config is defined
+     * by an encoded JSON as a first parameter of the HTTP command.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
     private void handleAddWanConfig(HttpPostCommand command) throws UnsupportedEncodingException {
         String res;
-        byte[] data = command.getData();
-        String[] strList = bytesToString(data).split("&");
-        String wanConfigJson = URLDecoder.decode(strList[0], "UTF-8");
+        final String[] params = decodeParams(command, 1);
+        final String wanConfigJson = params[0];
         try {
             OperationService opService = textCommandService.getNode().getNodeEngine().getOperationService();
             final Set<Member> members = textCommandService.getNode().getClusterService().getMembers();
@@ -446,6 +507,128 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
             logger.warning("Error occurred while adding WAN config", ex);
             res = exceptionResponse(ex);
         }
+        command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
+    }
+
+    /**
+     * Pauses a WAN publisher on this member only. The publisher is identified
+     * by the WAN replication name and publisher ID passed as parameters to
+     * the HTTP command.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     * @see com.hazelcast.config.WanPublisherState#PAUSED
+     */
+    private void handleWanPausePublisher(HttpPostCommand command) throws UnsupportedEncodingException {
+        String res;
+        String[] params = decodeParams(command, 2);
+        String wanReplicationName = params[0];
+        String publisherId = params[1];
+        WanReplicationService service = textCommandService.getNode().getNodeEngine().getWanReplicationService();
+
+        try {
+            service.pause(wanReplicationName, publisherId);
+            res = response(ResponseType.SUCCESS, "message", "WAN publisher paused");
+        } catch (Exception ex) {
+            logger.warning("Error occurred while pausing WAN publisher", ex);
+            res = exceptionResponse(ex);
+        }
+        sendResponse(command, res);
+    }
+
+    /**
+     * Stops a WAN publisher on this member only. The publisher is identified
+     * by the WAN replication name and publisher ID passed as parameters to
+     * the HTTP command.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     * @see com.hazelcast.config.WanPublisherState#STOPPED
+     */
+    private void handleWanStopPublisher(HttpPostCommand command) throws UnsupportedEncodingException {
+        String res;
+        String[] params = decodeParams(command, 2);
+        String wanReplicationName = params[0];
+        String publisherId = params[1];
+        WanReplicationService service = textCommandService.getNode().getNodeEngine().getWanReplicationService();
+
+        try {
+            service.stop(wanReplicationName, publisherId);
+            res = response(ResponseType.SUCCESS, "message", "WAN publisher stopped");
+        } catch (Exception ex) {
+            logger.warning("Error occurred while stopping WAN publisher", ex);
+            res = exceptionResponse(ex);
+        }
+        sendResponse(command, res);
+    }
+
+    /**
+     * Resumes a WAN publisher on this member only. The publisher is identified
+     * by the WAN replication name and publisher ID passed as parameters to
+     * the HTTP command.
+     *
+     * @param command the HTTP command
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     * @see com.hazelcast.config.WanPublisherState#REPLICATING
+     */
+    private void handleWanResumePublisher(HttpPostCommand command) throws UnsupportedEncodingException {
+        String res;
+        String[] params = decodeParams(command, 2);
+        String wanReplicationName = params[0];
+        String publisherId = params[1];
+        WanReplicationService service = textCommandService.getNode().getNodeEngine().getWanReplicationService();
+
+        try {
+            service.resume(wanReplicationName, publisherId);
+            res = response(ResponseType.SUCCESS, "message", "WAN publisher resumed");
+        } catch (Exception ex) {
+            logger.warning("Error occurred while resuming WAN publisher", ex);
+            res = exceptionResponse(ex);
+        }
+        sendResponse(command, res);
+    }
+
+    private void handleUpdatePermissions(HttpPostCommand command) {
+        String res = response(ResponseType.FORBIDDEN);
+        command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
+        return;
+    }
+
+    // This is intentionally not used. Instead handleUpdatePermissions() returns FORBIDDEN always.
+    private void doHandleUpdatePermissions(HttpPostCommand command) throws UnsupportedEncodingException {
+
+        if (!checkCredentials(command)) {
+            String res = response(ResponseType.FORBIDDEN);
+            command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
+            return;
+        }
+
+        SecurityService securityService = textCommandService.getNode().getSecurityService();
+        if (securityService == null) {
+            String res = response(ResponseType.FAIL, "message", "Security features are only available on Hazelcast Enterprise!");
+            command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
+            return;
+        }
+
+        String res;
+        byte[] data = command.getData();
+        String[] strList = bytesToString(data).split("&");
+        //Start from 3rd item of strList as first two are used for credentials
+        String permConfigsJSON = URLDecoder.decode(strList[2], "UTF-8");
+
+        try {
+            UpdatePermissionConfigRequest request = new UpdatePermissionConfigRequest();
+            request.fromJson(Json.parse(permConfigsJSON).asObject());
+            securityService.refreshClientPermissions(request.getPermissionConfigs());
+            res = response(ResponseType.SUCCESS, "message", "Permissions updated.");
+        } catch (Exception ex) {
+            logger.warning("Error occurred while updating permission config", ex);
+            res = exceptionResponse(ex);
+        }
+
         command.setResponse(HttpCommand.CONTENT_TYPE_JSON, stringToBytes(res));
     }
 
@@ -473,13 +656,36 @@ public class HttpPostCommandProcessor extends HttpCommandProcessor<HttpPostComma
 
         @Override
         public String toString() {
-            return super.toString().toLowerCase();
+            return super.toString().toLowerCase(StringUtil.LOCALE_INTERNAL);
         }
+    }
+
+    /**
+     * Decodes HTTP post params contained in {@link HttpPostCommand#getData()}. The data
+     * should be encoded in UTF-8 and joined together with an ampersand (&).
+     *
+     * @param command    the HTTP post command
+     * @param paramCount the number of parameters expected in the command
+     * @return the decoded params
+     * @throws UnsupportedEncodingException If character encoding needs to be consulted, but
+     *                                      named character encoding is not supported
+     */
+    private static String[] decodeParams(HttpPostCommand command, int paramCount) throws UnsupportedEncodingException {
+        final byte[] data = command.getData();
+        final String[] encoded = bytesToString(data).split("&");
+        final String[] decoded = new String[encoded.length];
+        for (int i = 0; i < paramCount; i++) {
+            decoded[i] = URLDecoder.decode(encoded[i], "UTF-8");
+        }
+        return decoded;
     }
 
     private boolean checkCredentials(HttpPostCommand command) throws UnsupportedEncodingException {
         byte[] data = command.getData();
         final String[] strList = bytesToString(data).split("&");
+        if (strList.length < 2) {
+            return false;
+        }
         final String groupName = URLDecoder.decode(strList[0], "UTF-8");
         final String groupPass = URLDecoder.decode(strList[1], "UTF-8");
         final GroupConfig groupConfig = textCommandService.getNode().getConfig().getGroupConfig();

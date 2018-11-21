@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,9 @@ public class BounceTestConfiguration {
     private final Config memberConfig;
     private final int driverCount;
     private final DriverFactory driverFactory;
+    private final boolean useTerminate;
+    private final int bouncingIntervalSeconds;
+    private final long maximumStaleSeconds;
 
     /**
      * Indicates whether the test will be driven by member or client HazelcastInstances
@@ -48,12 +51,16 @@ public class BounceTestConfiguration {
     }
 
     BounceTestConfiguration(int clusterSize, DriverType driverType,
-                                   Config memberConfig, int driverCount, DriverFactory driverFactory) {
+                            Config memberConfig, int driverCount, DriverFactory driverFactory, boolean useTerminate,
+                            int bouncingIntervalSeconds, long maximumStaleSeconds) {
         this.clusterSize = clusterSize;
         this.driverType = driverType;
         this.memberConfig = memberConfig;
         this.driverCount = driverCount;
         this.driverFactory = driverFactory;
+        this.useTerminate = useTerminate;
+        this.bouncingIntervalSeconds = bouncingIntervalSeconds;
+        this.maximumStaleSeconds = maximumStaleSeconds;
     }
 
     public int getClusterSize() {
@@ -74,5 +81,17 @@ public class BounceTestConfiguration {
 
     public DriverFactory getDriverFactory() {
         return driverFactory;
+    }
+
+    public boolean isUseTerminate() {
+        return useTerminate;
+    }
+
+    public int getBouncingIntervalSeconds() {
+        return bouncingIntervalSeconds;
+    }
+
+    public long getMaximumStaleSeconds() {
+        return maximumStaleSeconds;
     }
 }

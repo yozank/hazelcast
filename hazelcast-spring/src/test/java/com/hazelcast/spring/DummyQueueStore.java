@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,19 +23,17 @@ import java.util.Map;
 import java.util.Set;
 
 public class DummyQueueStore implements QueueStore {
+
     @Override
     public void store(Long key, Object value) {
-
     }
 
     @Override
     public void storeAll(Map map) {
-
     }
 
     @Override
     public void delete(Long key) {
-
     }
 
     @Override
@@ -55,6 +53,5 @@ public class DummyQueueStore implements QueueStore {
 
     @Override
     public void deleteAll(Collection keys) {
-
     }
 }

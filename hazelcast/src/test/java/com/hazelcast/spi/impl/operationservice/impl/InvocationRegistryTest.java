@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.spi.Operation;
-import com.hazelcast.spi.impl.operationservice.impl.CallIdSequence.CallIdSequenceWithBackpressure;
 import com.hazelcast.spi.impl.operationservice.impl.Invocation.Context;
+import com.hazelcast.spi.impl.sequence.CallIdSequenceWithBackpressure;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.QuickTest;
@@ -59,8 +59,8 @@ public class InvocationRegistryTest extends HazelcastTestSupport {
 
     private Invocation newInvocation(Operation op) {
         Invocation.Context context = new Context(null, null, null, null, null,
-                1000, invocationRegistry, null, logger, null, null, null, null, null, null, null, null);
-        return new PartitionInvocation(context, op, 0, 0, 0, false);
+                1000, invocationRegistry, null, logger, null, null, null, null, null, null, null, null, null);
+        return new PartitionInvocation(context, op, 0, 0, 0, false, false);
     }
 
     // ====================== register ===============================
@@ -158,7 +158,7 @@ public class InvocationRegistryTest extends HazelcastTestSupport {
         invocationRegistry.register(invocation);
         long callId = invocation.op.getCallId();
 
-        invocationRegistry.reset();
+        invocationRegistry.reset(null);
 
         InvocationFuture f = invocation.future;
         try {

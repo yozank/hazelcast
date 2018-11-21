@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,13 @@ import com.hazelcast.map.impl.MapDataSerializerHook;
 import com.hazelcast.spi.PartitionAwareOperation;
 import com.hazelcast.spi.ReadonlyOperation;
 
+/**
+ * Triggers key loading on member with {@link com.hazelcast.map.impl.MapKeyLoader.Role#SENDER}
+ * or {@link com.hazelcast.map.impl.MapKeyLoader.Role#SENDER_BACKUP} key
+ * loader role if keys have not yet been loaded.
+ * <p>
+ * Returns the previous state of the key loading and dispatching future.
+ */
 public class TriggerLoadIfNeededOperation extends MapOperation implements PartitionAwareOperation, ReadonlyOperation {
 
     private Boolean isLoaded;
@@ -33,7 +40,7 @@ public class TriggerLoadIfNeededOperation extends MapOperation implements Partit
 
     @Override
     public void run() {
-        isLoaded = recordStore.isLoaded();
+        isLoaded = recordStore.isKeyLoadFinished();
         recordStore.maybeDoInitialLoad();
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,25 +28,27 @@ import static com.hazelcast.test.HazelcastTestSupport.waitAllForSafeState;
 import static org.junit.Assert.assertEquals;
 
 /**
- * Utilities for cluster upgrade tests: start cluster members at designated version, assert cluster verion etc
+ * Utilities for cluster upgrade tests: start cluster members at designated version, assert cluster version etc.
  */
-public class TestClusterUpgradeUtils {
+@SuppressWarnings("unused")
+public final class TestClusterUpgradeUtils {
+
+    private TestClusterUpgradeUtils() {
+    }
 
     // return a new HazelcastInstance at given version
-    public static HazelcastInstance newHazelcastInstance(TestHazelcastInstanceFactory factory,
-                                                         MemberVersion version,
+    public static HazelcastInstance newHazelcastInstance(TestHazelcastInstanceFactory factory, MemberVersion version,
                                                          Config config) {
         try {
             System.setProperty(HAZELCAST_INTERNAL_OVERRIDE_VERSION, version.toString());
             return factory.newHazelcastInstance(config);
-        }
-        finally {
+        } finally {
             System.clearProperty(HAZELCAST_INTERNAL_OVERRIDE_VERSION);
         }
     }
 
     // shutdown and replace each member in membersToUpgrade with a new HazelcastInstance at given version
-    public static void upgradeClusterMembers(TestHazelcastInstanceFactory factory, final HazelcastInstance[] membersToUpgrade,
+    public static void upgradeClusterMembers(TestHazelcastInstanceFactory factory, HazelcastInstance[] membersToUpgrade,
                                              MemberVersion version, Config config) {
         upgradeClusterMembers(factory, membersToUpgrade, version, config, true);
     }
@@ -66,30 +68,28 @@ public class TestClusterUpgradeUtils {
                     // assert all members are in the cluster
                     assertTrueEventually(new AssertTask() {
                         @Override
-                        public void run()
-                                throws Exception {
+                        public void run() {
                             assertEquals(membersToUpgrade.length, membersToUpgrade[0].getCluster().getMembers().size());
                         }
                     }, 30);
                 }
             }
-        }
-        finally {
+        } finally {
             System.clearProperty(HAZELCAST_INTERNAL_OVERRIDE_VERSION);
         }
     }
 
     // assert all members' clusterService reports the given version
     public static void assertClusterVersion(HazelcastInstance[] instances, Version version) {
-        for (int i=0; i < instances.length; i++) {
-            assertEquals(version, instances[i].getCluster().getClusterVersion());
+        for (HazelcastInstance instance : instances) {
+            assertEquals(version, instance.getCluster().getClusterVersion());
         }
     }
 
     // assert all nodes in the cluster have the given codebase version
     public static void assertNodesVersion(HazelcastInstance[] instances, MemberVersion version) {
-        for (int i=0; i < instances.length; i++) {
-            assertEquals(version, getNode(instances[i]).getVersion());
+        for (HazelcastInstance instance : instances) {
+            assertEquals(version, getNode(instance).getVersion());
         }
     }
 }
