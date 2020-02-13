@@ -19,9 +19,14 @@ package com.hazelcast.internal.serialization.impl;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.ByteArraySerializer;
+import com.hazelcast.nio.serialization.HazelcastSerializationException;
 import com.hazelcast.nio.serialization.StreamSerializer;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 
 import static com.hazelcast.internal.serialization.impl.SerializationConstants.CONSTANT_TYPE_BOOLEAN;
 import static com.hazelcast.internal.serialization.impl.SerializationConstants.CONSTANT_TYPE_BOOLEAN_ARRAY;
@@ -42,6 +47,7 @@ import static com.hazelcast.internal.serialization.impl.SerializationConstants.C
 import static com.hazelcast.internal.serialization.impl.SerializationConstants.CONSTANT_TYPE_SHORT_ARRAY;
 import static com.hazelcast.internal.serialization.impl.SerializationConstants.CONSTANT_TYPE_STRING;
 import static com.hazelcast.internal.serialization.impl.SerializationConstants.CONSTANT_TYPE_STRING_ARRAY;
+import static com.hazelcast.nio.IOUtil.newObjectInputStream;
 
 
 public final class ConstantSerializers {
@@ -216,12 +222,54 @@ public final class ConstantSerializers {
 
         @Override
         public String read(final ObjectDataInput in) throws IOException {
-            return in.readUTF();
+            return (String) readGzipped((InputStream)in, in.getClassLoader());
         }
 
         @Override
         public void write(final ObjectDataOutput out, final String obj) throws IOException {
-            out.writeUTF(obj);
+            writeGzipped(((OutputStream) out), obj);
+        }
+
+        private Object read(InputStream in, ClassLoader classLoader) throws IOException {
+            try {
+                ObjectInputStream objectInputStream = newObjectInputStream(classLoader, null, in);
+
+                return objectInputStream.readUnshared();
+            } catch (ClassNotFoundException e) {
+                throw new HazelcastSerializationException(e);
+            }
+        }
+
+        private Object readGzipped(InputStream in, ClassLoader classLoader) throws IOException {
+            JavaDefaultSerializers.ExtendedGZipInputStream gzip = new JavaDefaultSerializers.ExtendedGZipInputStream(in);
+            try {
+                Object obj = read(gzip, classLoader);
+                gzip.pushBackUnconsumedBytes();
+                return obj;
+            } finally {
+                gzip.closeInflater();
+            }
+        }
+
+        private void write(OutputStream out, Object obj) throws IOException {
+            ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
+            if (false) {
+                objectOutputStream.writeObject(obj);
+            } else {
+                objectOutputStream.writeUnshared(obj);
+            }
+            // Force flush if not yet written due to internal behavior if pos < 1024
+            objectOutputStream.flush();
+        }
+
+        private void writeGzipped(OutputStream out, Object obj) throws IOException {
+            JavaDefaultSerializers.ExtendedGZipOutputStream gzip = new JavaDefaultSerializers.ExtendedGZipOutputStream(out);
+            try {
+                write(gzip, obj);
+                gzip.finish();
+            } finally {
+                gzip.closeDeflater();
+            }
         }
     }
 

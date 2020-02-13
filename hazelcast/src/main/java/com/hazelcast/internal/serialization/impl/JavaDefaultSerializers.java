@@ -360,16 +360,16 @@ public final class JavaDefaultSerializers {
      * This class enables us to access internal inflater that keeps consumed buffer.
      * `pushBackUnconsumedBytes` method adjust the position so that, next data in the stream can be read correctly
      */
-    private static final class ExtendedGZipInputStream extends GZIPInputStream {
+    static final class ExtendedGZipInputStream extends GZIPInputStream {
 
         private static final int GZIP_TRAILER_SIZE = 8;
 
-        private ExtendedGZipInputStream(InputStream in) throws IOException {
+        ExtendedGZipInputStream(InputStream in) throws IOException {
             super(in);
             assert in instanceof BufferObjectDataInput : "Unexpected input: " + in;
         }
 
-        private void pushBackUnconsumedBytes() {
+        void pushBackUnconsumedBytes() {
             int remaining = inf.getRemaining();
             BufferObjectDataInput bufferedInput = (BufferObjectDataInput) in;
             int position = bufferedInput.position();
@@ -381,23 +381,23 @@ public final class JavaDefaultSerializers {
         /**
          * Only close inflater, we don't want to close underlying InputStream
          */
-        private void closeInflater() {
+        void closeInflater() {
             //GZIPInputStream allocates native resources
             //via inf.end() these resources are released.
             inf.end();
         }
     }
 
-    private static final class ExtendedGZipOutputStream extends GZIPOutputStream {
+    static final class ExtendedGZipOutputStream extends GZIPOutputStream {
 
-        private ExtendedGZipOutputStream(OutputStream out) throws IOException {
+        ExtendedGZipOutputStream(OutputStream out) throws IOException {
             super(out);
         }
 
         /**
          * Only close deflater, we don't want to close underlying OutputStream
          */
-        private void closeDeflater() {
+        void closeDeflater() {
             //GZIPOutputStream allocates native resources
             //via def.end() these resources are released.
             def.end();
